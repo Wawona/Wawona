@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Deep-sign Wawona.app (Developer ID Application), productsign WawonaAgent.pkg
-# (Developer ID Installer), build a UDZO DMG, submit to notarytool, staple.
+# Deep-sign Wawona.app (Developer ID Application), build a UDZO DMG with
+# Wawona.app + Applications symlink + README, submit to notarytool, staple.
 #
-# The release DMG is pkg-only: WawonaAgent.pkg + README.txt. Wawona.app is
-# signed here and embedded in the pkg payload; it must not appear on the DMG
-# volume (no drag-to-Applications). --app may live outside --staging.
+# Optional --pkg still productsigns WawonaAgent.pkg for maintainer/admin use,
+# but the release volume is drag-install (no pkg on the DMG). Launch Agents
+# install from Settings → Permissions / first-launch offer.
 #
 # Intended for Ship: GitHub assets (release.yml). Secrets from GitHub Environment
 # release-beta / SecretSpec (see docs/maintainers/secrets.md).
@@ -14,14 +14,12 @@
 #
 # Usage:
 #   DEVELOPER_ID_APPLICATION_P12_BASE64=… \
-#   DEVELOPER_ID_INSTALLER_P12_BASE64=… \
 #   MATCH_PASSWORD=… \
 #   APP_STORE_CONNECT_API_KEY=… \   # base64 of ASC .p8 PEM
 #   APP_STORE_CONNECT_KEY_ID=… \
 #   APP_STORE_CONNECT_ISSUER_ID=… \
 #   ./scripts/macos-sign-and-notarize-dmg.sh \
 #     --app sign-staging/Wawona.app \
-#     --pkg dmg-staging/WawonaAgent.pkg \
 #     --dmg Wawona-26.8.9-macOS-arm64.dmg \
 #     --staging dmg-staging
 #
@@ -29,7 +27,7 @@
 #   WAWONA_DEVELOPER_ID_ENTITLEMENTS  override entitlements plist path
 #   WAWONA_SKIP_NOTARIZE=1            sign + DMG only (local debug)
 #   WAWONA_CODESIGN_IDENTITY          force Application identity name
-#   WAWONA_PRODUCTSIGN_IDENTITY       force Installer identity name
+#   WAWONA_PRODUCTSIGN_IDENTITY       force Installer identity name (only with --pkg)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -69,8 +67,10 @@ if [[ -z "$DMG" ]]; then
 fi
 
 : "${DEVELOPER_ID_APPLICATION_P12_BASE64:?Set DEVELOPER_ID_APPLICATION_P12_BASE64}"
-: "${DEVELOPER_ID_INSTALLER_P12_BASE64:?Set DEVELOPER_ID_INSTALLER_P12_BASE64}"
 : "${MATCH_PASSWORD:?Set MATCH_PASSWORD (P12 passphrase)}"
+if [[ -n "$PKG" ]]; then
+  : "${DEVELOPER_ID_INSTALLER_P12_BASE64:?Set DEVELOPER_ID_INSTALLER_P12_BASE64 when using --pkg}"
+fi
 
 if [[ "${WAWONA_SKIP_NOTARIZE:-0}" != "1" ]]; then
   # Accept either CI-shaped APP_STORE_CONNECT_* or SecretSpec ASC_* (+ base64 key).
@@ -100,16 +100,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Staging is the DMG volume root (pkg + README). Never default to the
-# directory that holds --app (that would delete the sealed .app).
+# Staging is the DMG volume root (.app + Applications + README). Never default
+# to the directory that holds --app (that would delete the sealed .app).
 if [[ -z "$STAGING" ]]; then
   STAGING="$WORKDIR/dmg-staging"
   mkdir -p "$STAGING"
 fi
 
 printf '%s' "$DEVELOPER_ID_APPLICATION_P12_BASE64" | base64 -d >"$APP_P12"
-printf '%s' "$DEVELOPER_ID_INSTALLER_P12_BASE64" | base64 -d >"$INST_P12"
-[[ -s "$APP_P12" && -s "$INST_P12" ]] || { echo "error: P12 decode produced empty file" >&2; exit 1; }
+[[ -s "$APP_P12" ]] || { echo "error: Application P12 decode produced empty file" >&2; exit 1; }
+if [[ -n "$PKG" ]]; then
+  printf '%s' "$DEVELOPER_ID_INSTALLER_P12_BASE64" | base64 -d >"$INST_P12"
+  [[ -s "$INST_P12" ]] || { echo "error: Installer P12 decode produced empty file" >&2; exit 1; }
+fi
 
 echo "Creating temporary signing keychain..."
 security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
@@ -121,8 +124,10 @@ security list-keychains -d user -s "$KEYCHAIN" $EXISTING_KC
 
 security import "$APP_P12" -k "$KEYCHAIN" -P "$MATCH_PASSWORD" \
   -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign >/dev/null
-security import "$INST_P12" -k "$KEYCHAIN" -P "$MATCH_PASSWORD" \
-  -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign >/dev/null
+if [[ -n "$PKG" ]]; then
+  security import "$INST_P12" -k "$KEYCHAIN" -P "$MATCH_PASSWORD" \
+    -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign >/dev/null
+fi
 # Developer ID G2 intermediate. Needed for a complete signing chain in a
 # fresh keychain (system roots alone are not always enough for codesign).
 DEVID_G2="$WORKDIR/DeveloperIDG2CA.cer"
@@ -142,15 +147,16 @@ if [[ -z "$APP_IDENTITY" ]]; then
   APP_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
     | awk -F'"' '/Developer ID Application/ { print $2; exit }')"
 fi
-if [[ -z "$INST_IDENTITY" ]]; then
-  # productsign looks at signing identities; list via find-identity without -p codesigning
-  INST_IDENTITY="$(security find-identity -v "$KEYCHAIN" \
-    | awk -F'"' '/Developer ID Installer/ { print $2; exit }')"
-fi
 [[ -n "$APP_IDENTITY" ]] || { echo "error: no Developer ID Application identity in keychain" >&2; security find-identity -v "$KEYCHAIN" >&2; exit 1; }
-[[ -n "$INST_IDENTITY" ]] || { echo "error: no Developer ID Installer identity in keychain" >&2; security find-identity -v "$KEYCHAIN" >&2; exit 1; }
 echo "Application identity: $APP_IDENTITY"
-echo "Installer identity:   $INST_IDENTITY"
+if [[ -n "$PKG" ]]; then
+  if [[ -z "$INST_IDENTITY" ]]; then
+    INST_IDENTITY="$(security find-identity -v "$KEYCHAIN" \
+      | awk -F'"' '/Developer ID Installer/ { print $2; exit }')"
+  fi
+  [[ -n "$INST_IDENTITY" ]] || { echo "error: no Developer ID Installer identity in keychain" >&2; security find-identity -v "$KEYCHAIN" >&2; exit 1; }
+  echo "Installer identity:   $INST_IDENTITY"
+fi
 
 # Make the bundle writable (nix / artifact zips are often immutable-ish).
 chmod -R u+w "$APP"
@@ -298,36 +304,33 @@ if [[ -n "$PKG" ]]; then
   pkgutil --check-signature "$PKG" || true
 fi
 
-# DMG volume is pkg + README only. Never ship a loose Wawona.app or
-# Applications symlink (drag-install skips LaunchAgents / helper).
+# DMG volume: signed Wawona.app + Applications symlink + README.
+# Optional maintainer pkg is kept off the release volume.
 if [[ -d "$STAGING" ]]; then
-  rm -rf "$STAGING/Wawona.app" "$STAGING/Applications"
+  rm -rf "$STAGING/Wawona.app" "$STAGING/Applications" "$STAGING/WawonaAgent.pkg"
+  ditto "$APP" "$STAGING/Wawona.app"
+  ln -s /Applications "$STAGING/Applications"
   if [[ ! -f "$STAGING/README.txt" ]]; then
     {
       echo 'Thank you for installing Wawona'
       echo '==============================='
       echo ''
-      echo 'I am grateful you chose Wawona. Double-click WawonaAgent.pkg.'
-      echo 'That installer places Wawona.app, LaunchAgents, System Settings,'
-      echo 'and related helpers for you. There is no drag-to-Applications step.'
+      echo 'Drag Wawona.app to Applications, then open it. Enable Login Item'
+      echo 'and Launch Agents from Settings → Permissions (or the first-launch'
+      echo 'offer). Check for Updates lives in the same Permissions section.'
       echo ''
       echo 'This DMG is Developer ID signed and notarized (Gatekeeper-clean).'
     } >"$STAGING/README.txt"
   fi
-  if [[ -n "$PKG" && -f "$PKG" ]]; then
-    # Keep the sealed pkg on the volume root (may already be there).
-    if [[ "$(cd "$(dirname "$PKG")" && pwd)/$(basename "$PKG")" \
-        != "$(cd "$STAGING" && pwd)/$(basename "$PKG")" ]]; then
-      cp -f "$PKG" "$STAGING/$(basename "$PKG")"
-    fi
-  fi
-  [[ -f "$STAGING/WawonaAgent.pkg" ]] \
-    || { echo "error: $STAGING missing WawonaAgent.pkg" >&2; exit 1; }
-  if [[ -e "$STAGING/Wawona.app" || -e "$STAGING/Applications" ]]; then
-    echo "error: DMG staging must not contain Wawona.app or Applications" >&2
+  [[ -d "$STAGING/Wawona.app" ]] \
+    || { echo "error: $STAGING missing Wawona.app" >&2; exit 1; }
+  [[ -L "$STAGING/Applications" ]] \
+    || { echo "error: $STAGING missing Applications symlink" >&2; exit 1; }
+  if [[ -e "$STAGING/WawonaAgent.pkg" ]]; then
+    echo "error: DMG staging must not contain WawonaAgent.pkg" >&2
     exit 1
   fi
-  echo "Building pkg-only DMG from $STAGING → $DMG"
+  echo "Building drag-install DMG from $STAGING → $DMG"
   rm -f "$DMG"
   hdiutil create -volname "Wawona" -srcfolder "$STAGING" \
     -ov -format UDZO "$DMG"

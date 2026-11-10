@@ -152,12 +152,11 @@ extension WawonaBackport where Content: View {
             )
         )
         #elseif os(tvOS)
-        // cancellationAction: leaves room for Env Vars Add on `.primaryAction`.
-        // confirmationAction alone often never focuses in a NavigationSplitView
-        // sidebar on tvOS 26 Liquid Glass chrome.
-        if #available(tvOS 14.0, *) {
+        // Trailing on the detail column only. `.cancellationAction` put Done
+        // on the leading edge, over the sidebar.
+        if #available(tvOS 17.0, *) {
             content.toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Done", action: onClose)
                         .accessibility(identifier: "wwn.settings.close")
                 }

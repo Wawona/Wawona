@@ -285,10 +285,18 @@ final class CompositorHostPlatformView: PlatformView {
     #endif
 
     #if os(macOS)
+    private var seatWindowId: UInt64 {
+        if let wwn = window as? WWNWindow, wwn.wwnWindowId != 0 {
+            return wwn.wwnWindowId
+        }
+        return WWNNestedClientTabStore.shared.focusedId ?? 0
+    }
+
     override func mouseMoved(with event: NSEvent) {
         let timeMs = UInt32((ProcessInfo.processInfo.systemUptime * 1000).rounded())
         let point = convert(event.locationInWindow, from: nil)
-        SeatForwarder.injectPointerMotion(core: core, windowId: 0, timeMs: timeMs, x: point.x, y: point.y)
+        let wid = seatWindowId
+        SeatForwarder.injectPointerMotion(core: core, windowId: wid, timeMs: timeMs, x: point.x, y: point.y)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -310,9 +318,10 @@ final class CompositorHostPlatformView: PlatformView {
     private func injectButton(_ button: UInt32, pressed: Bool, event: NSEvent) {
         let timeMs = UInt32((ProcessInfo.processInfo.systemUptime * 1000).rounded())
         let point = convert(event.locationInWindow, from: nil)
-        SeatForwarder.injectPointerMotion(core: core, windowId: 0, timeMs: timeMs, x: point.x, y: point.y)
+        let wid = seatWindowId
+        SeatForwarder.injectPointerMotion(core: core, windowId: wid, timeMs: timeMs, x: point.x, y: point.y)
         SeatForwarder.injectPointerButton(
-            core: core, windowId: 0, timeMs: timeMs, button: button, pressed: pressed)
+            core: core, windowId: wid, timeMs: timeMs, button: button, pressed: pressed)
     }
     #endif
 

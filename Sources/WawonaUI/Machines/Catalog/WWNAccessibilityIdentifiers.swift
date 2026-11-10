@@ -10,6 +10,9 @@ enum WWNA11y {
   static let machinesTitle = "wwn.machines.title"
   static let machinesSettings = "wwn.machines.settings"
   static let machinesAdd = "wwn.machines.add"
+  /// Selected-machine detail (Start/Stop/Focus/Edit/Delete + Tags/Pin).
+  static let machinesDetail = "wwn.machines.detail"
+  static let machinesDetailBack = "wwn.machines.detail.back"
   static let machinesStart = "wwn.machines.start"
   static let machinesStartTab = "wwn.machines.start.tab"
   static let machinesStartWindow = "wwn.machines.start.window"
@@ -85,6 +88,11 @@ enum WWNA11y {
   static let settingsICloudSyncNow = "wwn.settings.iCloudSync.syncNow"
   static let settingsICloudDriveToggle = "wwn.settings.iCloudSync.driveToggle"
   static let settingsDone = "wwn.settings.done"
+  static let settingsPermissions = "wwn.settings.permissions"
+  static let settingsPermissionsLoginItem = "wwn.settings.permissions.loginItem"
+  static let settingsPermissionsCheckUpdates = "wwn.settings.permissions.checkForUpdates"
+  static let settingsPermissionsCheckNow = "wwn.settings.permissions.checkNow"
+  static let settingsPermissionsInstallUpdate = "wwn.settings.permissions.installUpdate"
 
   static let compositorSurface = "wwn.compositor.surface"
   static let clientTabs = "wwn.client.tabs"

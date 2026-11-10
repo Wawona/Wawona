@@ -137,10 +137,6 @@ public final class WWNMachineProfileStore: NSObject {
         machineId: String
     ) -> WWNMachineProfile? {
         guard !machineId.isEmpty else { return nil }
-        let support = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask
-        ).first
-        let guestsRoot = (support?.path ?? "") + "/Wawona/guests"
         let variant: String = {
             for v in ["16k", "4k"] {
                 if WWNRelay.resolveGuestDirectory(variant: v) != nil { return v }

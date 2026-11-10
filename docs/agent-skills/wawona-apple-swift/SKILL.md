@@ -74,3 +74,22 @@ Symlink into `~/.cursor/skills/<name>` if discovery misses `~/.agents/skills`.
 - Applying iOS 17+ / 26-only APIs without a backport path
 - Skipping Wawona glue / UniFFI / entry rules because an upstream skill prefers
   a different architecture
+
+## tvOS focus findings (2026-11-05)
+
+- `.buttonStyle(.plain)` drops the tvOS focus platter. A focused control then
+  looks identical to an unfocused one. Use a custom `ButtonStyle` whose body
+  reads `@Environment(\.isFocused)` (`WWNTvCapsuleButtonStyle`,
+  `WWNTvRowButtonStyle`, `WWNTvSwatchButtonStyle`, `WWNTvChipButtonStyle`).
+- `Color.secondary` / `foregroundColor(.secondary)` stays light gray on the
+  white focus platter (illegible). Use hierarchical `.foregroundStyle(.secondary)`.
+- `ViewThatFits` / `WawonaFittingRow` re-measures under the focus scale and
+  rows jump between layouts. Use a fixed `HStack` on tvOS.
+- Grids and horizontal strips clip the focus lift. Add padding and
+  `.scrollClipDisabled()`.
+- Up from the first row cannot reach toolbar Save / Done unless content is a
+  `.focusSection()`. Do not use overscan margins on tvOS forms.
+- Toolbar `.searchable` toggled on a split detail stacks a second search bar
+  and filters the grid behind it. tvOS Machines search is a dedicated cover
+  with a local query; Done clears it.
+- Settings Done sits `.topBarTrailing` on the detail column only.

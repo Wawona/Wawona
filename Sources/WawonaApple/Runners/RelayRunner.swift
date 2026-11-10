@@ -89,7 +89,7 @@ public final class WWNRelay: NSObject {
             } ?? "4k"
             if Self.guestResources(profile: profile, vmSettings: profile.vmSettings) == nil {
                 if !machineId.isEmpty {
-                    lock.withLock { handlesByMachineId.removeValue(forKey: machineId) }
+                    _ = lock.withLock { handlesByMachineId.removeValue(forKey: machineId) }
                 }
                 // App Store: guest must ship inside the IPA (2.5.2). Do not
                 // suggest downloading a kernel/rootfs. Lab/TF may stage under
@@ -116,7 +116,7 @@ public final class WWNRelay: NSObject {
 
         if resolveRc == -1 {
             if !machineId.isEmpty {
-                lock.withLock { handlesByMachineId.removeValue(forKey: machineId) }
+                _ = lock.withLock { handlesByMachineId.removeValue(forKey: machineId) }
             }
             error?.pointee = NSError(
                 domain: "WWNRelay", code: 2,
@@ -126,7 +126,7 @@ public final class WWNRelay: NSObject {
         }
         if resolveRc == -2 {
             if !machineId.isEmpty {
-                lock.withLock { handlesByMachineId.removeValue(forKey: machineId) }
+                _ = lock.withLock { handlesByMachineId.removeValue(forKey: machineId) }
             }
             error?.pointee = NSError(
                 domain: "WWNRelay", code: 3,

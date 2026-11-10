@@ -32,6 +32,9 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
                 section.items = []
             } else if id == .desktop {
                 section.items = desktopItems()
+            } else if id == .permissions {
+                // Detail pane hosts WWNPermissionsSettingsView; no inventory rows.
+                section.items = []
             } else if id == .about {
                 section.items = aboutItems(for: host)
             } else if id == .dependencies {
@@ -343,6 +346,11 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
                 "Bundled native ports and archives.",
                 "Inventory is filled by SettingsDependencies.json."
             )
+        case .compositorAgent, .menubarAgent, .loginItem,
+             .checkForUpdates, .checkForUpdatesNow, .installUpdate,
+             .swingingBridgeScreenCapture, .swingingBridgeAccessibility:
+            // Hosted by WWNPermissionsSettingsView (empty section items).
+            return nil
         }
     }
 }

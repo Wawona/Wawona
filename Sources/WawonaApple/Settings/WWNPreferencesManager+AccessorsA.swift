@@ -64,7 +64,7 @@ extension WWNPreferencesManager {
     }
 
     @objc public func nestedWestonBackend() -> String {
-        var value = defs.string(forKey: kWWNPrefsNestedWestonBackend) ?? ""
+        let value = defs.string(forKey: kWWNPrefsNestedWestonBackend) ?? ""
         if value.isEmpty {
             #if os(macOS)
             return "iland-drm-gl"

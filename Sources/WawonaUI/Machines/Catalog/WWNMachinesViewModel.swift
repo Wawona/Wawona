@@ -341,8 +341,7 @@ final class WWNMachinesViewModel: ObservableObject {
   }
 
   func upsert(_ profile: WWNMachineProfile) {
-    var runtime = Dictionary(uniqueKeysWithValues:
-      (profile.runtimeOverrides as? [String: Any] ?? [:]).map { ($0.key, $0.value) })
+    var runtime = profile.runtimeOverrides
     if runtime["origin"] == nil {
       runtime["origin"] = "manual"
       profile.runtimeOverrides = runtime
@@ -527,17 +526,23 @@ final class WWNMachinesViewModel: ObservableObject {
     _ profile: WWNMachineProfile,
     openInNewWindow: Bool
   ) {
-    let machineId = profile.machineId ?? ""
+    let machineId = profile.machineId
     guard !machineId.isEmpty else { return }
-    let source: String
-    if profile.type == kWWNMachineTypeVirtualMachine ||
-      profile.type == kWWNMachineTypeContainer {
-      #if os(tvOS) || os(watchOS) || os(visionOS)
+    #if os(tvOS) || os(watchOS) || os(visionOS)
+    if profile.type == kWWNMachineTypeVirtualMachine
+      || profile.type == kWWNMachineTypeContainer
+    {
       return
-      #endif
+    }
+    #endif
+    let source: String
+    if profile.type == kWWNMachineTypeVirtualMachine
+      || profile.type == kWWNMachineTypeContainer
+    {
       source = "relay"
     } else if WWNNativeShellConfiguration.isNativeShellFamily(profile.type)
-      || profile.type == kWWNMachineTypeNative {
+      || profile.type == kWWNMachineTypeNative
+    {
       let kind = WWNNativeShellConfiguration.kind(for: profile)
       let useSSH = WWNNativeShellConfiguration.usesSSH(for: profile)
       if kind == kWWNNativeShellKindTerminal && useSSH {
@@ -635,7 +640,7 @@ final class WWNMachinesViewModel: ObservableObject {
     onConnected: (() -> Void)? = nil
   ) {
     connectionError = nil
-    let machineId = profile.machineId ?? ""
+    let machineId = profile.machineId
     let isContainer = profile.type == kWWNMachineTypeContainer
     // Fail closed before session queue work when the Mode A guest tree is
     // absent. App Store builds ship wawona-nixos-guest-* in the IPA; tip/lab
@@ -681,15 +686,7 @@ final class WWNMachinesViewModel: ObservableObject {
     let toStop: [WWNMachineProfile] = []
     #endif
 
-    if WWNMachineSessionBridge.profileUsesNativeCompositorClient(profile),
-       WWNWaypipeRunner.shared == nil {
-      let client = WWNMachineSessionBridge.nativeClientId(forProfile: profile) ?? ""
-      if client != "wawona-shell" {
-        statusByMachineId[machineId] = .error
-        connectionError = "Wayland client runner is unavailable."
-        return
-      }
-    }
+    // WWNWaypipeRunner.shared is a non-optional singleton; no nil probe.
 
     if isContainer {
       pendingContainerConnectCallbacks[machineId] = onConnected
@@ -698,13 +695,26 @@ final class WWNMachinesViewModel: ObservableObject {
     // Mount Metal host before the session queue launches the Wayland client.
     revealSessionSurfaceIfNeeded(profile, openInNewWindow: openInNewWindow)
 
+    let stopIds = toStop.map(\.machineId)
+    _ = WWNMachineProfileStore.upsertProfile(profile)
     wwnMachineSessionQueue.async {
-      for other in toStop {
-        WWNMachineSessionBridge.disconnectProfile(other)
+      for otherId in stopIds {
+        if let other = WWNMachineProfileStore.profile(byId: otherId) {
+          WWNMachineSessionBridge.disconnectProfile(other)
+        }
       }
       var failure: String?
       do {
-        try WWNMachineSessionBridge.connect(profile)
+        guard let live = WWNMachineProfileStore.profile(byId: machineId) else {
+          throw NSError(
+            domain: "WWNMachinesViewModel",
+            code: 1,
+            userInfo: [
+              NSLocalizedDescriptionKey: "Machine profile disappeared before connect."
+            ]
+          )
+        }
+        try WWNMachineSessionBridge.connect(live)
       } catch {
         failure = error.localizedDescription
         NSLog("Machine %@ failed to start: %@", machineId, error.localizedDescription)
@@ -796,7 +806,7 @@ final class WWNMachinesViewModel: ObservableObject {
 
   func disconnect(_ profile: WWNMachineProfile) {
     captureThumbnailIfEnabled(for: profile)
-    let machineId = profile.machineId ?? ""
+    let machineId = profile.machineId
     statusByMachineId[machineId] = .disconnected
     _ = bumpSessionGeneration(machineId)
     #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
@@ -822,7 +832,9 @@ final class WWNMachinesViewModel: ObservableObject {
     WWNMacGuestConsole.shared.dismiss(machineId: machineId)
     #endif
     wwnMachineSessionQueue.async {
-      WWNMachineSessionBridge.disconnectProfile(profile)
+      if let live = WWNMachineProfileStore.profile(byId: machineId) {
+        WWNMachineSessionBridge.disconnectProfile(live)
+      }
     }
   }
 
@@ -849,11 +861,11 @@ final class WWNMachinesViewModel: ObservableObject {
     // tv / iPad). Same rule as macOS showTerminalSessionSurface.
     if shouldKeepTerminalOnFocus(profile) {
       WWNIosGuestConsole.shared.present(
-        machineId: profile.machineId ?? "",
+        machineId: profile.machineId,
         source: "shell"
       )
       WWNMainWindowRouter.shared.showMachines()
-      NSLog("WWNFocus: Terminal-only → keep Wawona Terminal mid=%@", profile.machineId ?? "")
+      NSLog("WWNFocus: Terminal-only → keep Wawona Terminal mid=%@", profile.machineId)
       return
     }
     WWNIosGuestConsole.shared.parkForCompositor()

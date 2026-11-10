@@ -86,12 +86,13 @@ jobs:
           name: product-macos-app
           path: product-macos-app/
 
-      - name: Stage signed-app tree + pkg-only DMG root
+      - name: Stage signed-app tree + drag-install DMG root
         run: |
           VERSION=$(cat VERSION)
           echo "WAWONA_VERSION=$VERSION" >> "$GITHUB_ENV"
-          # sign-staging holds Wawona.app for Developer ID + pkg payload only.
-          # dmg-staging is the volume root: WawonaAgent.pkg + README.txt (no .app).
+          # sign-staging: Developer ID source. dmg-staging: volume root
+          # (Wawona.app + Applications symlink + README). Launch Agents install
+          # from the app (Settings → Permissions / first-launch offer).
           mkdir -p sign-staging dmg-staging
           if [[ -d product-macos-app/Wawona.app ]]; then
             ditto product-macos-app/Wawona.app sign-staging/Wawona.app
@@ -104,11 +105,6 @@ jobs:
           chmod -R u+w sign-staging/Wawona.app
           find sign-staging/Wawona.app/Contents/MacOS -type f -exec chmod +x {} + 2>/dev/null || true
           find sign-staging/Wawona.app/Contents/Resources/bin -type f -exec chmod +x {} + 2>/dev/null || true
-          # Unsigned pkg draft; notarize script re-seals from the signed app.
-          chmod +x ./scripts/macos-launch-agent-pkg.sh
-          WAWONA_VERSION="$VERSION" \
-          WAWONA_APP_SRC="$PWD/sign-staging/Wawona.app" \
-            ./scripts/macos-launch-agent-pkg.sh "dmg-staging/WawonaAgent.pkg"
           {
             echo 'Thank you for installing Wawona'
             echo '==============================='
@@ -118,28 +114,21 @@ jobs:
             echo ''
             echo 'How to install'
             echo '--------------'
-            echo 'Double-click WawonaAgent.pkg. That single installer handles'
-            echo 'everything for you:'
+            echo '1. Drag Wawona.app to Applications.'
+            echo '2. Open Wawona from Applications (or Spotlight).'
+            echo '3. On first launch, enable Login Item + Launch Agents when'
+            echo '   offered, or open Settings → Permissions later.'
             echo ''
-            echo '  • Places Wawona.app in /Applications'
-            echo '  • Loads the compositor and menubar LaunchAgents'
-            echo '  • Registers System Settings → Wawona (preference pane)'
-            echo '  • Publishes WAYLAND_DISPLAY / XDG_RUNTIME_DIR so Wayland'
-            echo '    clients can connect without opening the Wawona window'
-            echo '  • Syncs the Desktop Replacement helper + dylib (install'
-            echo '    never takes over the screen; enable that later in Settings)'
-            echo ''
-            echo 'There is no drag-to-Applications step on this disk. Use the'
-            echo 'pkg only so Launch Agents, Settings, and the app stay in sync.'
+            echo 'Settings → Permissions also Check for Updates against the'
+            echo 'latest GitHub Release.'
             echo ''
             echo 'This DMG is Developer ID signed and notarized (Gatekeeper-clean).'
           } > dmg-staging/README.txt
           [[ -d sign-staging/Wawona.app ]] || { echo "error: sign-staging/Wawona.app missing"; exit 1; }
           [[ -x sign-staging/Wawona.app/Contents/MacOS/Wawona ]] || { echo "error: Wawona binary not executable"; exit 1; }
-          [[ -f dmg-staging/WawonaAgent.pkg ]] || { echo "error: dmg-staging/WawonaAgent.pkg missing"; exit 1; }
           [[ -f dmg-staging/README.txt ]] || { echo "error: dmg-staging/README.txt missing"; exit 1; }
-          if [[ -e dmg-staging/Wawona.app || -e dmg-staging/Applications ]]; then
-            echo "error: DMG root must not contain Wawona.app or Applications" >&2
+          if [[ -e dmg-staging/WawonaAgent.pkg ]]; then
+            echo "error: DMG root must not contain WawonaAgent.pkg (drag-install)" >&2
             exit 1
           fi
 
@@ -147,7 +136,6 @@ jobs:
         env:
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           DEVELOPER_ID_APPLICATION_P12_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_P12_BASE64 }}
-          DEVELOPER_ID_INSTALLER_P12_BASE64: ${{ secrets.DEVELOPER_ID_INSTALLER_P12_BASE64 }}
           APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -156,7 +144,6 @@ jobs:
           chmod +x ./scripts/macos-sign-and-notarize-dmg.sh
           ./scripts/macos-sign-and-notarize-dmg.sh \
             --app sign-staging/Wawona.app \
-            --pkg dmg-staging/WawonaAgent.pkg \
             --staging dmg-staging \
             --dmg "Wawona-${WAWONA_VERSION}-macOS-arm64.dmg" \
             --version "$WAWONA_VERSION"

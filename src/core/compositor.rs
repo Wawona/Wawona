@@ -928,28 +928,60 @@ impl Compositor {
     /// Ensure XDG_RUNTIME_DIR exists with proper permissions
     fn ensure_runtime_dir() -> Result<String> {
         use std::os::unix::fs::PermissionsExt;
+        use std::path::PathBuf;
 
         // Honor XDG_RUNTIME_DIR from the ObjC/Swift layer (iOS uses short /tmp paths).
         if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
             if !dir.is_empty() {
-                std::fs::create_dir_all(&dir)
-                    .with_context(|| format!("Failed to create XDG_RUNTIME_DIR {}", dir))?;
-                if let Ok(metadata) = std::fs::metadata(&dir) {
-                    let perms = metadata.permissions();
-                    if perms.mode() & 0o777 != 0o700 {
-                        // On iOS the sandbox already provides isolation. Tighten when
-                        // possible but accept the directory if chmod fails.
-                        let mut new_perms = perms.clone();
-                        new_perms.set_mode(0o700);
-                        if let Err(e) = std::fs::set_permissions(&dir, new_perms) {
-                            tracing::warn!(
-                                "Could not set 0700 on XDG_RUNTIME_DIR ({}): {}. Using as-is",
-                                dir,
-                                e
-                            );
+                match std::fs::create_dir_all(&dir) {
+                    Ok(()) => {
+                        if let Ok(metadata) = std::fs::metadata(&dir) {
+                            let perms = metadata.permissions();
+                            if perms.mode() & 0o777 != 0o700 {
+                                // On iOS the sandbox already provides isolation. Tighten when
+                                // possible but accept the directory if chmod fails.
+                                let mut new_perms = perms.clone();
+                                new_perms.set_mode(0o700);
+                                if let Err(e) = std::fs::set_permissions(&dir, new_perms) {
+                                    tracing::warn!(
+                                        "Could not set 0700 on XDG_RUNTIME_DIR ({}): {}. Using as-is",
+                                        dir,
+                                        e
+                                    );
+                                }
+                            }
+                            return Ok(dir);
                         }
                     }
-                    return Ok(dir);
+                    Err(e) => {
+                        // watchOS / locked Apple-mobile sandbox: Swift may still
+                        // point at `/tmp/wawona-<uid>`. Fall through to TMPDIR.
+                        tracing::warn!(
+                            "XDG_RUNTIME_DIR {} unusable ({}). Trying TMPDIR fallback",
+                            dir,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        // Apple mobile: TMPDIR is the container tmp (writable). Prefer a short
+        // `wwn-rt` child so AF_UNIX sun_path still fits `…/wayland-0`.
+        if let Ok(tmp) = std::env::var("TMPDIR") {
+            let tmp = tmp.trim_end_matches('/');
+            if !tmp.is_empty() && tmp != "/tmp" {
+                let runtime_dir = PathBuf::from(tmp).join("wwn-rt");
+                if std::fs::create_dir_all(&runtime_dir).is_ok() {
+                    if let Ok(metadata) = std::fs::metadata(&runtime_dir) {
+                        let mut perms = metadata.permissions();
+                        perms.set_mode(0o700);
+                        let _ = std::fs::set_permissions(&runtime_dir, perms);
+                    }
+                    let runtime_dir = runtime_dir.to_string_lossy().into_owned();
+                    std::env::set_var("XDG_RUNTIME_DIR", &runtime_dir);
+                    tracing::debug!("Created XDG_RUNTIME_DIR from TMPDIR: {}", runtime_dir);
+                    return Ok(runtime_dir);
                 }
             }
         }
@@ -959,7 +991,8 @@ impl Compositor {
         let uid = unsafe { libc::getuid() };
         let runtime_dir = format!("/tmp/wawona-{}", uid);
 
-        std::fs::create_dir_all(&runtime_dir)?;
+        std::fs::create_dir_all(&runtime_dir)
+            .with_context(|| format!("Failed to create XDG_RUNTIME_DIR {}", runtime_dir))?;
 
         let mut perms = std::fs::metadata(&runtime_dir)?.permissions();
         perms.set_mode(0o700);

@@ -140,6 +140,8 @@ final class IosShellSession {
         WWNRootfsManager.applyShellEnvironment()
         [("TERM", "xterm-256color"), ("WAWONA_ZSH_IN_PROCESS", "1"), ("WAWONA_SHELL", "/usr/bin/zsh"), ("SHELL", "/usr/bin/zsh")].forEach { setenv($0.0, $0.1, 1) }
         WWNTerminalCursorMode.observe(Data([0x18, 0x1B, 0x63]))
+        // Drop a leftover hist lock from a prior Done hang before zsh starts.
+        Self.clearZshHistoryLock()
 
         IosShellABI.allowNewShellSession()
 
@@ -253,11 +255,12 @@ final class IosShellSession {
         }
     }
 
-    func writePaste(_ data: Data) {
+    /// `trailer` rides the same queue hop so a Return cannot overtake the paste.
+    func writePaste(_ data: Data, trailer: Data = Data()) {
         guard !data.isEmpty else { return }
         queue.async { [weak self] in
             guard let self, !self.stopped else { return }
-            self.write(self.pasteWrapped(data))
+            self.write(self.pasteWrapped(data) + trailer)
         }
     }
 
@@ -271,21 +274,58 @@ final class IosShellSession {
         }
     }
 
-    /// Stop the in-process shell. Join must run **off** the PTY drain queue.
+    /// Serializes `pthread_join` so Done's async stop and Start's sync stop
+    /// cannot double-join the same shell thread.
+    private static let stopJoinQueue = DispatchQueue(label: "wwn.ios.shell.stop")
+
+    /// Stop the in-process shell. Join must run **off** the PTY drain queue
+    /// and **off** the UI main thread when `joinOffMain` is set.
+    ///
     /// Joining on `queue` deadlocks Done / Stop: `zexit`/`savehistfile` write
     /// the socketpair while the pump that drains it is starved behind
-    /// `pthread_join` (tvOS Terminal Done hang). Keep the pump alive until
-    /// after `wwn_pty_ios_stop_shell_session` returns.
-    func stop() {
+    /// `pthread_join`. Joining on main freezes tvOS Done behind
+    /// `lockhistfile` (SHARE_HISTORY symlink lock keyed by host `getpid()`,
+    /// so a leftover `.zsh_history.LOCK` never looks stale while Wawona is
+    /// alive). Keep the pump alive until join returns. Clear the hist lock
+    /// before waking zsh so `savehistfile` cannot spin.
+    func stop(joinOffMain: Bool = false) {
         if DispatchQueue.getSpecific(key: Self.queueKey) != nil {
-            // Rare nested path: hop to main so join is not on the drain queue.
-            NSLog("IosShellSession: stop on drain queue; deferring to main")
-            DispatchQueue.main.async { [weak self] in self?.stop() }
+            // Rare nested path: hop off the drain queue before joining.
+            NSLog("IosShellSession: stop on drain queue; deferring")
+            let hop = joinOffMain
+                ? DispatchQueue.global(qos: .userInitiated)
+                : DispatchQueue.main
+            hop.async { [weak self] in self?.stop(joinOffMain: joinOffMain) }
             return
         }
         queue.sync { self.prepareHalt() }
-        IosShellABI.stopShellSession()
-        queue.sync { self.finishHalt() }
+        // Strong capture: the console drops its reference right after this
+        // call. A weak capture lets deinit run on main mid-join.
+        let work = {
+            Self.clearZshHistoryLock()
+            IosShellABI.stopShellSession()
+            self.queue.sync { self.finishHalt() }
+        }
+        if joinOffMain && Thread.isMainThread {
+            Self.stopJoinQueue.async(execute: work)
+        } else {
+            Self.stopJoinQueue.sync(execute: work)
+        }
+    }
+
+    /// In-process zsh hist locks use `symlink` → `/pid-<getpid()>/host-…`.
+    /// `getpid()` is the Wawona host, so a leftover LOCK never looks stale.
+    static func clearZshHistoryLock() {
+        guard let homeC = getenv("HOME") else { return }
+        let home = String(cString: homeC)
+        guard !home.isEmpty else { return }
+        let lock = (home as NSString).appendingPathComponent(".zsh_history.LOCK")
+        do {
+            try FileManager.default.removeItem(atPath: lock)
+            NSLog("IosShellSession: cleared %@", lock)
+        } catch {
+            // Missing lock is fine.
+        }
     }
 
     private func prepareHalt() {
@@ -352,9 +392,10 @@ final class IosShellSession {
             // (EOF stays readable forever) and let the host restart.
             exportScreen()
             let ended = onEnded
-            DispatchQueue.main.async { ended?() }
             // Already on the drain queue; shell thread is gone. Do not
-            // pthread_join here. Reap job table off-queue.
+            // pthread_join here. Reap off-queue, then notify: a restart
+            // posted before the reap makes the reap join the new live zsh
+            // and Start's sync stop() hangs main behind it (2026-11-05).
             stopped = true
             owed.removeAll()
             pump?.cancel()
@@ -367,10 +408,11 @@ final class IosShellSession {
             let termPtr = term
             session = nil
             self.term = nil
-            DispatchQueue.global(qos: .userInitiated).async {
+            Self.stopJoinQueue.async {
                 IosShellABI.stopShellSession()
                 if let sessionPtr { IosShellABI.sessionDestroy(sessionPtr) }
                 IosShellABI.termFree(termPtr)
+                DispatchQueue.main.async { ended?() }
             }
             return
         }
@@ -392,7 +434,7 @@ final class IosShellSession {
     }
 
     deinit {
-        // Last-chance reap. Prefer stop() from Done / Stop on a non-drain queue.
+        // Never join here: deinit can run on main. stop() owns the join.
         stopped = true
         pump?.cancel()
         pump = nil
@@ -400,9 +442,14 @@ final class IosShellSession {
             IosShellABI.clearMaster(master)
             master = -1
         }
-        IosShellABI.stopShellSession()
-        if let session { IosShellABI.sessionDestroy(session) }
-        if let term { IosShellABI.termFree(term) }
+        let sessionPtr = session
+        let termPtr = term
+        guard sessionPtr != nil || termPtr != nil else { return }
+        Self.stopJoinQueue.async {
+            IosShellABI.stopShellSession()
+            if let sessionPtr { IosShellABI.sessionDestroy(sessionPtr) }
+            if let termPtr { IosShellABI.termFree(termPtr) }
+        }
     }
 }
 final class IosLogTermSession {
@@ -446,12 +493,12 @@ final class IosLogTermSession {
     }
 
     func feed(_ data: Data) {
-        guard !stopped, !data.isEmpty, let term else { return }
+        guard !stopped, !data.isEmpty, term != nil else { return }
         queue.async { [weak self] in
-            guard let self, !self.stopped, let term = self.term else { return }
+            guard let self, !self.stopped, let liveTerm = self.term else { return }
             data.withUnsafeBytes { raw in
                 guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return }
-                IosShellABI.termFeed(term, base, data.count)
+                IosShellABI.termFeed(liveTerm, base, data.count)
             }
             self.exportScreen()
         }

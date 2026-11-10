@@ -323,12 +323,14 @@ struct MachineEditorView: View {
                     } header: {
                         Text("Container")
                     } footer: {
-                        Text("Empty fields inherit the global Settings → Containers defaults. "
-                             + "Memory, mounts, ports and kernel paths are configured in Machine Settings.")
-                            + Text("\n")
-                            + Text("Desktop session attaches the container's Wayland session to Wawona via the waypipe vsock bridge: apps appear as windows (a nested desktop like GNOME/KDE shows as one window).")
-                            + Text("\n")
-                            + Text("Import image archive… adds a local image (docker-archive tar/tar.gz, OCI-archive, or OCI layout directory; format detected automatically) and runs the machine from it without a registry pull.")
+                        Text("""
+                        Empty fields inherit the global Settings → Containers defaults. \
+                        Memory, mounts, ports and kernel paths are configured in Machine Settings.
+
+                        Desktop session attaches the container's Wayland session to Wawona via the waypipe vsock bridge: apps appear as windows (a nested desktop like GNOME/KDE shows as one window).
+
+                        Import image archive… adds a local image (docker-archive tar/tar.gz, OCI-archive, or OCI layout directory; format detected automatically) and runs the machine from it without a registry pull.
+                        """)
                     }
                 }
 

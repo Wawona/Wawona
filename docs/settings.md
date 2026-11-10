@@ -53,7 +53,9 @@ Global Settings sections come from Rust `settings_catalog` /
 `GlobalSettingsCatalog.visibleSections` (`SettingsContracts.swift`). Store
 hosts share: Display, Input, Graphics, Env Vars, Waypipe, SSH, About,
 Dependencies. Every Apple host adds iCloud Sync. iOS adds Apple Watch (and
-Desktop only in Mode B).
+Desktop only in Mode B). **Permissions** (Launch Agents / Login Item on
+macOS, Check for Updates, Swinging Bridge TCC links) is on **macOS, Linux,
+and Android** only. See [`agent-rules/wawona-settings-permissions.md`](./agent-rules/wawona-settings-permissions.md).
 There is **no Advanced** sidebar row: nested compositors / Display Backend /
 Multiple Clients live under Display; shake / swipe under Input; session
 thumbnails under Graphics. watchOS omits Desktop. Watch globals edit on the
@@ -335,6 +337,25 @@ another platform's list. Regenerate with `./scripts/regen-settings-deps.sh`.
 Each row is Okular-style: version, description (`role`), SPDX `license`, and
 `url` (source or project site; Open Website in the detail UI). Rule:
 [`agent-rules/wawona-settings-dependencies.md`](agent-rules/wawona-settings-dependencies.md).
+
+---
+
+## Permissions (macOS, Linux, Android)
+
+AX id: `wwn.settings.permissions`. Hosted by `WWNPermissionsSettingsView` /
+Linux Permissions page / Android `PERMISSIONS` tab. Not on Watch or Apple-mobile
+store catalogs.
+
+| Control | Pref / action | Platforms | Description |
+|---------|---------------|-----------|-------------|
+| Launch Agents | `WWNLaunchAgentManager` | macOS | Install / start / stop compositor host and menubar agents |
+| Open Wawona at login | app launch agent | macOS | Login Item; quit stays quit |
+| Check for Updates | `CheckForUpdatesEnabled` (default on) | macOS, Linux, Android | Allow GitHub release comparison |
+| Check Now | network | same | Compare CalVer to `releases/latest` |
+| Download Update | opens asset URL | same | Opens DMG / APK / AppImage or Releases page |
+| Swinging Bridge TCC | System Settings deep links | macOS | Screen Recording / Accessibility panes (planned bridge) |
+
+Rule: [`agent-rules/wawona-settings-permissions.md`](agent-rules/wawona-settings-permissions.md).
 
 ---
 

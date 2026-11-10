@@ -81,7 +81,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-apple-swift-skills` | Must install/use SwiftUI + Swift concurrency/testing skills for Apple UI |
 | `wawona-android-compose-skills` | Must install/use Compose + Android skills for Kotlin UI |
 | `wawona-appium-ui-gh` | AlwaysApply: Appium skills for Mode A UI on GH runners; red UI jobs must be fixed with Appium |
-| `wawona-test-tip-app` | AlwaysApply: tip build + clean launch for every Appium/agent-device/smoke; never `/Applications` |
+| `wawona-test-tip-app` | AlwaysApply: `git-HEAD`+`product-FP` tip stamp on macOS + Apple sims before Appium/agent-device/screenshot; never morning tip after Sources edits; never `/Applications` |
 | `wawona-machine-start-placement` | Start Prompt / New Tab / New Window; gate on windowing |
 | `wawona-apple-swift-glue` | Rust + Swift only; zero ObjC product classes |
 | `wawona-swinging-bridge` | Not Desktop, not LockScreen |

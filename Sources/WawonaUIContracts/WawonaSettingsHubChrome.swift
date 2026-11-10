@@ -14,13 +14,24 @@ import UIKit
 /// (`wawona-global-settings-exclusive`).
 public enum WawonaSettingsHubChrome {
     /// Column width so sidebar titles align under tinted glyphs.
-    public static let sidebarIconColumn: CGFloat = 20
+    /// tvOS uses a wider column for 10-foot focus targets (HIG / native List).
+    public static var sidebarIconColumn: CGFloat {
+        #if os(tvOS)
+        40
+        #else
+        20
+        #endif
+    }
 
     /// Section-colored SF Symbol for a sidebar row. No tile background.
     @ViewBuilder
     public static func sidebarIcon(systemName: String, color: Color) -> some View {
         Image(systemName: systemName.isEmpty ? "gearshape" : systemName)
+            #if os(tvOS)
+            .font(.title3.weight(.semibold))
+            #else
             .font(.body)
+            #endif
             // iOS 13 floor: avoid foregroundStyle (15+) / accessibilityHidden (14+).
             .foregroundColor(color)
             .frame(width: sidebarIconColumn, alignment: .center)
@@ -30,16 +41,30 @@ public enum WawonaSettingsHubChrome {
     /// Hub list row: tinted SF Symbol + section title.
     /// iOS 13 floor: avoid `Label { } icon:` (iOS 14+).
     /// `iconColor` is the section accent (glyph only; never a rounded fill).
+    /// tvOS: native List row spacing / icon margins for Siri Remote focus.
     public static func hubRow(
         title: String,
         systemImage: String,
         iconColor: Color
     ) -> some View {
+        #if os(tvOS)
+        // Keep title inside the focus morph; do not pad so wide that List clips.
+        HStack(spacing: 16) {
+            sidebarIcon(systemName: systemImage, color: iconColor)
+            Text(title)
+                .font(.body)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+        #else
         HStack(spacing: 8) {
             sidebarIcon(systemName: systemImage, color: iconColor)
             Text(title)
             Spacer(minLength: 0)
         }
+        #endif
     }
 
     /// Fallback glyph when a preferences section has no `icon` set.
@@ -73,7 +98,7 @@ public enum WawonaSettingsHubChrome {
         case .display, .ssh: return Color(nsColor: .systemBlue)
         case .input, .about: return Color(nsColor: .systemPurple)
         case .graphics: return Color(nsColor: .systemRed)
-        case .connection: return Color(nsColor: .systemOrange)
+        case .connection, .permissions: return Color(nsColor: .systemOrange)
         case .environment, .desktop: return Color(nsColor: .systemTeal)
         case .localShell, .waypipe: return Color(nsColor: .systemGreen)
         case .machines: return Color(nsColor: .systemIndigo)
@@ -90,7 +115,7 @@ public enum WawonaSettingsHubChrome {
         case .display, .ssh: return .blue
         case .input, .about: return .purple
         case .graphics: return .red
-        case .connection: return .orange
+        case .connection, .permissions: return .orange
         case .environment, .desktop:
             return Color(red: 0.35, green: 0.78, blue: 0.78)
         case .localShell, .waypipe: return .green
@@ -107,7 +132,7 @@ public enum WawonaSettingsHubChrome {
         case .display, .ssh: return Color(UIColor.systemBlue)
         case .input, .about: return Color(UIColor.systemPurple)
         case .graphics: return Color(UIColor.systemRed)
-        case .connection: return Color(UIColor.systemOrange)
+        case .connection, .permissions: return Color(UIColor.systemOrange)
         case .environment, .desktop: return Color(UIColor.systemTeal)
         case .localShell, .waypipe: return Color(UIColor.systemGreen)
         case .machines: return Color(UIColor.systemIndigo)
@@ -121,7 +146,7 @@ public enum WawonaSettingsHubChrome {
         case .display, .ssh: return .blue
         case .input, .about: return .purple
         case .graphics: return .red
-        case .connection: return .orange
+        case .connection, .permissions: return .orange
         case .environment, .desktop:
             return Color(red: 0.35, green: 0.78, blue: 0.78)
         case .localShell, .waypipe: return .green

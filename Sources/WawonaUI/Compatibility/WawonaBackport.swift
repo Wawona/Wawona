@@ -115,16 +115,35 @@ public extension WawonaBackport where Content: View {
     /// Adopting Liquid Glass: let detail artwork extend under the floating
     /// `NavigationSplitView` sidebar (mirrored + blurred in the safe area).
     /// Never hand-roll an opaque HStack sidebar on SDK 26+.
+    ///
+    /// tvOS: never. `backgroundExtensionEffect` paints a mirrored strip above
+    /// the title/toolbar and along the leading edge, shifting chrome down and
+    /// reading as a broken shader on the 10-foot Machines/Settings split.
     @ViewBuilder
     func liquidGlassBackgroundExtension() -> some View {
-        #if os(visionOS)
+        #if os(visionOS) || os(tvOS)
         content
         #else
-        if #available(iOS 26.0, tvOS 26.0, macOS 26.0, *) {
+        if #available(iOS 26.0, macOS 26.0, *) {
             content.backgroundExtensionEffect()
         } else {
             content
         }
+        #endif
+    }
+
+    /// tvOS overscan-safe horizontal margins for Form / List rows that otherwise
+    /// clip NSMenuItem-width Picker / Button labels on left and right.
+    @ViewBuilder
+    func tvOverscanContentMargins() -> some View {
+        #if os(tvOS)
+        if #available(tvOS 17.0, *) {
+            content.contentMargins(.horizontal, 48, for: .scrollContent)
+        } else {
+            content.padding(.horizontal, 40)
+        }
+        #else
+        content
         #endif
     }
 
@@ -160,10 +179,16 @@ public extension WawonaBackport where Content: View {
         content
             .buttonStyle(.borderedProminent)
             .tint(Color.blue)
-        #else
-        if #available(iOS 26.0, tvOS 26.0, macOS 26.0, *) {
+        #elseif os(tvOS)
+        if #available(tvOS 26.0, *) {
             content.buttonStyle(.glassProminent)
-        } else if #available(iOS 15.0, tvOS 15.0, macOS 12.0, *) {
+        } else {
+            content.buttonStyle(.borderedProminent)
+        }
+        #else
+        if #available(iOS 26.0, macOS 26.0, *) {
+            content.buttonStyle(.glassProminent)
+        } else if #available(iOS 15.0, macOS 12.0, *) {
             content.buttonStyle(.borderedProminent)
         } else {
             content.buttonStyle(DefaultButtonStyle())
@@ -184,10 +209,16 @@ public extension WawonaBackport where Content: View {
         content
             .buttonStyle(.borderedProminent)
             .tint(Color.blue)
-        #else
-        if #available(iOS 26.0, tvOS 26.0, *) {
+        #elseif os(tvOS)
+        if #available(tvOS 26.0, *) {
             content.buttonStyle(.glassProminent)
-        } else if #available(iOS 15.0, tvOS 15.0, macOS 12.0, *) {
+        } else {
+            content.buttonStyle(.borderedProminent)
+        }
+        #else
+        if #available(iOS 26.0, *) {
+            content.buttonStyle(.glassProminent)
+        } else if #available(iOS 15.0, *) {
             content.buttonStyle(.borderedProminent)
         } else {
             content.buttonStyle(DefaultButtonStyle())
@@ -230,15 +261,23 @@ public extension WawonaBackport where Content: View {
     @ViewBuilder
     @MainActor
     func blueGlassCircleButton(size: CGFloat = 46) -> some View {
-        #if !os(visionOS)
-        if #available(iOS 17.0, tvOS 17.0, macOS 14.0, *) {
+        #if os(tvOS)
+        // Deployment target is tvOS 17+: borderedProminent + circle is always available.
+        content
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.circle)
+            .tint(Color.accentColor)
+            .frame(width: size, height: size)
+            .shadow(color: Color.accentColor.opacity(0.35), radius: 6, x: 0, y: 2)
+        #elseif !os(visionOS)
+        if #available(iOS 17.0, macOS 14.0, *) {
             content
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.circle)
                 .tint(Color.accentColor)
                 .frame(width: size, height: size)
                 .shadow(color: Color.accentColor.opacity(0.35), radius: 6, x: 0, y: 2)
-        } else if #available(iOS 15.0, tvOS 15.0, macOS 12.0, *) {
+        } else if #available(iOS 15.0, macOS 12.0, *) {
             content
                 .buttonStyle(.borderedProminent)
                 .clipShape(Circle())

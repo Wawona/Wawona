@@ -47,26 +47,24 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
         // UIHostingController.view (SwiftUI runtime warning / broken hierarchy).
         // New Window Start opens a session-only scene (no Machines chrome).
         // tvOS has no multi-window session scenes; isSessionScene is iOS/vision only.
+        let hosting: UIHostingController<AnyView>
         #if os(iOS) || os(visionOS)
         let sessionOnly = WWNSessionWindowPresenter.isSessionScene(options: connectionOptions)
         let terminalOnly = WWNSessionWindowPresenter.isTerminalScene(options: connectionOptions)
-        #else
-        let sessionOnly = false
-        let terminalOnly = false
-        #endif
-        let hosting: UIHostingController<AnyView>
         if terminalOnly {
-            #if os(iOS) || os(visionOS)
             WWNSessionWindowPresenter.noteTerminalScene(windowScene)
             hosting = UIHostingController(rootView: AnyView(WWNTerminalWindowRoot()))
-            #else
-            hosting = UIHostingController(rootView: AnyView(WawonaRootView()))
-            #endif
         } else if sessionOnly {
             hosting = UIHostingController(rootView: AnyView(WWNSessionSurfaceRootView()))
         } else {
             hosting = UIHostingController(rootView: AnyView(WawonaRootView()))
         }
+        #else
+        // tvOS: no multi-window session / terminal scenes.
+        let sessionOnly = false
+        let terminalOnly = false
+        hosting = UIHostingController(rootView: AnyView(WawonaRootView()))
+        #endif
         window.rootViewController = hosting
         compositorContainer = hosting.view
         window.makeKeyAndVisible()
@@ -200,7 +198,8 @@ public final class WWNSceneDelegate: UIResponder, UIWindowSceneDelegate {
     public func sceneDidDisconnect(_ scene: UIScene) {
         #if os(iOS) || os(visionOS)
         if WWNSessionWindowPresenter.terminalSceneDidDisconnect(scene) {
-            WWNIosGuestConsole.shared.dismiss(machineId: "")
+            // Window close = Done: tear down PTY / session, not chrome alone.
+            WWNIosGuestConsole.shared.userDismiss()
         }
         #else
         _ = scene

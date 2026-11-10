@@ -74,6 +74,7 @@ unwinding). Every global it touched survives into the next `zsh_main`.
 | Shell owned by the SwiftUI view, stopped in `onDisappear` | Process registry owns it. Views attach/detach. Stop only on Close / Stop |
 | `pthread_join` before closing the input pipe write end (0x8BADF00D) | `wwn_pty_ios_stop_shell_session` closes every `input_write` first |
 | `pthread_join` on the PTY drain GCD queue (Done hang in `savehistfile`) | Join **off** the drain queue; keep the master pump alive until join returns so zexit writes do not fill the socketpair |
+| `pthread_join` on UI main + `.zsh_history.LOCK` (tvOS Done hang) | Hist lock is `symlink` → `/pid-<getpid()>…`. In-process `getpid()` is Wawona, so a leftover LOCK never looks stale and `lockhistfile` spins. Clear LOCK before stop; `stop(joinOffMain: true)` from Done; never `SHARE_HISTORY` in Apple-mobile `.zshrc` |
 | Master pump spins at EOF | Cancel the pump on `read` == 0; host `onEnded` restarts shell (never toast "Shell exited.") |
 | Crash-loop soft-exit | After 3 ends within 2s paint `[session ended]` (Linux `ENDED_NOTICE`) |
 | visionOS shell in only app window | Always dedicated terminal scene; Done / window close leaves Machines |
@@ -123,3 +124,19 @@ before start). Check: `print $COLUMNS` matches the host grid. The throwaway
 
 watchOS text entry: a hidden `TextField` with `@FocusState` does **not** open
 system input. Use a sheet `TextField` the user taps.
+
+## Terminal Done freeze (tvOS, 2026-11-05)
+
+Done froze the app. `IosShellSession.deinit` joined the zsh pthread on the
+main thread while zsh was blocked on its history file lock. Rules:
+
+- Never join the shell thread (or call `wwn_pty_ios_stop_shell_session`) on
+  main. Teardown runs on a serial stop queue; `deinit` only schedules it.
+- `wwn_pty_ios_stop_shell_session` is idempotent behind a mutex. Two stops
+  (Done then deinit) must not double-free or double-join.
+- zsh rootfs `.zshrc` sets `HIST_FCNTL_LOCK` (no `.zsh_history.LOCK` spin
+  after a soft restart).
+- tvOS has no on-screen keyboard for the grid. A focusable SwiftUI
+  `TextField` (`WWNTvTerminalKeyboardField`) diffs edits into
+  `wwn_ios_terminal_inject` bytes (new text, backspace `0x7f`, Return `\r`).
+- Prove with 3 Start/Done cycles on a tip tvOS build.

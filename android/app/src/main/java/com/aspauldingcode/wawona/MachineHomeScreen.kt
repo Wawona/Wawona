@@ -49,7 +49,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -61,6 +63,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
@@ -221,6 +224,8 @@ fun MachineWelcomeScreen(
 ) {
     var editorProfile by remember { mutableStateOf<MachineProfile?>(null) }
     var creating by remember { mutableStateOf(false) }
+    /// Selected machine detail (Start/Stop/Focus/Edit/Delete + Tags/Pin).
+    var detailProfile by remember { mutableStateOf<MachineProfile?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var searchExpanded by remember { mutableStateOf(false) }
     val listBottomPadding = 72.dp
@@ -239,11 +244,29 @@ fun MachineWelcomeScreen(
     var navDest by remember { mutableStateOf<MachinesNavDest>(MachinesNavDest.Machines) }
     var showCreateTag by remember { mutableStateOf(false) }
     var editingTag by remember { mutableStateOf<MachineTag?>(null) }
-    val catalogTitle = remember(navDest, tags) {
+    val runningTabs = remember(profiles, activeMachineId) {
+        profiles.filter {
+            val s = machineStatusFor(it.id)
+            s == MachineStatus.CONNECTED || s == MachineStatus.CONNECTING || it.id == activeMachineId
+        }
+    }
+    val catalogTitle = remember(navDest, tags, runningTabs, detailProfile) {
+        detailProfile?.name?.takeIf { it.isNotBlank() }?.let { return@remember it }
         when (val dest = navDest) {
             is MachinesNavDest.Machines -> "Machine Configuration"
             is MachinesNavDest.TabOverview -> "Tab Overview"
+            is MachinesNavDest.ClientTab ->
+                runningTabs.firstOrNull { it.id == dest.machineId }?.name?.ifBlank { "Client" }
+                    ?: "Client"
             is MachinesNavDest.Tag -> tags.firstOrNull { it.id == dest.tagId }?.name ?: "Tag"
+        }
+    }
+    LaunchedEffect(profiles, detailProfile) {
+        val selected = detailProfile ?: return@LaunchedEffect
+        if (profiles.none { it.id == selected.id }) {
+            detailProfile = null
+        } else {
+            detailProfile = profiles.first { it.id == selected.id }
         }
     }
     var sortMenuExpanded by remember { mutableStateOf(false) }
@@ -288,8 +311,18 @@ fun MachineWelcomeScreen(
         MachinesConfigurationSidebar(
             tags = tags,
             selected = navDest,
+            runningTabs = runningTabs,
             onSelect = {
-                navDest = it
+                when (it) {
+                    is MachinesNavDest.ClientTab -> {
+                        val profile = profiles.firstOrNull { p -> p.id == it.machineId }
+                        if (profile != null) {
+                            onFocus(profile)
+                        }
+                        navDest = it
+                    }
+                    else -> navDest = it
+                }
                 onPicked()
             },
             onCreateTag = {
@@ -365,7 +398,17 @@ fun MachineWelcomeScreen(
                     navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
                 navigationIcon = {
-                    if (searchExpanded) {
+                    if (detailProfile != null) {
+                        IconButton(
+                            onClick = { detailProfile = null },
+                            modifier = Modifier.testTag(WawonaTestTags.MACHINES_DETAIL_BACK),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back to Machines",
+                            )
+                        }
+                    } else if (searchExpanded) {
                         IconButton(onClick = {
                             searchExpanded = false
                             searchQuery = ""
@@ -382,13 +425,24 @@ fun MachineWelcomeScreen(
                     }
                 },
                 actions = {
-                    if (searchExpanded) {
+                    if (detailProfile != null) {
+                        // Detail owns Start/Stop/Edit; keep chrome quiet.
+                    } else if (searchExpanded) {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { searchQuery = "" }) {
                                 Icon(Icons.Filled.Close, contentDescription = "Clear search")
                             }
                         }
                     } else {
+                        IconButton(
+                            onClick = { navDest = MachinesNavDest.TabOverview },
+                            modifier = Modifier.testTag("wwn.tabOverview.toolbar"),
+                        ) {
+                            Icon(
+                                Icons.Filled.Dashboard,
+                                contentDescription = "Tab Overview",
+                            )
+                        }
                         IconButton(onClick = { searchExpanded = true }) {
                             Icon(Icons.Filled.Search, contentDescription = "Search machines")
                         }
@@ -444,7 +498,7 @@ fun MachineWelcomeScreen(
             )
         },
         floatingActionButton = {
-            if (navDest !is MachinesNavDest.TabOverview) {
+            if (navDest !is MachinesNavDest.TabOverview && detailProfile == null) {
                 // Primary CTA (Apple Add Machine `.primaryAction` / blue parity).
                 FloatingActionButton(
                     onClick = { creating = true },
@@ -480,12 +534,56 @@ fun MachineWelcomeScreen(
                 .weight(1f)
                 .fillMaxHeight(),
         ) {
+            val selectedDetail = detailProfile
             if (navDest is MachinesNavDest.TabOverview) {
                 TabOverviewPlaceholder(
                     profiles = profiles,
                     activeMachineId = activeMachineId,
                     machineStatusFor = machineStatusFor,
                     onFocus = onFocus,
+                )
+            } else if (selectedDetail != null) {
+                MachineDetailScreen(
+                    profile = selectedDetail,
+                    thumbnailRevision = thumbnailRevision,
+                    status = machineStatusFor(selectedDetail.id),
+                    isActive = selectedDetail.id == activeMachineId,
+                    tags = tagStore.tagsFor(selectedDetail.id, tags, assignments),
+                    isPinned = selectedDetail.id in pinnedIds,
+                    allTags = tags,
+                    onEdit = { editorProfile = selectedDetail },
+                    onDelete = {
+                        onDelete(selectedDetail)
+                        detailProfile = null
+                    },
+                    onConnect = { onConnect(selectedDetail) },
+                    onFocus = { onFocus(selectedDetail) },
+                    onStop = { onStop(selectedDetail) },
+                    onTogglePin = {
+                        if (selectedDetail.id !in pinnedIds &&
+                            pinnedIds.size >= MachineCatalogPrefs.MAX_PINNED
+                        ) {
+                            Toast.makeText(
+                                catalogContext,
+                                "Pin limit reached (6)",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        } else {
+                            pinnedIds = MachineCatalogPrefs.togglePin(
+                                catalogPrefs,
+                                selectedDetail.id,
+                                pinnedIds,
+                            )
+                        }
+                    },
+                    onToggleTag = { tag ->
+                        assignments = tagStore.toggleAssignment(
+                            tag.id,
+                            selectedDetail.id,
+                            assignments,
+                        )
+                    },
+                    onCreateTag = { showCreateTag = true },
                 )
             } else {
             LazyVerticalGrid(
@@ -536,35 +634,10 @@ fun MachineWelcomeScreen(
                                 thumbnailRevision = thumbnailRevision,
                                 status = machineStatusFor(profile.id),
                                 isActive = profile.id == activeMachineId,
-                                onEdit = { editorProfile = profile },
-                                onDelete = { onDelete(profile) },
-                                onConnect = { onConnect(profile) },
-                                onFocus = { onFocus(profile) },
-                                onStop = { onStop(profile) },
                                 searchQuery = searchQuery,
                                 tags = tagStore.tagsFor(profile.id, tags, assignments),
                                 isPinned = profile.id in pinnedIds,
-                                allTags = tags,
-                                onTogglePin = {
-                                    if (profile.id !in pinnedIds &&
-                                        pinnedIds.size >= MachineCatalogPrefs.MAX_PINNED
-                                    ) {
-                                        Toast.makeText(
-                                            catalogContext,
-                                            "Pin limit reached (6)",
-                                            Toast.LENGTH_SHORT,
-                                        ).show()
-                                    } else {
-                                        pinnedIds = MachineCatalogPrefs.togglePin(
-                                            catalogPrefs,
-                                            profile.id,
-                                            pinnedIds,
-                                        )
-                                    }
-                                },
-                                onToggleTag = { tag ->
-                                    assignments = tagStore.toggleAssignment(tag.id, profile.id, assignments)
-                                },
+                                onSelect = { detailProfile = profile },
                             )
                         }
                     }
@@ -782,25 +855,15 @@ private fun MachineGridCard(
     thumbnailRevision: Int,
     status: MachineStatus,
     isActive: Boolean,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    onConnect: () -> Unit,
-    onFocus: () -> Unit,
-    onStop: () -> Unit,
     searchQuery: String = "",
     tags: List<MachineTag> = emptyList(),
     isPinned: Boolean = false,
-    allTags: List<MachineTag> = emptyList(),
-    onTogglePin: () -> Unit = {},
-    onToggleTag: (MachineTag) -> Unit = {},
+    onSelect: () -> Unit,
 ) {
     val context = LocalContext.current
-    var tagMenuExpanded by remember { mutableStateOf(false) }
     val thumbnailBitmap = remember(profile.id, thumbnailRevision) {
         MachineThumbnailStore.load(context, profile.id)
     }
-    val capabilities = profile.capabilities()
-    val isRunning = status == MachineStatus.CONNECTED || status == MachineStatus.CONNECTING
     val statusColor = statusColorFor(status)
     val subtitle = machineSubtitle(profile)
     val summary = configurationSummary(profile)
@@ -808,6 +871,7 @@ private fun MachineGridCard(
     val scheme = MaterialTheme.colorScheme
 
     Card(
+        onClick = onSelect,
         modifier = Modifier
             .fillMaxWidth()
             .testTag(WawonaTestTags.machinesCard(profile.id)),
@@ -830,61 +894,9 @@ private fun MachineGridCard(
                 statusColor = statusColor,
                 thumbnailBitmap = thumbnailBitmap,
                 searchQuery = searchQuery,
+                isPinned = isPinned,
+                tags = tags,
             )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                FlowRow(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    tags.forEach { tag ->
-                        AssistChip(
-                            onClick = { onToggleTag(tag) },
-                            label = { Text(tag.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            leadingIcon = { TagDot(tag, 10.dp) },
-                        )
-                    }
-                }
-                Box {
-                    TextButton(onClick = { tagMenuExpanded = true }) { Text("Tags") }
-                    DropdownMenu(
-                        expanded = tagMenuExpanded,
-                        onDismissRequest = { tagMenuExpanded = false },
-                    ) {
-                        if (allTags.isEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text("No tags. Create one from the sidebar.") },
-                                enabled = false,
-                                onClick = {},
-                            )
-                        } else {
-                            allTags.forEach { tag ->
-                                DropdownMenuItem(
-                                    text = { Text(tag.name) },
-                                    leadingIcon = { TagDot(tag, 12.dp) },
-                                    trailingIcon = {
-                                        if (tags.any { it.id == tag.id }) {
-                                            Icon(Icons.Filled.Check, contentDescription = null)
-                                        }
-                                    },
-                                    onClick = { onToggleTag(tag) },
-                                )
-                            }
-                        }
-                    }
-                }
-                IconButton(onClick = onTogglePin) {
-                    Icon(
-                        if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                        contentDescription = if (isPinned) "Unpin machine" else "Pin machine",
-                        tint = if (isPinned) scheme.primary else scheme.onSurfaceVariant,
-                    )
-                }
-            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -925,69 +937,219 @@ private fun MachineGridCard(
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+    }
+}
 
-            MachineActionButtonRow {
-                if (isRunning) {
-                    CompactTonalButton(
-                        onClick = onFocus,
-                        modifier = Modifier.testTag(WawonaTestTags.MACHINES_FOCUS),
-                    ) {
-                        MachineActionContent(
-                            icon = { Icon(Icons.Outlined.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
-                            title = "Focus",
-                        )
-                    }
-                    CompactFilledButton(
-                        onClick = onStop,
-                        modifier = Modifier.testTag(WawonaTestTags.MACHINES_STOP),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = scheme.error,
-                            contentColor = scheme.onError,
-                        ),
-                    ) {
-                        MachineActionContent(
-                            icon = { Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
-                            title = "Stop",
-                        )
-                    }
-                } else {
-                    CompactFilledButton(
-                        onClick = onConnect,
-                        modifier = Modifier.testTag(WawonaTestTags.MACHINES_START),
-                        enabled = capabilities.launchSupported && status != MachineStatus.CONNECTING,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = scheme.primary,
-                            contentColor = scheme.onPrimary,
-                        ),
-                    ) {
-                        MachineActionContent(
-                            icon = { Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
-                            title = if (status == MachineStatus.CONNECTING) "Starting…" else "Start",
-                        )
-                    }
-                }
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MachineDetailScreen(
+    profile: MachineProfile,
+    thumbnailRevision: Int,
+    status: MachineStatus,
+    isActive: Boolean,
+    tags: List<MachineTag>,
+    isPinned: Boolean,
+    allTags: List<MachineTag>,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onConnect: () -> Unit,
+    onFocus: () -> Unit,
+    onStop: () -> Unit,
+    onTogglePin: () -> Unit,
+    onToggleTag: (MachineTag) -> Unit,
+    onCreateTag: () -> Unit,
+) {
+    val context = LocalContext.current
+    val thumbnailBitmap = remember(profile.id, thumbnailRevision) {
+        MachineThumbnailStore.load(context, profile.id)
+    }
+    val capabilities = profile.capabilities()
+    val isRunning = status == MachineStatus.CONNECTED || status == MachineStatus.CONNECTING
+    val statusColor = statusColorFor(status)
+    val subtitle = machineSubtitle(profile)
+    val summary = configurationSummary(profile)
+    val scheme = MaterialTheme.colorScheme
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+            .testTag(WawonaTestTags.MACHINES_DETAIL),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        MachineCardBanner(
+            profileName = profile.name,
+            subtitle = subtitle,
+            statusColor = statusColor,
+            thumbnailBitmap = thumbnailBitmap,
+            isPinned = isPinned,
+            tags = tags,
+            tall = true,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                statusIconFor(status),
+                contentDescription = null,
+                tint = statusColor,
+                modifier = Modifier.size(18.dp),
+            )
+            FittingBadgeText(
+                text = status.displayTitle,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = statusColor,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Spacer(Modifier.weight(1f))
+            StatusChip(machineScopeLabel(profile))
+            StatusChip(typeChipLabel(profile))
+            if (isActive) {
+                StatusChip("ACTIVE")
+            }
+        }
+
+        Text(
+            summary,
+            style = MaterialTheme.typography.bodyMedium,
+            color = scheme.onSurfaceVariant,
+        )
+
+        MachineActionButtonRow {
+            if (isRunning) {
                 CompactTonalButton(
-                    onClick = onEdit,
-                    modifier = Modifier.testTag(WawonaTestTags.MACHINES_EDIT),
+                    onClick = onFocus,
+                    modifier = Modifier.testTag(WawonaTestTags.MACHINES_FOCUS),
                 ) {
                     MachineActionContent(
-                        icon = { Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
-                        title = "Edit",
+                        icon = {
+                            Icon(
+                                Icons.Outlined.CenterFocusStrong,
+                                contentDescription = null,
+                                modifier = Modifier.size(machineActionIconSize()),
+                            )
+                        },
+                        title = "Focus",
                     )
                 }
-                CompactOutlinedButton(
-                    onClick = onDelete,
-                    enabled = !isRunning,
-                    modifier = Modifier.testTag(WawonaTestTags.MACHINES_DELETE),
-                    contentColor = scheme.error,
-                    borderColor = scheme.error.copy(alpha = 0.5f),
+                CompactFilledButton(
+                    onClick = onStop,
+                    modifier = Modifier.testTag(WawonaTestTags.MACHINES_STOP),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = scheme.error,
+                        contentColor = scheme.onError,
+                    ),
                 ) {
                     MachineActionContent(
-                        icon = { Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(machineActionIconSize())) },
-                        title = "Delete",
+                        icon = {
+                            Icon(
+                                Icons.Filled.Stop,
+                                contentDescription = null,
+                                modifier = Modifier.size(machineActionIconSize()),
+                            )
+                        },
+                        title = "Stop",
+                    )
+                }
+            } else {
+                CompactFilledButton(
+                    onClick = onConnect,
+                    modifier = Modifier.testTag(WawonaTestTags.MACHINES_START),
+                    enabled = capabilities.launchSupported && status != MachineStatus.CONNECTING,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = scheme.primary,
+                        contentColor = scheme.onPrimary,
+                    ),
+                ) {
+                    MachineActionContent(
+                        icon = {
+                            Icon(
+                                Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                modifier = Modifier.size(machineActionIconSize()),
+                            )
+                        },
+                        title = if (status == MachineStatus.CONNECTING) "Starting…" else "Start",
                     )
                 }
             }
+            CompactTonalButton(
+                onClick = onEdit,
+                modifier = Modifier.testTag(WawonaTestTags.MACHINES_EDIT),
+            ) {
+                MachineActionContent(
+                    icon = {
+                        Icon(
+                            Icons.Filled.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(machineActionIconSize()),
+                        )
+                    },
+                    title = "Edit",
+                )
+            }
+            CompactOutlinedButton(
+                onClick = onDelete,
+                enabled = !isRunning,
+                modifier = Modifier.testTag(WawonaTestTags.MACHINES_DELETE),
+                contentColor = scheme.error,
+                borderColor = scheme.error.copy(alpha = 0.5f),
+            ) {
+                MachineActionContent(
+                    icon = {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = null,
+                            modifier = Modifier.size(machineActionIconSize()),
+                        )
+                    },
+                    title = "Delete",
+                )
+            }
+        }
+
+        Text("Tags", style = MaterialTheme.typography.titleMedium)
+        if (allTags.isEmpty()) {
+            Text(
+                "No tags yet. Create one to organize machines.",
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+            )
+        } else {
+            allTags.forEach { tag ->
+                val assigned = tags.any { it.id == tag.id }
+                TextButton(onClick = { onToggleTag(tag) }) {
+                    TagDot(tag, 12.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(tag.name, modifier = Modifier.weight(1f))
+                    if (assigned) {
+                        Icon(Icons.Filled.Check, contentDescription = null)
+                    }
+                }
+            }
+        }
+        TextButton(onClick = onCreateTag) {
+            Icon(Icons.Filled.Add, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Create Tag…")
+        }
+
+        TextButton(
+            onClick = onTogglePin,
+            modifier = Modifier.testTag(WawonaTestTags.MACHINES_PIN),
+        ) {
+            Icon(
+                if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                contentDescription = null,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(if (isPinned) "Unpin" else "Pin")
         }
     }
 }
@@ -1108,6 +1270,9 @@ private fun MachineCardBanner(
     statusColor: Color,
     thumbnailBitmap: android.graphics.Bitmap?,
     searchQuery: String = "",
+    isPinned: Boolean = false,
+    tags: List<MachineTag> = emptyList(),
+    tall: Boolean = false,
 ) {
     val shape = MaterialTheme.shapes.large
     val scheme = MaterialTheme.colorScheme
@@ -1117,7 +1282,7 @@ private fun MachineCardBanner(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(96.dp)
+            .height(if (tall) 128.dp else 96.dp)
             .clip(shape)
     ) {
         if (thumbnailBitmap != null) {
@@ -1175,14 +1340,23 @@ private fun MachineCardBanner(
                         }
                     }
                 }
-                Text(
-                    highlighted,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = onMedia,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        highlighted,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = onMedia,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    tags.take(4).forEach { tag ->
+                        TagDot(tag, 9.dp)
+                    }
+                }
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
@@ -1190,6 +1364,20 @@ private fun MachineCardBanner(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+            if (isPinned) {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = Color.Black.copy(alpha = 0.45f),
+                    contentColor = Color.White,
+                ) {
+                    Icon(
+                        Icons.Filled.PushPin,
+                        contentDescription = "Pinned",
+                        modifier = Modifier.padding(6.dp).size(14.dp),
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
             }
             Surface(
                 shape = MaterialTheme.shapes.medium,

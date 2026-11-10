@@ -67,6 +67,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector, val tes
     ADVANCED("Advanced", Icons.Filled.Tune, WawonaTestTags.SETTINGS_ADVANCED),
     WAYPIPE("Waypipe", Icons.Filled.Wifi, WawonaTestTags.SETTINGS_WAYPIPE),
     SSH("SSH", Icons.Filled.Lock, WawonaTestTags.SETTINGS_SSH),
+    PERMISSIONS("Permissions", Icons.Filled.VerifiedUser, WawonaTestTags.SETTINGS_PERMISSIONS),
     ABOUT("About", Icons.Filled.Info, WawonaTestTags.SETTINGS_ABOUT),
     DEPENDENCIES("Dependencies", Icons.Filled.Inventory, WawonaTestTags.SETTINGS_DEPENDENCIES),
     DESKTOP("Desktop", Icons.Filled.DesktopMac, WawonaTestTags.SETTINGS_DESKTOP);
@@ -83,6 +84,7 @@ private enum class SettingsTab(val label: String, val icon: ImageVector, val tes
             ADVANCED -> Color(0xFF9AA0A6)
             WAYPIPE -> Color(0xFF1A73E8)
             SSH -> Color(0xFF5F6368)
+            PERMISSIONS -> Color(0xFFFB8C00)
             MACHINES -> Color(0xFF9334E6)
             ABOUT -> Color(0xFF188038)
             DEPENDENCIES -> Color(0xFF1967D2)
@@ -415,6 +417,7 @@ private fun SettingsTabPage(
         SettingsTab.ADVANCED,
         SettingsTab.WAYPIPE,
         SettingsTab.SSH,
+        SettingsTab.PERMISSIONS,
         SettingsTab.MACHINES,
         SettingsTab.ABOUT,
         SettingsTab.DEPENDENCIES,
@@ -451,10 +454,121 @@ private fun SettingsHostPage(
         SettingsTab.ADVANCED -> AdvancedSection(prefs)
         SettingsTab.WAYPIPE -> WaypipeSection(prefs, context, SettingsTab.WAYPIPE.accentColor)
         SettingsTab.SSH -> SSHSection(prefs, SettingsTab.SSH.accentColor)
+        SettingsTab.PERMISSIONS -> PermissionsSection(prefs, context, SettingsTab.PERMISSIONS.accentColor)
         SettingsTab.MACHINES -> MachineStubsSection(prefs, SettingsTab.MACHINES.accentColor)
         SettingsTab.ABOUT -> AboutSection(context)
         SettingsTab.DEPENDENCIES -> DependenciesSection()
         else -> Unit
+    }
+}
+
+@Composable
+private fun PermissionsSection(prefs: SharedPreferences, context: Context, accent: Color) {
+    val uriHandler = LocalUriHandler.current
+    val scope = rememberCoroutineScope()
+    var updateStatus by remember { mutableStateOf("Current build vs GitHub Releases.") }
+    var checking by remember { mutableStateOf(false) }
+
+    SettingsSectionHeader("Updates", Icons.Filled.SystemUpdate, accent)
+    SettingsGroup(accent) {
+        SettingsSwitchItem(
+            prefs,
+            "CheckForUpdatesEnabled",
+            "Check for Updates",
+            "Allow comparing this build to the latest GitHub Release.",
+            Icons.Filled.SystemUpdate,
+            default = true,
+            iconTint = accent,
+        )
+        Text(
+            updateStatus,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = {
+                    if (checking) return@Button
+                    checking = true
+                    updateStatus = "Checking GitHub Releases…"
+                    scope.launch {
+                        updateStatus = withContext(Dispatchers.IO) {
+                            androidCheckForUpdates(context)
+                        }
+                        checking = false
+                    }
+                },
+                enabled = !checking && prefs.getBoolean("CheckForUpdatesEnabled", true),
+            ) {
+                Text(if (checking) "Checking…" else "Check Now")
+            }
+            OutlinedButton(
+                onClick = {
+                    uriHandler.openUri("https://github.com/Wawona/Wawona/releases/latest")
+                },
+            ) {
+                Text("Open Releases")
+            }
+        }
+    }
+
+    Spacer(Modifier.height(16.dp))
+    SettingsSectionHeader("Swinging Bridge", Icons.Filled.VerifiedUser, accent)
+    SettingsGroup(accent) {
+        Text(
+            "Swinging Bridge will need MediaProjection (screen capture) and Accessibility " +
+                "(input / window introspection). Mode A vs privileged paths stay separate. " +
+                "Not Desktop / LockScreen.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(16.dp),
+        )
+        TextButton(
+            onClick = {
+                context.startActivity(
+                    Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS),
+                )
+            },
+            modifier = Modifier.padding(horizontal = 8.dp),
+        ) {
+            Text("Open Accessibility settings")
+        }
+    }
+}
+
+private fun androidCheckForUpdates(context: Context): String {
+    val current = try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0"
+    } catch (_: Exception) {
+        "0"
+    }.removePrefix("v")
+    return try {
+        val url = java.net.URL("https://api.github.com/repos/Wawona/Wawona/releases/latest")
+        val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+            setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("User-Agent", "Wawona-UpdateCheck")
+            connectTimeout = 12_000
+            readTimeout = 12_000
+        }
+        conn.inputStream.bufferedReader().use { reader ->
+            val body = reader.readText()
+            val tag = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
+                ?.removePrefix("v")
+                ?: return "Could not parse latest release."
+            if (tag == current) {
+                "Wawona $current is up to date."
+            } else {
+                "Update available: $tag (you have $current). Use Open Releases to install."
+            }
+        }
+    } catch (e: Exception) {
+        "Check failed: ${e.message ?: "network error"}"
     }
 }
 

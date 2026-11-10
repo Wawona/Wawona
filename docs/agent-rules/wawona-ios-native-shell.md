@@ -87,6 +87,19 @@ terminal scene (`WWNSessionWindowPresenter`). Closing that window or Done
 dismisses Terminal and leaves Machines alive. Never force overlay-only
 shell on visionOS (system close would quit the only app window).
 
+## Done hang: hist LOCK + main-thread join (2026-11-04, tvOS)
+
+`SHARE_HISTORY` locks with `symlink("$HISTFILE.LOCK" → /pid-<getpid()>/…)`.
+In-process zsh's `getpid()` is the Wawona host, so a leftover LOCK never
+looks stale (`kill(host, 0)` succeeds). Done then blocks in
+`wwn_pty_ios_stop_shell_session` → `pthread_join` while zsh spins in
+`lockhistfile` / `savehistfile` (LLDB: main in `__ulock_wait`, shell in
+`symlink`).
+
+Required: clear `.zsh_history.LOCK` before stop; `stop(joinOffMain: true)`
+from Done / Stop (never join on UI main); Apple-mobile `.zshrc` uses
+`APPEND_HISTORY` and `unsetopt SHARE_HISTORY` (not `SHARE_HISTORY`).
+
 ## Hard rejects
 
 - Guest console toast **"Shell exited."** on soft EOF / hangup
@@ -125,3 +138,19 @@ inject; install tip. Device Locked can block launch after install.
 
 `wawona-optional-software`, `wawona-apple-mobile-mode-a-backends`,
 `docs/ios-local-shell/ARCHITECTURE.md`, `wwn-toolchain` `wawona-pty`.
+
+## Terminal Done freeze (tvOS, 2026-11-05)
+
+Done froze the app. `IosShellSession.deinit` joined the zsh pthread on the
+main thread while zsh was blocked on its history file lock. Rules:
+
+- Never join the shell thread (or call `wwn_pty_ios_stop_shell_session`) on
+  main. Teardown runs on a serial stop queue; `deinit` only schedules it.
+- `wwn_pty_ios_stop_shell_session` is idempotent behind a mutex. Two stops
+  (Done then deinit) must not double-free or double-join.
+- zsh rootfs `.zshrc` sets `HIST_FCNTL_LOCK` (no `.zsh_history.LOCK` spin
+  after a soft restart).
+- tvOS has no on-screen keyboard for the grid. A focusable SwiftUI
+  `TextField` (`WWNTvTerminalKeyboardField`) diffs edits into
+  `wwn_ios_terminal_inject` bytes (new text, backspace `0x7f`, Return `\r`).
+- Prove with 3 Start/Done cycles on a tip tvOS build.

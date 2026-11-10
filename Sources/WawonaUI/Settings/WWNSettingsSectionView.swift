@@ -52,6 +52,9 @@ struct WWNSettingsSectionView: View {
                 appleWatchDetail
             } else if section.accessibilityIdentifier == WWNA11y.settingsICloudSync {
                 iCloudSyncDetail
+            } else if section.accessibilityIdentifier == WWNA11y.settingsPermissions {
+                WWNPermissionsSettingsView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Form {
                     if section.accessibilityIdentifier == "wwn.settings.desktop" {
@@ -67,6 +70,7 @@ struct WWNSettingsSectionView: View {
                         }
                     }
                 }
+                .backport.tvOverscanContentMargins()
                 #if os(macOS)
                 .backport.groupedForm()
                 #endif
@@ -207,7 +211,9 @@ private struct WWNSettingsRowView: View {
         #if os(macOS)
         240
         #elseif os(tvOS)
-        300
+        // Keep control column narrow so title + popup fit inside overscan.
+        // 300+ with long NSMenuItem-style labels clipped left/right.
+        220
         #else
         180
         #endif
@@ -246,7 +252,7 @@ private struct WWNSettingsRowView: View {
             if !compactDescription.isEmpty {
                 Text(compactDescription)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .settingsSecondaryText()
                     .lineLimit(1)
             }
         }
@@ -257,7 +263,7 @@ private struct WWNSettingsRowView: View {
             showingHelp = true
         } label: {
             Image(systemName: "info.circle")
-                .foregroundColor(.secondary)
+                .settingsSecondaryText()
         }
         .buttonStyle(.borderless)
         .accessibility(label: Text("Help for \(title)"))
@@ -266,7 +272,31 @@ private struct WWNSettingsRowView: View {
         #endif
     }
 
+    @ViewBuilder
     private var switchRow: some View {
+        #if os(tvOS)
+        // The Toggle owns the row-wide focus platter. The title must be its
+        // label, or it stays white on the white platter.
+        HStack(spacing: 12) {
+            // tvOS paints an On Toggle's label in the app accent even with
+            // .tint(nil), so the label picks its color from focus like the
+            // Picker / Button rows do.
+            Toggle(isOn: model.boolBinding(for: item)) {
+                WWNTvToggleLabel(title: title, detail: compactDescription)
+            }
+            .accessibility(label: Text(title))
+            if hasDetailedHelp {
+                helpButton
+            }
+        }
+        .modifier(WWNSettingsHelpPresentationModifier(
+            title: title,
+            bodyText: detailedHelp,
+            isPresented: $showingHelp
+        ))
+        .disabled(!item.interactive)
+        .accessibility(identifier: item.accessibilityIdentifier)
+        #else
         rowLayout {
             Toggle("", isOn: model.boolBinding(for: item))
                 .labelsHidden()
@@ -276,7 +306,8 @@ private struct WWNSettingsRowView: View {
                 .accessibility(label: Text(title))
         }
         .disabled(!item.interactive)
-        .accessibility(identifier: item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier)
+        #endif
     }
 
     @ViewBuilder
@@ -300,12 +331,12 @@ private struct WWNSettingsRowView: View {
                 .multilineTextAlignment(.trailing)
                 .backport.doneSubmitLabel()
                 .accessibility(label: Text(title))
-                .accessibility(identifier: item.accessibilityIdentifier ?? "")
+                .accessibility(identifier: item.accessibilityIdentifier)
                 #if os(macOS)
                 .help(desc)
                 #endif
             }
-            .accessibility(identifier: item.accessibilityIdentifier ?? "")
+            .accessibility(identifier: item.accessibilityIdentifier)
         }
     }
 
@@ -376,7 +407,7 @@ private struct WWNSettingsRowView: View {
             }
         }
         .disabled(!item.interactive)
-        .accessibility(identifier: item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier)
         .onDisappear {
             DispatchQueue.main.async { commitNumberIfChanged(spec) }
         }
@@ -425,7 +456,7 @@ private struct WWNSettingsRowView: View {
                 titleStack
                 Spacer(minLength: 12)
                 Text(shown)
-                    .foregroundColor(.secondary)
+                    .settingsSecondaryText()
                     .lineLimit(1)
                 if hasDetailedHelp {
                     helpButton
@@ -437,10 +468,36 @@ private struct WWNSettingsRowView: View {
             bodyText: detailedHelp,
             isPresented: $showingHelp
         ))
-        .accessibility(identifier: item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier)
     }
 
+    @ViewBuilder
     private var popupRow: some View {
+        #if os(tvOS)
+        // System navigationLink Picker traps focus and draws overscan-wide
+        // rows. Escapable list with Back + dismiss-on-select instead. The
+        // title lives in the link label so it darkens on the focus platter.
+        HStack(spacing: 12) {
+            WWNTvChoicePicker(
+                title: title,
+                selection: model.popupBinding(for: item),
+                options: model.popupOptions(for: item).enumerated().map { index, option in
+                    (index, option)
+                },
+                subtitle: compactDescription
+            )
+            .disabled(!item.interactive)
+            .accessibility(identifier: item.accessibilityIdentifier)
+            if hasDetailedHelp {
+                helpButton
+            }
+        }
+        .modifier(WWNSettingsHelpPresentationModifier(
+            title: title,
+            bodyText: detailedHelp,
+            isPresented: $showingHelp
+        ))
+        #else
         rowLayout {
             Picker("", selection: model.popupBinding(for: item)) {
                 ForEach(Array(model.popupOptions(for: item).enumerated()), id: \.offset) { index, option in
@@ -448,17 +505,14 @@ private struct WWNSettingsRowView: View {
                 }
             }
             .labelsHidden()
-            #if os(tvOS)
-            .pickerStyle(.navigationLink)
-            #else
             .backport.menuPicker()
-            #endif
             .backport.tint(sectionAccent)
             .disabled(!item.interactive)
             .accessibility(label: Text(title))
-            .accessibility(identifier: item.accessibilityIdentifier ?? "")
+            .accessibility(identifier: item.accessibilityIdentifier)
         }
-        .accessibility(identifier: item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier)
+        #endif
     }
 
     private var buttonRow: some View {
@@ -471,9 +525,9 @@ private struct WWNSettingsRowView: View {
             }
             .backport.borderedButton()
             .backport.tint(sectionAccent)
-            .accessibility(identifier: item.accessibilityIdentifier ?? "")
+            .accessibility(identifier: item.accessibilityIdentifier)
         }
-        .accessibility(identifier: item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier)
     }
 
     private var infoRow: some View {
@@ -488,10 +542,10 @@ private struct WWNSettingsRowView: View {
                     #if !os(tvOS)
                     .backport.selectableText()
                     #endif
-                    .foregroundColor(.secondary)
+                    .settingsSecondaryText()
                     .multilineTextAlignment(.trailing)
                     .lineLimit(2)
-                    .accessibility(identifier: item.accessibilityIdentifier ?? "")
+                    .accessibility(identifier: item.accessibilityIdentifier)
                 #if !os(tvOS)
                 WawonaButton {
                     model.copyValueToPasteboard(item)
@@ -514,7 +568,7 @@ private struct WWNSettingsRowView: View {
             bodyText: detailedHelp,
             isPresented: $showingHelp
         ))
-        .accessibility(identifier: item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier)
     }
 
     private var linkRow: some View {
@@ -534,10 +588,10 @@ private struct WWNSettingsRowView: View {
                     }
                 }
                 .backport.tint(sectionAccent)
-                .accessibility(identifier: item.accessibilityIdentifier ?? "")
+                .accessibility(identifier: item.accessibilityIdentifier)
             }
         }
-        .accessibility(identifier: item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier)
     }
 
     private var headerRow: some View {
@@ -554,13 +608,31 @@ private struct WWNSettingsRowView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .accessibility(identifier: item.accessibilityIdentifier ?? "")
+        .accessibility(identifier: item.accessibilityIdentifier)
     }
 
     @ViewBuilder
     private func rowLayout<Control: View>(
         @ViewBuilder control: () -> Control
     ) -> some View {
+        #if os(tvOS)
+        // One fixed layout. `ViewThatFits` re-measures when the focused
+        // control scales up, flips to the vertical layout, and the row jumps.
+        HStack(spacing: 12) {
+            titleStack
+                .frame(maxWidth: .infinity, alignment: .leading)
+            control()
+                .frame(width: controlWidth, alignment: .trailing)
+            if hasDetailedHelp {
+                helpButton
+            }
+        }
+        .modifier(WWNSettingsHelpPresentationModifier(
+            title: title,
+            bodyText: detailedHelp,
+            isPresented: $showingHelp
+        ))
+        #else
         WawonaFittingRow {
             HStack(spacing: 12) {
                 titleStack
@@ -591,6 +663,20 @@ private struct WWNSettingsRowView: View {
             bodyText: detailedHelp,
             isPresented: $showingHelp
         ))
+        #endif
+    }
+}
+
+private extension View {
+    /// Secondary text. tvOS uses the hierarchical style so it turns dark on the
+    /// white focus platter; `Color.secondary` stays light gray and vanishes.
+    @ViewBuilder
+    func settingsSecondaryText() -> some View {
+        #if os(tvOS)
+        foregroundStyle(.secondary)
+        #else
+        foregroundColor(.secondary)
+        #endif
     }
 }
 
@@ -830,5 +916,28 @@ private struct WawonaAboutIconView: View {
         return nil
     }
 }
+
+#if os(tvOS)
+/// Toggle label with focus-driven colors. tvOS ignores `.tint(nil)` for an
+/// On Toggle's label and paints it in the app accent.
+private struct WWNTvToggleLabel: View {
+    let title: String
+    let detail: String
+    @Environment(\.isFocused) private var isFocused
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .foregroundColor(isFocused ? .black : .white)
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundColor(isFocused ? Color.black.opacity(0.6) : Color.white.opacity(0.6))
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+#endif
 #endif
 

@@ -9,15 +9,28 @@ enum WatchMachineSessionBridge {
         // Capture into Wawona Terminal before compositor/client start.
         logger.beginCapture()
 
+        // Writable XDG first. Device sandbox refuses `/tmp/wawona-<uid>`.
+        WWNWatchShellEnvironment.apply()
+
         let bridge = WWNWatchCompositorBridge.shared
         applyScreenOutputSize(bridge)
-        if !bridge.isRunning {
-            guard bridge.start(withSocketName: "wayland-0") else {
-                logger.appendLine("error: compositor start failed")
-                NSLog("WATCH: compositor start failed (mini server and Rust backend both unavailable)")
-                logger.endCapture()
-                return false
+
+        let shellSession = NativeShellSession.from(profile: profile)
+        let needsCompositor = needsHostCompositor(profile: profile, session: shellSession)
+
+        if needsCompositor {
+            if !bridge.isRunning {
+                guard bridge.start(withSocketName: "wayland-0") else {
+                    logger.appendLine("error: compositor start failed")
+                    NSLog("WATCH: compositor start failed (XDG/runtime or Rust backend)")
+                    logger.endCapture()
+                    return false
+                }
             }
+        } else {
+            // Wawona Terminal is in-process zsh + PTY. No Wayland socket.
+            // `apply()` already published XDG under the container tmp.
+            logger.appendLine("host shell (no Wayland compositor)")
         }
 
         // Always clear prior client frame + in-process shell latch before Start.
@@ -102,6 +115,32 @@ enum WatchMachineSessionBridge {
             return launcher
         }
         return "wawona-shell"
+    }
+
+    /// Host compositor is only for Wayland surfaces (wasm SHM, waypipe).
+    /// Local Wawona Terminal is `wwn_pty` + zsh and must not fail closed on XDG.
+    private static func needsHostCompositor(
+        profile: MachineProfile,
+        session: NativeShellSession
+    ) -> Bool {
+        switch profile.type {
+        case .wasm:
+            return true
+        case .sshWaypipe:
+            return true
+        case .sshTerminal:
+            // Local Present still hosts waypipe/SSH chrome against the compositor.
+            return true
+        case .native:
+            switch session.kind {
+            case .terminal, .wayland:
+                return false
+            case .wasm, .waypipe:
+                return true
+            }
+        case .virtualMachine, .container:
+            return false
+        }
     }
 }
 #endif

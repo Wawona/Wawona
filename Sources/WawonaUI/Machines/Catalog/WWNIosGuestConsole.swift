@@ -58,15 +58,17 @@ final class WWNIosGuestConsole: ObservableObject {
       object: nil,
       queue: .main
     ) { [weak self] note in
-      guard let console = self else { return }
       let info = note.userInfo ?? [:]
       let mid = info["machineId"] as? String ?? ""
       let src = info["source"] as? String ?? "relay"
-      if src == "close" {
-        // Stop already owns session teardown. Chrome only (no re-disconnect).
-        console.dismissChrome(machineId: mid)
-      } else {
-        console.present(machineId: mid, source: src)
+      Task { @MainActor [weak self] in
+        guard let console = self else { return }
+        if src == "close" {
+          // Stop already owns session teardown. Chrome only (no re-disconnect).
+          console.dismissChrome(machineId: mid)
+        } else {
+          console.present(machineId: mid, source: src)
+        }
       }
     }
     // Lab / simctl: `notifyutil -p com.aspauldingcode.wawona.lab-dismiss-terminal`
@@ -105,10 +107,13 @@ final class WWNIosGuestConsole: ObservableObject {
       object: nil,
       queue: .main
     ) { [weak self] note in
-      guard let console = self, console.isPresented else { return }
-      guard console.source == "client" || console.source == "relay" else { return }
-      if let line = note.userInfo?["line"] as? String, !line.isEmpty {
-        console.appendLog(line)
+      let line = note.userInfo?["line"] as? String
+      Task { @MainActor [weak self] in
+        guard let console = self, console.isPresented else { return }
+        guard console.source == "client" || console.source == "relay" else { return }
+        if let line, !line.isEmpty {
+          console.appendLog(line)
+        }
       }
     }
   }
@@ -375,12 +380,12 @@ final class WWNIosGuestConsole: ObservableObject {
     }
   }
 
-  func injectTerminalPaste(_ text: String) {
+  func injectTerminalPaste(_ text: String, submit: Bool = false) {
     guard !text.isEmpty else { return }
     if isShell {
-      shell?.writePaste(Data(text.utf8))
+      shell?.writePaste(Data(text.utf8), trailer: submit ? Data([0x0d]) : Data())
     } else {
-      appendLog(text)
+      appendLog(submit ? text + "\n" : text)
     }
   }
 
@@ -389,10 +394,19 @@ final class WWNIosGuestConsole: ObservableObject {
     keyRepeatBytes = bytes
     keyRepeatTicks = 0
     keyRepeatTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] timer in
-      guard let self, let bytes = self.keyRepeatBytes else { timer.invalidate(); return }
-      self.keyRepeatTicks += 1
-      guard self.keyRepeatTicks >= 8 else { return }
-      self.injectTerminalData(Data(bytes))
+      Task { @MainActor [weak self] in
+        guard let self else {
+          timer.invalidate()
+          return
+        }
+        guard let bytes = self.keyRepeatBytes else {
+          timer.invalidate()
+          return
+        }
+        self.keyRepeatTicks += 1
+        guard self.keyRepeatTicks >= 8 else { return }
+        self.injectTerminalData(Data(bytes))
+      }
     }
   }
 
@@ -470,10 +484,12 @@ final class WWNIosGuestConsole: ObservableObject {
 
   private func stopShell() {
     cancelKeyRepeat()
-    shell?.onEnded = nil
-    shell?.onFailure = nil
-    shell?.stop()
+    guard let session = shell else { return }
     shell = nil
+    session.onEnded = nil
+    session.onFailure = nil
+    // Done / Stop: never pthread_join on the UI thread (tvOS lockhistfile hang).
+    session.stop(joinOffMain: true)
   }
 
   private func startLogTerm() {
@@ -500,11 +516,8 @@ final class WWNIosGuestConsole: ObservableObject {
   private func startPump() {
     stopPump()
     let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
-      guard let console = self else { return }
-      if Thread.isMainThread {
-        console.pumpOnce()
-      } else {
-        DispatchQueue.main.async { console.pumpOnce() }
+      Task { @MainActor [weak self] in
+        self?.pumpOnce()
       }
     }
     pumpTimer = timer
@@ -726,6 +739,11 @@ struct WWNIosGuestConsoleSheet: View {
         }
         .buttonStyle(.bordered)
         .wwnA11y("wwn.guestConsole.ctrlC", label: "Control C")
+
+        WWNTvTerminalKeyboardField(
+          onInjectData: { console.injectTerminalData($0) },
+          onPasteLine: { console.injectTerminalPaste($0, submit: true) }
+        )
       }
 
       Spacer(minLength: 0)

@@ -99,6 +99,42 @@ public final class WWNRootfsManager: NSObject {
         setenv("XDG_CACHE_HOME", (home as NSString).appendingPathComponent(".cache"), 1)
         setenv("XDG_DATA_HOME", (home as NSString).appendingPathComponent(".local/share"), 1)
         setenv("XDG_STATE_HOME", (home as NSString).appendingPathComponent(".local/state"), 1)
+        // In-process hist locks use host getpid(); drop a stuck LOCK and heal
+        // SHARE_HISTORY in writable HOME (tvOS Done hang, 2026-11-04).
+        let histLock = (home as NSString).appendingPathComponent(".zsh_history.LOCK")
+        try? fm.removeItem(atPath: histLock)
+        healShareHistoryInZshrc(home: home)
         WWNBundleShareEnvironment.apply()
+    }
+
+    /// Older rootfs templates enabled SHARE_HISTORY. Rewrite to APPEND_HISTORY
+    /// so lockhistfile cannot hang Done on a host-pid LOCK.
+    /// HIST_FCNTL_LOCK replaces the symlink LOCK with a per-process fcntl
+    /// lock, which in-process zsh always acquires.
+    private static func healShareHistoryInZshrc(home: String) {
+        let zshrc = (home as NSString).appendingPathComponent(".zshrc")
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: zshrc)),
+              var text = String(data: data, encoding: .utf8)
+        else { return }
+        let original = text
+        text = text.replacingOccurrences(
+            of: "setopt SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE",
+            with: """
+            setopt APPEND_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE
+            unsetopt SHARE_HISTORY
+            """
+        )
+        let setsShare = text.components(separatedBy: "\n").contains {
+            $0.trimmingCharacters(in: .whitespaces).hasPrefix("setopt")
+                && $0.contains("SHARE_HISTORY")
+        }
+        if setsShare && !text.contains("unsetopt SHARE_HISTORY") {
+            text += "\n# Wawona: in-process zsh must not SHARE_HISTORY (host-pid LOCK hang).\nunsetopt SHARE_HISTORY 2>/dev/null\n"
+        }
+        if !text.contains("HIST_FCNTL_LOCK") {
+            text += "\n# Wawona: in-process zsh shares the host pid; use fcntl hist locks.\nsetopt HIST_FCNTL_LOCK\n"
+        }
+        guard text != original else { return }
+        try? text.write(toFile: zshrc, atomically: true, encoding: .utf8)
     }
 }

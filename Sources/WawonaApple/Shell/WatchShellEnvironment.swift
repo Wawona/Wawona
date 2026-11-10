@@ -58,9 +58,11 @@ public final class WWNWatchShellEnvironment: NSObject {
         setenv("WAYLAND_DISPLAY", name, 1)
     }
 
-    /// Matches iOS `preferredSharedRuntimeDir` without pulling phone Settings
-    /// into the watch target. Simulator path is per-UDID so two watches do
-    /// not share one `wayland-0`.
+    /// Writable XDG for the compositor socket. Simulator keeps a short
+    /// per-UDID `/tmp` path. Device sandbox cannot `mkdir` `/tmp/wawona-<uid>`
+    /// (TestFlight: `Failed to create XDG_RUNTIME_DIR /tmp/wawona-501`), so
+    /// use container `NSTemporaryDirectory()/wwn-rt`. Keep the path short:
+    /// `AF_UNIX` `sun_path` is 104 bytes with `…/wayland-0`.
     static func watchRuntimeDir() -> String {
         #if targetEnvironment(simulator)
         let udid = ProcessInfo.processInfo.environment["SIMULATOR_UDID"] ?? ""
@@ -74,7 +76,23 @@ public final class WWNWatchShellEnvironment: NSObject {
         }
         return "/tmp/wawona_sim_\(getuid())\(suffix)"
         #else
-        return "/tmp/wawona-\(getuid())"
+        var tmp = NSTemporaryDirectory()
+        if tmp.hasSuffix("/") {
+            tmp.removeLast()
+        }
+        let candidate = (tmp as NSString).appendingPathComponent("wwn-rt")
+        let fm = FileManager.default
+        do {
+            try fm.createDirectory(
+                atPath: candidate,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            return candidate
+        } catch {
+            shellLog("runtime dir mkdir failed at \(candidate): \(error.localizedDescription)")
+            return tmp.isEmpty ? candidate : tmp
+        }
         #endif
     }
 

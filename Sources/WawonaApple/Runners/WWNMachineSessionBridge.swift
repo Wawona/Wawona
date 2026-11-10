@@ -64,12 +64,10 @@ public final class WWNMachineSessionBridge: NSObject {
           || kind == kWWNNativeShellKindWaypipe {
             return "wawona-shell"
         }
-        if let runtime = profile.runtimeOverrides as? [String: Any],
-           let bundled = runtime["bundledAppID"] as? String, !bundled.isEmpty {
+        if let bundled = profile.runtimeOverrides["bundledAppID"] as? String, !bundled.isEmpty {
             return WWNNativeShellConfiguration.migrateClientId(bundled)
         }
-        if let overrides = profile.settingsOverrides as? [String: Any],
-           let native = overrides["NativeClientId"] as? String, !native.isEmpty {
+        if let native = profile.settingsOverrides["NativeClientId"] as? String, !native.isEmpty {
             return WWNNativeShellConfiguration.migrateClientId(native)
         }
         return "wawona-shell"
@@ -142,8 +140,7 @@ public final class WWNMachineSessionBridge: NSObject {
         WWNSettings_ApplyGraphicsDriverSelection()
 
         var machineEnv: NSDictionary?
-        if let runtime = profile.runtimeOverrides as? [String: Any],
-           let env = runtime["environment"] as? NSDictionary {
+        if let env = profile.runtimeOverrides["environment"] as? NSDictionary {
             machineEnv = env
         }
         WWNEnvironmentOverrides.apply(machineEnv)
@@ -178,13 +175,13 @@ public final class WWNMachineSessionBridge: NSObject {
 
     @objc(disconnectProfile:)
     public static func disconnectProfile(_ profile: WWNMachineProfile) {
-        guard profile != nil else { return }
+        let machineId = profile.machineId
 
         #if os(macOS)
         let defs = UserDefaults.standard
         let wasLockscreen =
             defs.bool(forKey: kWWNPrefsLockscreenReplacementEnabled)
-            && (defs.string(forKey: kWWNPrefsLockscreenReplacementMachineId) == profile.machineId)
+            && (defs.string(forKey: kWWNPrefsLockscreenReplacementMachineId) == machineId)
         #endif
 
         if profileUsesNativeCompositorClient(profile) {
@@ -193,16 +190,16 @@ public final class WWNMachineSessionBridge: NSObject {
             WWNWaypipeRunner.shared.stopWaypipe()
         } else if profileUsesVirtualMachineBackend(profile) {
             #if os(macOS)
-            WWNVirtualMachineRunner.sharedRunner.stopProfile(withMachineId: profile.machineId ?? "")
+            WWNVirtualMachineRunner.sharedRunner.stopProfile(withMachineId: machineId)
             #else
-            WWNRelay.sharedRelay.stopProfile(withMachineId: profile.machineId ?? "")
-            if WWNRelay.sharedRelay.hasOwnedSession(forMachineId: profile.machineId ?? "") {
+            WWNRelay.sharedRelay.stopProfile(withMachineId: machineId)
+            if WWNRelay.sharedRelay.hasOwnedSession(forMachineId: machineId) {
                 return
             }
             #endif
         } else if profileUsesContainerBackend(profile) {
-            WWNRelay.sharedRelay.stopProfile(withMachineId: profile.machineId ?? "")
-            if WWNRelay.sharedRelay.hasOwnedSession(forMachineId: profile.machineId ?? "") {
+            WWNRelay.sharedRelay.stopProfile(withMachineId: machineId)
+            if WWNRelay.sharedRelay.hasOwnedSession(forMachineId: machineId) {
                 return
             }
         }
@@ -265,7 +262,7 @@ public final class WWNMachineSessionBridge: NSObject {
 
     /// Prefer an explicit module path; otherwise the bundled hello-wasi-gui smoke.
     private static func resolveWasmModulePath(profile: WWNMachineProfile) -> String {
-        let runtime = profile.runtimeOverrides as? [String: Any] ?? [:]
+        let runtime = profile.runtimeOverrides
         let wasmPath = (((runtime["wasmModulePath"] as? String) ?? "") as NSString).expandingTildeInPath
         if !wasmPath.isEmpty, FileManager.default.fileExists(atPath: wasmPath) {
             return wasmPath

@@ -171,7 +171,7 @@ struct WWNTabOverviewView: View {
             }
         }
         .backport.navigationTitle("Tab Overview")
-        .backport.searchable(text: $searchQuery, prompt: "Search Tabs")
+        .modifier(TabOverviewSearch(query: $searchQuery, enabled: tabSearchEnabled))
         .background(tabOverviewSearchPlacement)
         .accessibility(identifier: "wwn.tabOverview.detail")
         #if os(macOS)
@@ -181,6 +181,16 @@ struct WWNTabOverviewView: View {
         ) { providers in
             nestDropped(from: providers)
         }
+        #endif
+    }
+
+    /// tvOS draws `.searchable` as an inline keyboard over the title and the
+    /// overlay sidebar button, and keeps it after the tab list empties.
+    private var tabSearchEnabled: Bool {
+        #if os(tvOS)
+        false
+        #else
+        true
         #endif
     }
 
@@ -390,8 +400,7 @@ private struct WWNTabOverviewCard: View {
                 Button(action: onClose) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 20))
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, Color.black.opacity(0.55))
+                        .foregroundColor(Color.black.opacity(0.55))
                 }
                 .buttonStyle(.plain)
                 .padding(8)
@@ -408,6 +417,20 @@ private struct WWNTabOverviewCard: View {
                     .lineLimit(1)
             }
             .padding(.horizontal, 4)
+        }
+    }
+}
+
+private struct TabOverviewSearch: ViewModifier {
+    @Binding var query: String
+    let enabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content.backport.searchable(text: $query, prompt: "Search Tabs")
+        } else {
+            content
         }
     }
 }

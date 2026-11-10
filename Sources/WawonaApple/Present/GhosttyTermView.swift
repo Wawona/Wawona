@@ -1,10 +1,10 @@
 #if canImport(UIKit) && !os(watchOS)
 import UIKit
 import SwiftUI
+import MetalKit
 
 /// UIKit host for Wawona Terminal grid on iOS / tvOS / visionOS.
-/// Product contract is UniFFI `GhosttySurface` (see staged `apple/Terminal`).
-/// This view still uses optional C `wwn_term_*` until UniFFI Swift is linked.
+/// Paint is `TerminalMetalPresent` (libghostty VT cells). No UITextView span path.
 @objc(WWNGhosttyTermView)
 public final class WWNGhosttyTermView: UIView {
   public var onReply: WWNTermReply?
@@ -12,33 +12,40 @@ public final class WWNGhosttyTermView: UIView {
   private var surface: OpaquePointer?
   private var cols: UInt32 = 80
   private var rows: UInt32 = 24
-  private let textView = UITextView()
-  private var grid = ""
+  private var metal: TerminalMetalPresent?
+  private var blinkOn = true
+  private var blinkTimer: Timer?
 
   public override init(frame: CGRect) {
     super.init(frame: frame)
-    backgroundColor = UIColor(red: 0.05, green: 0.06, blue: 0.08, alpha: 1)
-    textView.isEditable = false
-    textView.isSelectable = false
-    textView.backgroundColor = .clear
-    textView.textColor = UIColor(white: 0.91, alpha: 1)
-    textView.font = UIFont(name: "Menlo", size: 12) ?? .monospacedSystemFont(ofSize: 12, weight: .regular)
-    textView.translatesAutoresizingMaskIntoConstraints = false
-    addSubview(textView)
-    NSLayoutConstraint.activate([
-      textView.topAnchor.constraint(equalTo: topAnchor),
-      textView.bottomAnchor.constraint(equalTo: bottomAnchor),
-      textView.leadingAnchor.constraint(equalTo: leadingAnchor),
-      textView.trailingAnchor.constraint(equalTo: trailingAnchor),
-    ])
-    wwn_term_init()
+    backgroundColor = .black
+    _ = wwn_term_init()
     surface = wwn_term_new(cols, rows)
+    let gpu = TerminalMetalPresent(frame: bounds, device: MTLCreateSystemDefaultDevice())
+    gpu.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(gpu)
+    NSLayoutConstraint.activate([
+      gpu.topAnchor.constraint(equalTo: topAnchor),
+      gpu.bottomAnchor.constraint(equalTo: bottomAnchor),
+      gpu.leadingAnchor.constraint(equalTo: leadingAnchor),
+      gpu.trailingAnchor.constraint(equalTo: trailingAnchor),
+    ])
+    metal = gpu
+    blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+      guard let self else { return }
+      self.blinkOn.toggle()
+      self.redraw()
+    }
+    if let blinkTimer {
+      RunLoop.main.add(blinkTimer, forMode: .common)
+    }
   }
 
   @available(*, unavailable)
   required init?(coder: NSCoder) { nil }
 
   deinit {
+    blinkTimer?.invalidate()
     if let surface { wwn_term_free(surface) }
   }
 
@@ -73,43 +80,51 @@ public final class WWNGhosttyTermView: UIView {
   }
 
   private func redraw() {
-    guard let surface else { return }
+    guard let surface, let metal else { return }
+    let scale: CGFloat
+    #if os(visionOS)
+    scale = traitCollection.displayScale
+    #elseif os(tvOS)
+    scale = window?.windowScene?.screen.scale
+      ?? traitCollection.displayScale
+    #else
+    scale = window?.screen.scale
+      ?? window?.windowScene?.screen.scale
+      ?? traitCollection.displayScale
+    #endif
+    metal.syncBackingScale(scale)
     let cap = Int(cols * rows)
-    var cells = [GhosttyCell](repeating: GhosttyCell(cp: 32, fg: 0xE8E8E8, bg: 0, attrs: 0), count: cap)
+    var cells = [WwnTermCell](
+      repeating: WwnTermCell(cp: 32, fg: 0xE8E8E8, bg: 0, attrs: 0),
+      count: max(1, cap)
+    )
     var outCols: UInt32 = 0
     var outRows: UInt32 = 0
     let origin = wwn_term_origin(surface)
     let n = cells.withUnsafeMutableBufferPointer { buf in
-      wwn_term_viewport(surface, origin, buf.baseAddress, UInt32(cap), &outCols, &outRows)
+      wwn_term_viewport(surface, origin, buf.baseAddress, UInt32(buf.count), &outCols, &outRows)
     }
-    var lines = [String]()
     let c = Int(outCols == 0 ? cols : outCols)
     let r = Int(outRows == 0 ? rows : outRows)
-    for row in 0..<r {
-      var line = ""
-      for col in 0..<c {
-        let idx = row * c + col
-        guard idx < Int(n) else { break }
-        let cp = cells[idx].cp
-        if let scalar = UnicodeScalar(cp), scalar.isASCII {
-          line.append(Character(scalar))
-        } else if cp != 0 {
-          line.append("\u{FFFD}")
-        } else {
-          line.append(" ")
-        }
-      }
-      lines.append(line)
+    let count = max(Int(n), c * r)
+    if cells.count < count {
+      cells.append(
+        contentsOf: Array(
+          repeating: WwnTermCell(cp: 32, fg: 0xE8E8E8, bg: 0, attrs: 0),
+          count: count - cells.count
+        )
+      )
     }
-    textView.text = lines.joined(separator: "\n")
+    metal.present(
+      cells,
+      count: count,
+      cols: c,
+      rows: r,
+      blinkOn: blinkOn,
+      cellW: 7,
+      cellH: 14
+    )
   }
-}
-
-private struct GhosttyCell {
-  var cp: UInt32
-  var fg: UInt32
-  var bg: UInt32
-  var attrs: UInt32
 }
 
 @_silgen_name("wwn_term_init")
@@ -126,7 +141,7 @@ private func wwn_term_feed(_ s: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, 
 private func wwn_term_take_reply(_ s: OpaquePointer?, _ buf: UnsafeMutablePointer<UInt8>?, _ cap: Int) -> Int
 @_silgen_name("wwn_term_viewport")
 private func wwn_term_viewport(
-  _ s: OpaquePointer?, _ origin: UInt32, _ out: UnsafeMutablePointer<GhosttyCell>?, _ cap: UInt32,
+  _ s: OpaquePointer?, _ origin: UInt32, _ out: UnsafeMutablePointer<WwnTermCell>?, _ cap: UInt32,
   _ cols: UnsafeMutablePointer<UInt32>?, _ rows: UnsafeMutablePointer<UInt32>?
 ) -> UInt32
 @_silgen_name("wwn_term_origin")

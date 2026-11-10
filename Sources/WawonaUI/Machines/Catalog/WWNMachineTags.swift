@@ -116,6 +116,71 @@ struct WWNTagEditorSheet: View {
   }
 
   var body: some View {
+    #if os(tvOS)
+    tvBody
+    #else
+    compactBody
+    #endif
+  }
+
+  #if os(tvOS)
+  /// Full-screen 10-foot editor: Cancel/Save live in the toolbar so they never
+  /// wrap inside a fixed-width card.
+  private var tvBody: some View {
+    NavigationStack {
+      VStack(alignment: .leading, spacing: 40) {
+        WawonaTextField("Tag name", text: $name)
+          .accessibility(identifier: WWNA11y.machinesTagName)
+        Text("Color")
+          .font(.headline)
+        LazyVGrid(columns: Array(repeating: GridItem(.fixed(96), spacing: 32), count: 6), spacing: 32) {
+          ForEach(WWNTagPalette.colors, id: \.self) { color in
+            let hex = WWNTagPalette.hex(for: color)
+            Button {
+              colorHex = hex
+            } label: {
+              Circle()
+                .fill(color)
+                .frame(width: 72, height: 72)
+                .overlay {
+                  if colorHex == hex {
+                    Image(systemName: "checkmark")
+                      .font(.system(size: 28, weight: .bold))
+                      .foregroundStyle(.white)
+                  }
+                }
+            }
+            .buttonStyle(WWNTvSwatchButtonStyle())
+            .accessibilityLabel("Color")
+            .accessibilityAddTraits(colorHex == hex ? .isSelected : [])
+          }
+        }
+        .focusSection()
+        Spacer(minLength: 0)
+      }
+      .padding(.horizontal, 80)
+      .padding(.vertical, 40)
+      .frame(maxWidth: 900, alignment: .topLeading)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+      .navigationTitle(tag == nil ? "New Tag" : "Edit Tag")
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Cancel") { dismiss() }
+        }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Save") {
+            guard !trimmedName.isEmpty else { return }
+            onSave(trimmedName, colorHex)
+            dismiss()
+          }
+          .disabled(trimmedName.isEmpty)
+        }
+      }
+    }
+  }
+  #endif
+
+  private var compactBody: some View {
     VStack(alignment: .leading, spacing: 16) {
       Text(tag == nil ? "New Tag" : "Edit Tag")
         .font(.headline)

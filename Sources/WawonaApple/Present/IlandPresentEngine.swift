@@ -75,6 +75,9 @@ final class IlandPresentEngine {
     }
 
     /// Drop the last guest blit when the Wayland toplevel is gone.
+    /// Opacity alone is not enough: a later Focus / show-session can show the
+    /// previous compositor plate (sway wallpaper stuck under dolphin/cosmic
+    /// labels) if Destroy events race waypipe kill. Black the drawable too.
     func clearGuestPresent(reason: String) {
         if !Thread.isMainThread {
             DispatchQueue.main.async { [weak self] in
@@ -82,8 +85,23 @@ final class IlandPresentEngine {
             }
             return
         }
-        layer.opacity = 0
         lastThumbnailPNG = nil
+        textureCache.removeAll(keepingCapacity: false)
+        if let drawable = layer.nextDrawable(),
+           let commands = queue.makeCommandBuffer()
+        {
+            let pass = MTLRenderPassDescriptor()
+            pass.colorAttachments[0].texture = drawable.texture
+            pass.colorAttachments[0].loadAction = .clear
+            pass.colorAttachments[0].storeAction = .store
+            pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
+            if let encoder = commands.makeRenderCommandEncoder(descriptor: pass) {
+                encoder.endEncoding()
+            }
+            commands.present(drawable)
+            commands.commit()
+        }
+        layer.opacity = 0
         NSLog("[\(presentLogModule)] clearGuestPresent reason=\(reason)")
     }
 

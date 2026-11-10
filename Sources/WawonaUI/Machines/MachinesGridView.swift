@@ -4,9 +4,7 @@ import WawonaModel
 struct MachinesGridView: View {
     let profiles: [MachineProfile]
     @ObservedObject var sessions: SessionOrchestrator
-    let onEdit: (MachineProfile) -> Void
-    let onConnect: (MachineProfile) -> Void
-    let onDelete: (MachineProfile) -> Void
+    let onSelect: (MachineProfile) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -41,9 +39,7 @@ struct MachinesGridView: View {
             MachineCardView(
                 profile: profile,
                 status: status(for: profile.id),
-                onConnect: { onConnect(profile) },
-                onEdit: { onEdit(profile) },
-                onDelete: { onDelete(profile) }
+                onSelect: { onSelect(profile) }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .id(profile.id)
@@ -53,5 +49,4 @@ struct MachinesGridView: View {
     private func status(for machineId: String) -> MachineStatus {
         sessions.sessions.first(where: { $0.machineId == machineId })?.status ?? .disconnected
     }
-
 }

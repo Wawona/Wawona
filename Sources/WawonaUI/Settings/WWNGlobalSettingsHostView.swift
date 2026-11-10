@@ -45,6 +45,10 @@ struct WWNGlobalSettingsHostView: View {
     /// Local list selection. Never bind `List(selection:)` to `@Published`
     /// (iOS 16 NavigationSplitView AttributeGraph exclusivity crash).
     @State private var listSelection: GlobalSettingsSectionID?
+    #if os(tvOS)
+    /// The floating split sidebar does not take focus when it opens. Route it.
+    @FocusState private var tvSidebarFocus: GlobalSettingsSectionID?
+    #endif
     #if os(iOS) || os(visionOS)
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     #endif
@@ -199,8 +203,8 @@ struct WWNGlobalSettingsHostView: View {
     /// Adopting Liquid Glass: system `NavigationSplitView` floating sidebar.
     /// `columnVisibility` Binding (not `.constant(.all)`) for Hide/Show.
     /// Detail `NavigationStack` owns pushes (text editor, Env Vars, pickers)
-    /// so Menu / Cancel pop the stack. Done on both columns: focus can sit
-    /// on the sidebar list.
+    /// so Menu / Cancel pop the stack. Done sits trailing on the detail
+    /// column only; Menu on the sidebar closes Settings.
     @ViewBuilder
     private var tvSettingsBody: some View {
         if #available(tvOS 16.0, *) {
@@ -210,11 +214,23 @@ struct WWNGlobalSettingsHostView: View {
             )) {
                 settingsSidebar
                     .backport.sidebarWidth()
-                    .backport.settingsCloseAction(onClose: onDismiss)
+                    .focusSection()
+                    .onExitCommand(perform: onDismiss)
+                    .onMoveCommand { direction in
+                        if direction == .right { withAnimation { showSidebar = false } }
+                    }
             } detail: {
                 NavigationStack {
+                    // tvOS: no backgroundExtensionEffect (mirrors / shifts chrome).
+                    // focusSection lets Up from the first row reach Done.
                     settingsDetailBody
-                        .backport.liquidGlassBackgroundExtension()
+                        .focusSection()
+                        // The Left-edge sidebar peek never takes focus, and Up
+                        // cannot reach the toolbar toggle. Menu opens the sidebar.
+                        .onExitCommand(perform: revealTvSidebar)
+                        // While the sidebar overlays it, a focusable detail pulls
+                        // Up/Down out of the sidebar and the system collapses it.
+                        .disabled(showSidebar)
                         .toolbar {
                             ToolbarItem(placement: .navigationBarLeading) {
                                 Button {
@@ -235,13 +251,20 @@ struct WWNGlobalSettingsHostView: View {
                 }
             }
             .preferredColorScheme(.dark)
+            .backport.onChange(of: showSidebar) { _, open in
+                guard open else { return }
+                // The sidebar is not focusable until its slide-in finishes.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    tvSidebarFocus = listSelection ?? catalogSections.first
+                }
+            }
         } else {
             HStack(spacing: 0) {
                 if showSidebar {
                     settingsSidebar
                         .frame(minWidth: 380, idealWidth: 440, maxWidth: 520)
                         .frame(maxHeight: .infinity)
-                        .backport.settingsCloseAction(onClose: onDismiss)
+                        .onExitCommand(perform: onDismiss)
                 }
                 NavigationStack {
                     settingsDetailBody
@@ -252,6 +275,15 @@ struct WWNGlobalSettingsHostView: View {
             .preferredColorScheme(.dark)
         }
     }
+
+    private func revealTvSidebar() {
+        let target = listSelection ?? catalogSections.first
+        if showSidebar {
+            tvSidebarFocus = target
+        } else {
+            withAnimation { showSidebar = true }
+        }
+    }
     #endif
 
     // MARK: - Sidebar
@@ -260,7 +292,16 @@ struct WWNGlobalSettingsHostView: View {
     /// sidebar toggle (never strip on the split path).
     private var settingsSidebar: some View {
         Group {
-            if #available(iOS 14.0, tvOS 14.0, macOS 11.0, visionOS 1.0, *) {
+            #if os(tvOS)
+            // tvOS: List cells in the floating sidebar never take focus, so the
+            // rows are plain focusable Buttons in a stack. Buttons drive selection.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) { sidebarSection }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 20)
+            }
+            #else
+            if #available(iOS 14.0, macOS 11.0, visionOS 1.0, *) {
                 List(selection: $listSelection) {
                     sidebarSection
                 }
@@ -270,6 +311,7 @@ struct WWNGlobalSettingsHostView: View {
                     sidebarSection
                 }
             }
+            #endif
         }
         .backport.sidebarList()
         .backport.navigationTitle("Settings")
@@ -286,26 +328,6 @@ struct WWNGlobalSettingsHostView: View {
 
     @ViewBuilder
     private var sidebarSection: some View {
-        #if os(tvOS)
-        // Always-visible dismiss: toolbar Done can miss focus after section
-        // browsing; this row closes the Settings cover from the sidebar.
-        Section {
-            Button {
-                onDismiss()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                    Text("Done")
-                        .font(.body.weight(.semibold))
-                    Spacer(minLength: 0)
-                }
-                .padding(.vertical, 4)
-            }
-            .buttonStyle(.plain)
-            .accessibility(identifier: "wwn.settings.close")
-        }
-        #endif
         Section(header: settingsSidebarSectionHeader) {
             ForEach(catalogSections, id: \.self) { id in
                 settingsSidebarRow(id)
@@ -338,10 +360,18 @@ struct WWNGlobalSettingsHostView: View {
                 // `listSelection`. Async-only sync left Env Vars looking dead.
                 listSelection = id
                 selection = id
+                #if os(tvOS)
+                withAnimation { showSidebar = false }
+                #endif
             } label: {
                 settingsRowLabel(id)
             }
+            #if os(tvOS)
+            .buttonStyle(WWNTvRowButtonStyle(selected: listSelection == id))
+            .focused($tvSidebarFocus, equals: id)
+            #else
             .buttonStyle(.plain)
+            #endif
             #else
             if #available(iOS 16.0, visionOS 1.0, *) {
                 NavigationLink(value: id) { settingsRowLabel(id) }

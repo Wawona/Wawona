@@ -1,0 +1,314 @@
+[
+  {
+    "disposition": "true-no-path",
+    "interface": "ext_background_effect_manager_v1",
+    "notes": "No smithay 0.7 background_effect module/delegate in this release",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "ext_data_control_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "ext_foreign_toplevel_list_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "ext_idle_notifier_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "ext_image_copy_capture_manager_v1",
+    "notes": "Image copy capture currently retained as Wawona-specific extension",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "ext_output_image_capture_source_manager_v1",
+    "notes": "Image capture source currently retained as Wawona-specific extension",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "ext_session_lock_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "org_kde_kwin_blur_manager",
+    "notes": "KDE survivor protocol",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "org_kde_kwin_contrast_manager",
+    "notes": "KDE survivor protocol",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "org_kde_kwin_dpms_manager",
+    "notes": "KDE survivor protocol",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "org_kde_kwin_idle_timeout",
+    "notes": "KDE survivor protocol",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "org_kde_kwin_server_decoration_manager",
+    "notes": "KDE survivor protocol",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "org_kde_kwin_shadow_manager",
+    "notes": "KDE survivor protocol",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "org_kde_kwin_slide_manager",
+    "notes": "KDE survivor protocol",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "wl_fixes",
+    "notes": "No active smithay runtime wiring in this release; kept as custom compatibility path",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "wp_alpha_modifier_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "wp_commit_timing_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "wp_content_type_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "wp_cursor_shape_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "wp_drm_lease_device_v1",
+    "notes": "No active smithay runtime wiring in this release; kept as custom Linux path",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "wp_fifo_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "wp_fractional_scale_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "wp_linux_drm_syncobj_manager_v1",
+    "notes": "No active smithay runtime wiring in this release; kept as custom Linux path",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "wp_pointer_warp_v1",
+    "notes": "Pointer warp currently retained as Wawona-specific extension",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "wp_presentation",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "wp_security_context_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "wp_single_pixel_buffer_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "wp_viewporter",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "xdg_activation_v1",
+    "notes": "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "xdg_system_bell_v1",
+    "notes": "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "xdg_toplevel_icon_v1",
+    "notes": "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "xdg_toplevel_tag_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "xdg_wm_dialog_v1",
+    "notes": "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "xwayland_shell_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zwlr_data_control_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in wlr modules; retained behind desktop profile gating",
+    "source_module": "src/core/wayland/wlr/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "zwlr_export_dmabuf_manager_v1",
+    "notes": "No direct smithay 0.7 zwlr_export_dmabuf delegate path in current runtime",
+    "source_module": "src/core/wayland/wlr/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zwlr_layer_shell_v1",
+    "notes": "Still registered through Wawona custom create_global path in wlr modules; retained behind desktop profile gating",
+    "source_module": "src/core/wayland/wlr/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "zwlr_screencopy_manager_v1",
+    "notes": "No direct smithay 0.7 wlr_screencopy delegate path in current runtime",
+    "source_module": "src/core/wayland/wlr/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "zwlr_virtual_pointer_manager_v1",
+    "notes": "No direct smithay 0.7 zwlr_virtual_pointer delegate path in current runtime",
+    "source_module": "src/core/wayland/wlr/mod.rs"
+  },
+  {
+    "disposition": "true-no-path",
+    "interface": "zwp_fullscreen_shell_v1",
+    "notes": "Legacy fullscreen shell retained behind explicit runtime opt-in",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zwp_idle_inhibit_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zwp_keyboard_shortcuts_inhibit_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zwp_linux_dmabuf_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zwp_pointer_constraints_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zwp_pointer_gestures_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zwp_primary_selection_device_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zwp_relative_pointer_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zwp_tablet_manager_v2",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zwp_xwayland_keyboard_grab_manager_v1",
+    "notes": "Still registered through Wawona custom create_global path in ext modules; retained behind profile-gated desktop extensions",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zxdg_exporter_v2",
+    "notes": "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zxdg_importer_v2",
+    "notes": "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "disposition": "architecture-blocked",
+    "interface": "zxdg_toplevel_decoration_v1",
+    "notes": "Still registered through Wawona custom create_global path in xdg/mod.rs; kept desktop-only until smithay_runtime ownership migration lands",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  }
+]

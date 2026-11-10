@@ -37,6 +37,10 @@ public let kWWNPrefsRespectSafeArea = "RespectSafeArea"
 public let kWWNPrefsResizeDisplayForVirtualKeyboard = "resizeDisplayForVirtualKeyboard"
 public let kWWNPrefsExternalDisplayTouchpad = "ExternalDisplayTouchpad"
 public let kWWNPrefsHasSeenWelcome = "HasSeenWelcome"
+/// macOS: already offered Login Item + Launch Agents after welcome.
+public let kWWNPrefsHasOfferedLaunchAgents = "HasOfferedLaunchAgents"
+/// Allow GitHub release checks from Settings → Permissions.
+public let kWWNPrefsCheckForUpdatesEnabled = "CheckForUpdatesEnabled"
 public let kWWNPrefsWaypipeDisplay = "WaypipeDisplay"
 public let kWWNPrefsWaypipeSocket = "WaypipeSocket"
 public let kWWNPrefsWaypipeCompress = "WaypipeCompress"

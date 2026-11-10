@@ -1,0 +1,781 @@
+[
+  {
+    "custom_create_global_files": [],
+    "custom_dispatch_files": [
+      "src/core/wayland/wayland/compositor.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "smithay",
+    "interface": "wl_compositor",
+    "owner": "smithay_runtime_core",
+    "source_module": "src/core/wayland/wayland/mod.rs"
+  },
+  {
+    "custom_create_global_files": [],
+    "custom_dispatch_files": [],
+    "dual_registration": false,
+    "equivalent": "smithay",
+    "interface": "wl_subcompositor",
+    "owner": "smithay_runtime_core",
+    "source_module": "src/core/wayland/wayland/mod.rs"
+  },
+  {
+    "custom_create_global_files": [],
+    "custom_dispatch_files": [],
+    "dual_registration": false,
+    "equivalent": "smithay",
+    "interface": "wl_shm",
+    "owner": "smithay_runtime",
+    "source_module": "src/core/wayland/wayland/mod.rs"
+  },
+  {
+    "custom_create_global_files": [],
+    "custom_dispatch_files": [],
+    "dual_registration": false,
+    "equivalent": "smithay",
+    "interface": "wl_output",
+    "owner": "smithay_runtime",
+    "source_module": "src/core/wayland/wayland/mod.rs"
+  },
+  {
+    "custom_create_global_files": [],
+    "custom_dispatch_files": [],
+    "dual_registration": false,
+    "equivalent": "smithay",
+    "interface": "zxdg_output_manager_v1",
+    "owner": "smithay_runtime",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "custom_create_global_files": [],
+    "custom_dispatch_files": [],
+    "dual_registration": false,
+    "equivalent": "smithay",
+    "interface": "wl_seat",
+    "owner": "smithay_runtime",
+    "source_module": "src/core/wayland/wayland/mod.rs"
+  },
+  {
+    "custom_create_global_files": [],
+    "custom_dispatch_files": [],
+    "dual_registration": false,
+    "equivalent": "smithay",
+    "interface": "wl_data_device_manager",
+    "owner": "smithay_runtime",
+    "source_module": "src/core/wayland/wayland/mod.rs"
+  },
+  {
+    "custom_create_global_files": [],
+    "custom_dispatch_files": [],
+    "dual_registration": false,
+    "equivalent": "no-equivalent",
+    "interface": "wl_fixes",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [],
+    "custom_dispatch_files": [
+      "src/core/wayland/xdg/xdg_wm_base.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "smithay",
+    "interface": "xdg_wm_base",
+    "owner": "smithay_runtime_core",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/xdg/mod.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/xdg/decoration.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zxdg_toplevel_decoration_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/xdg/xdg_dialog.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/xdg/xdg_dialog.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "xdg_wm_dialog_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/xdg/xdg_activation.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/xdg/xdg_activation.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "xdg_activation_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/xdg/xdg_foreign.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/xdg/xdg_foreign.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zxdg_exporter_v2",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/xdg/mod.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/xdg/xdg_foreign.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zxdg_importer_v2",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/xdg/xdg_system_bell.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/xdg/xdg_system_bell.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "xdg_system_bell_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/xdg/xdg_toplevel_icon.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/xdg/xdg_toplevel_icon.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "xdg_toplevel_icon_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/xdg/xdg_toplevel_tag.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/xdg/xdg_toplevel_tag.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "xdg_toplevel_tag_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/xdg/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/wlr/layer_shell.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/wlr/layer_shell.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwlr_layer_shell_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/wlr/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/foreign_toplevel_list.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/foreign_toplevel_list.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "ext_foreign_toplevel_list_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/wlr/screencopy.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/wlr/screencopy.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwlr_screencopy_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/wlr/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/wlr/export_dmabuf.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/wlr/export_dmabuf.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwlr_export_dmabuf_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/wlr/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/wlr/virtual_pointer.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/wlr/virtual_pointer.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwlr_virtual_pointer_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/wlr/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/wlr/virtual_keyboard.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/wlr/virtual_keyboard.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_virtual_keyboard_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/wlr/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/wlr/data_control.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/wlr/data_control.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwlr_data_control_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/wlr/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/data_control.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/data_control.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "ext_data_control_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/cursor_shape.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/cursor_shape.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "wp_cursor_shape_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/pointer_constraints.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/pointer_constraints.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_pointer_constraints_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/pointer_gestures.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/pointer_gestures.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_pointer_gestures_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/relative_pointer.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/relative_pointer.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_relative_pointer_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/pointer_warp.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/pointer_warp.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "wp_pointer_warp_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/tablet.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/tablet.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_tablet_manager_v2",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/text_input.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/text_input.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_text_input_manager_v3",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/input_method.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/input_method.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_input_method_manager_v2",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/primary_selection.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/primary_selection.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_primary_selection_device_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/linux_dmabuf.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/linux_dmabuf.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_linux_dmabuf_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/presentation_time.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/presentation_time.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "wp_presentation",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/commit_timing.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/commit_timing.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "wp_commit_timing_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/fifo.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/fifo.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "wp_fifo_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/fractional_scale.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/fractional_scale.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "wp_fractional_scale_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/viewporter.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/viewporter.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "wp_viewporter",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/single_pixel_buffer.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/single_pixel_buffer.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "wp_single_pixel_buffer_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/alpha_modifier.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/alpha_modifier.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "wp_alpha_modifier_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/content_type.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/content_type.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "wp_content_type_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/background_effect.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/background_effect.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "ext_background_effect_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/idle_inhibit.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/idle_inhibit.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_idle_inhibit_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/keyboard_shortcuts_inhibit.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/keyboard_shortcuts_inhibit.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_keyboard_shortcuts_inhibit_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/idle_notify.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/idle_notify.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "ext_idle_notifier_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/security_context.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/security_context.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "wp_security_context_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/session_lock.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/session_lock.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "ext_session_lock_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/image_capture_source.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/image_capture_source.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "ext_output_image_capture_source_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/image_copy_capture.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/image_copy_capture.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "ext_image_copy_capture_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/xwayland_shell.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/xwayland_shell.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "xwayland_shell_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/xwayland_keyboard_grab.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/xwayland_keyboard_grab.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_xwayland_keyboard_grab_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [],
+    "custom_dispatch_files": [],
+    "dual_registration": false,
+    "equivalent": "no-equivalent",
+    "interface": "wp_drm_lease_device_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [],
+    "custom_dispatch_files": [],
+    "dual_registration": false,
+    "equivalent": "no-equivalent",
+    "interface": "wp_linux_drm_syncobj_manager_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/plasma/mod.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/plasma/kde_decoration.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "org_kde_kwin_server_decoration_manager",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/plasma/mod.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/plasma/plasma.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "org_kde_kwin_blur_manager",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/plasma/mod.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/plasma/plasma.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "org_kde_kwin_contrast_manager",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/plasma/mod.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/plasma/plasma.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "org_kde_kwin_shadow_manager",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/plasma/mod.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/plasma/plasma.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "org_kde_kwin_dpms_manager",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/plasma/mod.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/plasma/plasma.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "org_kde_kwin_idle_timeout",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/plasma/mod.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/plasma/plasma.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "org_kde_kwin_slide_manager",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/plasma/mod.rs"
+  },
+  {
+    "custom_create_global_files": [
+      "src/core/wayland/ext/fullscreen_shell.rs"
+    ],
+    "custom_dispatch_files": [
+      "src/core/wayland/ext/fullscreen_shell.rs"
+    ],
+    "dual_registration": true,
+    "equivalent": "no-equivalent",
+    "interface": "zwp_fullscreen_shell_v1",
+    "owner": "custom_survivor",
+    "source_module": "src/core/wayland/ext/mod.rs"
+  }
+]

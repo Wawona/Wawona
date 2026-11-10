@@ -1,6 +1,7 @@
 package com.aspauldingcode.wawona
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +25,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.CenterFocusStrong
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,32 +40,47 @@ import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 sealed class MachinesNavDest {
     data object Machines : MachinesNavDest()
     data object TabOverview : MachinesNavDest()
+    data class ClientTab(val machineId: String) : MachinesNavDest()
     data class Tag(val tagId: String) : MachinesNavDest()
 }
 
 /**
- * iOS Machine Configuration sidebar: Machines + Tab Overview + Tags.
+ * Machines sidebar: expandable "N Tabs" (Safari) + Machines + Tags.
+ * Tab Overview opens from the toolbar, not a flat sidebar row.
  */
 @Composable
 fun MachinesConfigurationSidebar(
     tags: List<MachineTag>,
     selected: MachinesNavDest,
+    runningTabs: List<MachineProfile>,
     onSelect: (MachinesNavDest) -> Unit,
     onCreateTag: () -> Unit,
     onEditTag: (MachineTag) -> Unit,
     onDeleteTag: (MachineTag) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var tabsExpanded by remember { mutableStateOf(true) }
+    val tabCountLabel = when (runningTabs.size) {
+        1 -> "1 Tab"
+        else -> "${runningTabs.size} Tabs"
+    }
+
     Column(
         modifier
             .fillMaxHeight()
@@ -70,6 +88,64 @@ fun MachinesConfigurationSidebar(
             .verticalScroll(rememberScrollState())
             .padding(vertical = 12.dp),
     ) {
+        if (runningTabs.isNotEmpty()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { tabsExpanded = !tabsExpanded }
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .semantics { contentDescription = tabCountLabel },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Dashboard,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        tabCountLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Icon(
+                    if (tabsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (tabsExpanded) "Collapse tabs" else "Expand tabs",
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            if (tabsExpanded) {
+                runningTabs.forEach { profile ->
+                    val title = profile.name.ifBlank { "Client" }
+                    NavigationDrawerItem(
+                        label = { Text(title) },
+                        selected = (selected as? MachinesNavDest.ClientTab)?.machineId == profile.id,
+                        onClick = { onSelect(MachinesNavDest.ClientTab(profile.id)) },
+                        icon = {
+                            Icon(
+                                Icons.Outlined.CenterFocusStrong,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        ),
+                        modifier = Modifier
+                            .padding(start = 24.dp, end = 12.dp)
+                            .semantics { contentDescription = "wwn.tabs.tab.${profile.id}" },
+                    )
+                }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        }
+
         Text(
             "Machines",
             style = MaterialTheme.typography.labelMedium,
@@ -81,16 +157,6 @@ fun MachinesConfigurationSidebar(
             selected = selected is MachinesNavDest.Machines,
             onClick = { onSelect(MachinesNavDest.Machines) },
             icon = { Icon(Icons.Filled.Computer, contentDescription = null) },
-            colors = NavigationDrawerItemDefaults.colors(
-                selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-            ),
-            modifier = Modifier.padding(horizontal = 12.dp),
-        )
-        NavigationDrawerItem(
-            label = { Text("Tab Overview") },
-            selected = selected is MachinesNavDest.TabOverview,
-            onClick = { onSelect(MachinesNavDest.TabOverview) },
-            icon = { Icon(Icons.Filled.Dashboard, contentDescription = null) },
             colors = NavigationDrawerItemDefaults.colors(
                 selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
             ),
@@ -185,7 +251,7 @@ fun TabOverviewPlaceholder(
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            "Running and recent machine sessions. Focus returns to an active session.",
+            "Running nested sessions. Focus returns to an active client.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
@@ -199,60 +265,37 @@ fun TabOverviewPlaceholder(
                 "No active sessions",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 24.dp),
             )
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 260.dp),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                columns = GridCells.Adaptive(minSize = 220.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(running, key = { it.id }) { profile ->
-                    val status = machineStatusFor(profile.id)
-                    val isActive = profile.id == activeMachineId
                     Card(
+                        onClick = { onFocus(profile) },
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         ),
                     ) {
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Icon(Icons.Filled.Computer, contentDescription = null)
-                                Text(
-                                    profile.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
+                        Column(Modifier.padding(16.dp)) {
                             Text(
-                                buildString {
-                                    append(status.displayTitle)
-                                    if (isActive) append(" · Active")
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
+                                profile.name.ifBlank { "Client" },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                if (profile.id == activeMachineId) "Running · Active" else "Running",
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             FilledTonalButton(
                                 onClick = { onFocus(profile) },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.padding(top = 8.dp),
                             ) {
-                                Icon(
-                                    Icons.Outlined.CenterFocusStrong,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Text("Focus", modifier = Modifier.padding(start = 8.dp))
+                                Text("Focus")
                             }
                         }
                     }

@@ -55,8 +55,10 @@ struct WWNMachinesGridViewModern: View {
   #endif
   @State private var editorDestination: MachineEditorDestination?
   @State private var searchQuery = ""
-  #if os(iOS) || os(visionOS)
-  /// iPad / visionOS: overlay search (not `.searchable` on the split detail).
+  /// Selected machine for detail (actions + tags/pin). Nil = grid.
+  @State private var detailMachineId: String?
+  #if os(iOS)
+  /// iPad: overlay search (not `.searchable` on the split detail).
   /// iPhone: system `.searchable` in the owning navigation item.
   @State private var isSearchPresented = false
   /// Focus request flag (iOS 15+ applies `.focused`; older hosts ignore).
@@ -64,16 +66,27 @@ struct WWNMachinesGridViewModern: View {
   #endif
   @State private var tagEditorTag: WWNMachineTag?
   @State private var showTagEditor = false
+  /// When set, a newly created tag is assigned to this machine (detail Create Tag).
+  @State private var tagEditorAssignToMachineId: String?
+  #if os(visionOS)
+  /// visionOS `Menu` in a Liquid Glass `ToolbarItemGroup` often swallows the
+  /// press (no popover). Drive sort from a Button + popover instead.
+  @State private var isSortPopoverPresented = false
+  #endif
   #if os(tvOS)
-  @FocusState private var focusedMachineId: String?
-  /// Keep `.searchable` collapsed until the Search toolbar item opens it.
-  /// Auto-presented search stole focus and hid Sort / Settings on launch.
+  /// tvOS toolbar `Menu` often swallows presses (same class as visionOS).
+  /// Drive sort from a Button + confirmationDialog instead.
+  @State private var isSortDialogPresented = false
+  /// System `.searchable` toggle remounts the detail tree and breaks the
+  /// Liquid Glass NavigationSplitView. Dedicated cover instead.
   @State private var isSearchPresented = false
   #endif
 
   var body: some View {
     Group {
-      #if os(iOS) || os(visionOS)
+      #if os(visionOS)
+      visionRoot
+      #elseif os(iOS)
       iosRoot
       #elseif os(tvOS)
       tvosRoot
@@ -95,16 +108,7 @@ struct WWNMachinesGridViewModern: View {
       machineEditor(for: destination)
     }
     .sheet(isPresented: $showTagEditor) {
-      WWNTagEditorSheet(tag: tagEditorTag) { name, colorHex in
-        if let existing = tagEditorTag {
-          var updated = existing
-          updated.name = name
-          updated.colorHex = colorHex
-          tagStore.updateTag(updated)
-        } else {
-          tagStore.createTag(name: name, colorHex: colorHex)
-        }
-      }
+      tagEditorSheet
     }
     #endif
     #if !os(macOS)
@@ -113,102 +117,55 @@ struct WWNMachinesGridViewModern: View {
   }
 
   #if os(tvOS)
-  /// 10-foot Machines detail. Parent `WawonaMainWindowView` owns the fixed
-  /// sidebar + `NavigationStack`. Toolbar hosts Search / Sort / Settings.
+  /// 10-foot Machines: grid or selected-machine detail. Search is a dedicated
+  /// fullScreenCover (toggling `.searchable` remounts detail and wrecks the
+  /// split). Actions live on the machine detail screen (Tags/Pin included).
   private var tvosRoot: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 28) {
-        if visibleProfiles.isEmpty {
-          ContentUnavailableView(
-            "No Machines",
-            systemImage: "tv",
-            description: Text("Add a Local or Remote machine profile, then Start it with the Siri Remote.")
-          )
-          .frame(maxWidth: .infinity, minHeight: 420)
-        } else {
-          LazyVStack(spacing: 22) {
-            ForEach(visibleProfiles, id: \.machineId) { profile in
-              let machineStatus = model.status(for: profile.machineId)
-              let running = machineStatus == .connected || machineStatus == .connecting
-              NavigationLink {
-                WWNMachineTVDetailView(
-                  profile: profile,
-                  status: machineStatus,
-                  typeLabel: model.machineTypeLabel(for: profile),
-                  scopeLabel: model.machineScopeLabel(for: profile),
-                  subtitle: model.machineSubtitle(for: profile),
-                  summary: model.machineConfigurationSummary(for: profile),
-                  launchSupported: model.launchSupported(for: profile),
-                  isActive: profile.machineId == model.activeMachineId,
-                  isRunning: running,
-                  onEdit: { editorDestination = .edit(profile) },
-                  onDelete: { model.delete(profile) },
-                  onConnect: {
-                    model.connect(profile) {
-                      onConnect?()
-                    }
-                  },
-                  onStop: { model.disconnect(profile) },
-                  onFocus: { model.focusRunningMachine(profile) }
-                )
-              } label: {
-                WWNMachineTVRow(
-                  profile: profile,
-                  status: machineStatus,
-                  typeLabel: model.machineTypeLabel(for: profile),
-                  scopeLabel: model.machineScopeLabel(for: profile),
-                  subtitle: model.machineSubtitle(for: profile),
-                  isActive: profile.machineId == model.activeMachineId,
-                  isRunning: running
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(28)
-              }
-              .buttonStyle(.card)
-              .focused($focusedMachineId, equals: profile.machineId)
+    detailPane
+      .backport.navigationTitle(detailNavigationTitle)
+      .fullScreenCover(item: $editorDestination) { destination in
+        machineEditor(for: destination)
+          .presentationBackground(Color(white: 0.07))
+      }
+      .fullScreenCover(isPresented: $isSearchPresented) {
+        WWNTvMachinesSearchCover(
+          results: { filteredProfiles(matching: $0) },
+          card: { profile, query in
+            machineCard(for: profile, highlight: query) {
+              isSearchPresented = false
+              detailMachineId = profile.machineId
             }
+          },
+          onClose: {
+            isSearchPresented = false
           }
-          .frame(maxWidth: .infinity, alignment: .leading)
-        }
-
-        Text("\(model.profiles.count) profiles · \(model.connectedCount) connected · \(model.launchableCount) ready")
-          .font(.title3)
-          .foregroundStyle(.secondary)
-
-        Button {
-          editorDestination = .add
-        } label: {
-          Label("Add Machine", systemImage: "plus")
-            .font(.title3.weight(.semibold))
-            .frame(minWidth: 260, minHeight: 52)
-        }
-        .buttonStyle(.borderedProminent)
-        .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
-      }
-      .padding(48)
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .backport.navigationTitle(detailNavigationTitle)
-    .modifier(WWNTvosMachinesSearchable(
-      text: $searchQuery,
-      isPresented: $isSearchPresented
-    ))
-    .toolbar {
-      detailToolbarContent
-    }
-    .onAppear {
-      if focusedMachineId == nil {
-        focusedMachineId = visibleProfiles.first?.machineId
-      }
-    }
-    .fullScreenCover(item: $editorDestination) { destination in
-      machineEditor(for: destination)
+        )
         .presentationBackground(Color(white: 0.07))
-    }
-    .preferredColorScheme(.dark)
+      }
+      .fullScreenCover(isPresented: $showTagEditor) {
+        tagEditorSheet
+          .presentationBackground(Color(white: 0.07))
+      }
+      .preferredColorScheme(.dark)
   }
   #endif
+
+  private var tagEditorSheet: some View {
+    WWNTagEditorSheet(tag: tagEditorTag) { name, colorHex in
+      if let existing = tagEditorTag {
+        var updated = existing
+        updated.name = name
+        updated.colorHex = colorHex
+        tagStore.updateTag(updated)
+      } else {
+        let created = tagStore.createTag(name: name, colorHex: colorHex)
+        if let machineId = tagEditorAssignToMachineId {
+          tagStore.setAssigned(true, tag: created, to: machineId)
+        }
+      }
+      tagEditorAssignToMachineId = nil
+    }
+  }
 
   #if os(macOS)
   /// Detail pane only. Nested `NavigationStack` + custom toolbar material
@@ -220,6 +177,10 @@ struct WWNMachinesGridViewModern: View {
   private var macRoot: some View {
     Group {
       if mainRouter.settingsOwnsWindowToolbar {
+        detailPane
+          .navigationTitle(detailNavigationTitle)
+          .toolbarTitleDisplayMode(.inline)
+      } else if detailMachineId != nil {
         detailPane
           .navigationTitle(detailNavigationTitle)
           .toolbarTitleDisplayMode(.inline)
@@ -245,7 +206,7 @@ struct WWNMachinesGridViewModern: View {
       Text(model.connectionError ?? "")
     }
   }
-  #else
+  #elseif !os(tvOS)
   private var macRoot: some View {
     NavigationStack {
       detailPane
@@ -268,28 +229,42 @@ struct WWNMachinesGridViewModern: View {
   }
   #endif
 
-  #if os(iOS) || os(visionOS)
+  #if os(visionOS)
+  /// Same chrome as macOS: system toolbar search + grouped trailing actions.
+  /// Do not use a custom magnifyingglass that toggles a view-nested overlay.
+  private var visionRoot: some View {
+    detailPane
+      .backport.navigationTitle(detailNavigationTitle, inline: true)
+      .searchable(text: $searchQuery, placement: .toolbar, prompt: "Search machines")
+      .modifier(WWNVisionMachinesSearchToolbarBehavior())
+      .toolbar {
+        if detailMachineId == nil {
+          detailToolbarContent
+        }
+      }
+  }
+  #endif
+
+  #if os(iOS)
   /// Detail pane only. A nested `NavigationStack` made this look like a second
   /// main view and hid the split sidebar on compact iPhone.
   @ViewBuilder
   private var iosRoot: some View {
-    if #available(iOS 14.0, visionOS 1.0, *) {
+    if #available(iOS 14.0, *) {
       iosRootChrome
         .background {
           phoneIntegratedSearchToolbar
         }
         .toolbar {
-          detailToolbarContent
-          #if os(iOS)
-          // iPhone iOS 26 search + Add live in `toolbarItems` (see
-          // WWNPhoneIntegratedSearchToolbar). A SwiftUI bottom-bar search
-          // item vends the placement button from a different navigation item.
-          if !isIosPhone {
-            iosPadSearchToolbarItem
+          if detailMachineId == nil {
+            detailToolbarContent
+            // iPhone iOS 26 search + Add live in `toolbarItems` (see
+            // WWNPhoneIntegratedSearchToolbar). A SwiftUI bottom-bar search
+            // item vends the placement button from a different navigation item.
+            if !isIosPhone {
+              iosPadSearchToolbarItem
+            }
           }
-          #else
-          iosPadSearchToolbarItem
-          #endif
         }
     } else {
       iosRootChrome
@@ -350,18 +325,13 @@ struct WWNMachinesGridViewModern: View {
 
   /// Phone only. Idiom, not size class (the split forces regular width).
   private var isIosPhone: Bool {
-    #if os(iOS)
     UIDevice.current.userInterfaceIdiom == .phone
-    #else
-    false
-    #endif
   }
 
   /// iPhone iOS 26: system search button in the navigation controller toolbar.
-  /// Pre-26 keeps the compact safe-area row. iPad / visionOS stay on the overlay.
+  /// Pre-26 keeps the compact safe-area row. iPad stays on the overlay.
   @ViewBuilder
   private var phoneIntegratedSearchToolbar: some View {
-    #if os(iOS)
     if isIosPhone && Self.usesNativePhoneSearchToolbar {
       if #available(iOS 26.0, *) {
         WWNPhoneIntegratedSearchToolbar(placement: .bottomBar(showsCompose: true)) {
@@ -371,15 +341,12 @@ struct WWNMachinesGridViewModern: View {
         .accessibilityHidden(true)
       }
     }
-    #endif
   }
 
   /// iOS 26+: system Messages-style bottom search + compose +. Pre-26 keeps
   /// the compact safeAreaInset chrome. Never custom Liquid Glass capsule on 26+.
   private static var usesNativePhoneSearchToolbar: Bool {
-    #if os(iOS)
     if #available(iOS 26.0, *) { return true }
-    #endif
     return false
   }
 
@@ -400,8 +367,8 @@ struct WWNMachinesGridViewModern: View {
     }
   }
 
-  /// Shared Add: iPhone bottom bar (`toolbarItems`), or iPad/vision `.primaryAction`.
-  /// System prominent style (blue). Call sites must not mount twice.
+  /// Shared Add: iPhone bottom bar (`toolbarItems`), or iPad `.primaryAction`.
+  /// Call sites must not mount twice.
   private var iosAddMachineToolbarButton: some View {
     Button {
       editorDestination = .add
@@ -529,12 +496,17 @@ struct WWNMachinesGridViewModern: View {
 
   private var detailNavigationTitle: String {
     #if os(tvOS)
-    return "Machine"
-    #else
-    return "Machine Configuration"
+    // The detail banner already shows the machine name; one title only.
+    if detailMachineId != nil { return "" }
     #endif
+    if let detailMachineId,
+       let profile = model.profiles.first(where: { $0.machineId == detailMachineId }) {
+      return profile.name.isEmpty ? "Machine" : profile.name
+    }
+    return "Machine Configuration"
   }
 
+  #if !os(tvOS)
   @ToolbarContentBuilder
   private var detailToolbarContent: some ToolbarContent {
     #if os(macOS)
@@ -565,21 +537,32 @@ struct WWNMachinesGridViewModern: View {
       }
       .wwnA11y(WWNA11y.machinesSettings, label: "Settings")
     }
-    #elseif os(tvOS)
-    // 10-foot chrome: icon-only Search + Sort + Settings (labels truncate in
-    // tvOS toolbar pills). Sidebar Tags filter machines.
-    ToolbarItemGroup(placement: .primaryAction) {
+    #elseif os(visionOS)
+    // Match macOS order + grouping: Add (primary), then one glass group of
+    // Tab Overview / Sort / Settings. Search is system `.searchable` +
+    // `searchToolbarBehavior(.minimize)` (icon expands in-toolbar; not a
+    // custom magnifyingglass overlay).
+    ToolbarItem(placement: .primaryAction) {
       Button {
-        isSearchPresented = true
+        editorDestination = .add
       } label: {
-        Image(systemName: "magnifyingglass")
+        Label("Add Machine", systemImage: "plus")
       }
-      .accessibility(label: Text("Search machines"))
-      sortMenu
+      .backport.glassProminentToolbarButton()
+      .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+    }
+    ToolbarItemGroup(placement: .automatic) {
+      Button {
+        WWNMainWindowRouter.shared.showTabOverview()
+      } label: {
+        Label("Tab Overview", systemImage: "square.on.square")
+      }
+      .accessibility(identifier: "wwn.tabOverview.toolbar")
+      visionSortToolbarButton
       Button {
         WWNMainWindowRouter.shared.showSettings()
       } label: {
-        Image(systemName: "gearshape")
+        Label("Settings", systemImage: "gearshape")
       }
       .wwnA11y(WWNA11y.machinesSettings, label: "Settings")
     }
@@ -587,17 +570,13 @@ struct WWNMachinesGridViewModern: View {
     // Exactly one Add Machine control per host:
     // - iPhone: bottom compose only (iOS 26 Messages toolbar, or pre-26
     //   safeAreaInset chrome). Never also top-trailing.
-    // - iPad / visionOS: `.primaryAction` only (blue prominent).
+    // - iPad: `.primaryAction` only (blue prominent).
     // Top bar on phone is sort + Settings only.
     #if os(iOS)
     if !isIosPhone {
       ToolbarItem(placement: .primaryAction) {
         iosAddMachineToolbarButton
       }
-    }
-    #elseif os(visionOS)
-    ToolbarItem(placement: .primaryAction) {
-      iosAddMachineToolbarButton
     }
     #endif
     ToolbarItem(placement: .topBarTrailing) {
@@ -611,7 +590,6 @@ struct WWNMachinesGridViewModern: View {
     }
     ToolbarItem(placement: .topBarTrailing) {
       sortMenu
-        .backport.glassToolbarButton()
     }
     ToolbarItem(placement: .topBarTrailing) {
       Button {
@@ -624,56 +602,241 @@ struct WWNMachinesGridViewModern: View {
     }
     #endif
   }
+  #endif
+
+  #if os(tvOS)
+  /// Grid actions live in the scroll content, not the navigation bar. tvOS
+  /// focus cannot move between nav bar items and this content in either
+  /// direction, which stranded Search / Add above the cards.
+  private var tvHeaderActions: some View {
+    HStack(spacing: 20) {
+      Button {
+        isSearchPresented = true
+      } label: {
+        Image(systemName: "magnifyingglass")
+      }
+      .wwnA11y(WWNA11y.machinesSearch, label: "Search machines")
+      Button {
+        isSortDialogPresented = true
+      } label: {
+        Image(systemName: "line.3.horizontal.decrease")
+      }
+      .wwnA11y(WWNA11y.machinesSort, label: "Sort")
+      .confirmationDialog(
+        "Sort",
+        isPresented: $isSortDialogPresented,
+        titleVisibility: .visible
+      ) {
+        ForEach(WWNMachinesViewModel.SortKey.allCases, id: \.self) { key in
+          Button {
+            applySortSelection(key)
+          } label: {
+            if model.sortKey == key {
+              Text("\(key.title) (\(model.sortAscending ? "Ascending" : "Descending"))")
+            } else {
+              Text(key.title)
+            }
+          }
+        }
+        Button {
+          model.setSortAscending(!model.sortAscending)
+        } label: {
+          Text(model.sortAscending ? "Switch to Descending" : "Switch to Ascending")
+        }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text("Pinned machines stay on top.")
+      }
+      Button {
+        WWNMainWindowRouter.shared.showSettings()
+      } label: {
+        Image(systemName: "gearshape")
+      }
+      .wwnA11y(WWNA11y.machinesSettings, label: "Settings")
+      Button {
+        editorDestination = .add
+      } label: {
+        Image(systemName: "plus")
+      }
+      .wwnA11y(WWNA11y.machinesAdd, label: "Add Machine")
+    }
+    .buttonStyle(WWNTvCapsuleButtonStyle())
+    .font(.headline.weight(.semibold))
+  }
+  #endif
 
   // MARK: - Sort Menu
 
   /// Finder-style sort control: grid + chevron toolbar button; picking a
   /// criterion switches to it, picking the active one flips the direction.
-  /// tvOS uses the same Menu (focusable on the Siri Remote).
+  /// tvOS uses Button + confirmationDialog (toolbar `Menu` is a no-op there).
   @ViewBuilder
   private var sortMenu: some View {
     Menu {
-      ForEach(WWNMachinesViewModel.SortKey.allCases, id: \.self) { key in
-        Button {
-          if model.sortKey == key {
-            // Clicking the active criterion flips the direction (Finder-style).
-            model.setSortAscending(!model.sortAscending)
-          } else {
-            model.setSortKey(key)
-          }
-        } label: {
-          HStack {
-            Text(key.title)
-            Spacer()
-            if model.sortKey == key {
-              Image(systemName: model.sortAscending ? "arrow.up" : "arrow.down")
-                .font(.caption.weight(.semibold))
-            }
-          }
-        }
-      }
-      Divider()
-      Button {
-        model.setSortAscending(!model.sortAscending)
-      } label: {
-        Label(
-          model.sortAscending ? "Ascending" : "Descending",
-          systemImage: model.sortAscending ? "arrow.up" : "arrow.down"
-        )
-      }
+      sortMenuButtons
     } label: {
       Image(systemName: "line.3.horizontal.decrease")
     }
-    #if !os(tvOS)
     .menuIndicator(.hidden)
     .help("Sort: pinned machines stay on top")
-    #endif
     .wwnA11y(WWNA11y.machinesSort, label: "Sort")
+  }
+
+  #if os(visionOS)
+  /// Button + popover: visionOS Liquid Glass toolbar groups often drop `Menu`
+  /// presentation (press does nothing). Same criteria as `sortMenu`.
+  private var visionSortToolbarButton: some View {
+    Button {
+      isSortPopoverPresented.toggle()
+    } label: {
+      Label("Sort", systemImage: "line.3.horizontal.decrease")
+        .labelStyle(.iconOnly)
+    }
+    .help("Sort: pinned machines stay on top")
+    .wwnA11y(WWNA11y.machinesSort, label: "Sort")
+    .popover(isPresented: $isSortPopoverPresented, arrowEdge: .bottom) {
+      VStack(alignment: .leading, spacing: 0) {
+        ForEach(WWNMachinesViewModel.SortKey.allCases, id: \.self) { key in
+          Button {
+            applySortSelection(key)
+            isSortPopoverPresented = false
+          } label: {
+            HStack {
+              Text(key.title)
+              Spacer(minLength: 12)
+              if model.sortKey == key {
+                Image(systemName: model.sortAscending ? "arrow.up" : "arrow.down")
+                  .font(.caption.weight(.semibold))
+              }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .padding(.horizontal, 16)
+          .padding(.vertical, 12)
+        }
+        Divider()
+        Button {
+          model.setSortAscending(!model.sortAscending)
+          isSortPopoverPresented = false
+        } label: {
+          Label(
+            model.sortAscending ? "Ascending" : "Descending",
+            systemImage: model.sortAscending ? "arrow.up" : "arrow.down"
+          )
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+      }
+      .frame(minWidth: 220)
+      .padding(.vertical, 8)
+    }
+  }
+  #endif
+
+  @ViewBuilder
+  private var sortMenuButtons: some View {
+    ForEach(WWNMachinesViewModel.SortKey.allCases, id: \.self) { key in
+      Button {
+        applySortSelection(key)
+      } label: {
+        HStack {
+          Text(key.title)
+          Spacer()
+          if model.sortKey == key {
+            Image(systemName: model.sortAscending ? "arrow.up" : "arrow.down")
+              .font(.caption.weight(.semibold))
+          }
+        }
+      }
+    }
+    Divider()
+    Button {
+      model.setSortAscending(!model.sortAscending)
+    } label: {
+      Label(
+        model.sortAscending ? "Ascending" : "Descending",
+        systemImage: model.sortAscending ? "arrow.up" : "arrow.down"
+      )
+    }
+  }
+
+  private func applySortSelection(_ key: WWNMachinesViewModel.SortKey) {
+    if model.sortKey == key {
+      // Active criterion flips direction (Finder-style).
+      model.setSortAscending(!model.sortAscending)
+    } else {
+      model.setSortKey(key)
+    }
   }
 
   // MARK: - Detail
 
+  @ViewBuilder
   private var detailPane: some View {
+    if let detailMachineId,
+       let profile = model.profiles.first(where: { $0.machineId == detailMachineId }) {
+      machineDetail(for: profile)
+    } else {
+      machinesGridPane
+        .onAppear {
+          // Stale id after delete / import: return to grid.
+          if let detailMachineId,
+             !model.profiles.contains(where: { $0.machineId == detailMachineId }) {
+            self.detailMachineId = nil
+          }
+        }
+    }
+  }
+
+  @ViewBuilder
+  private func machineDetail(for profile: WWNMachineProfile) -> some View {
+    let machineStatus = model.status(for: profile.machineId)
+    let running = machineStatus == .connected || machineStatus == .connecting
+    let pinned = model.isPinned(profile.machineId)
+    WWNMachineDetailView(
+      profile: profile,
+      status: machineStatus,
+      thumbnailImage: model.thumbnailImage(for: profile),
+      typeLabel: model.machineTypeLabel(for: profile),
+      scopeLabel: model.machineScopeLabel(for: profile),
+      subtitle: model.machineSubtitle(for: profile),
+      summary: model.machineConfigurationSummary(for: profile),
+      launchSupported: model.launchSupported(for: profile),
+      isActive: profile.machineId == model.activeMachineId,
+      isRunning: running,
+      isPinned: pinned,
+      pinLimitReached: !pinned && model.pinnedMachineIds.count >= WWNMachinesViewModel.maxPinnedMachines,
+      tags: tagStore.tags(for: profile.machineId),
+      allTags: tagStore.tags,
+      onBack: { detailMachineId = nil },
+      onEdit: { editorDestination = .edit(profile) },
+      onDelete: { model.delete(profile) },
+      onConnect: {
+        model.connect(profile) {
+          onConnect?()
+        }
+      },
+      onStop: { model.disconnect(profile) },
+      onFocus: { model.focusRunningMachine(profile) },
+      onTogglePin: { _ = model.togglePinned(profile.machineId) },
+      onToggleTag: { tag in
+        let assigned = tagStore.isAssigned(tag.id, to: profile.machineId)
+        tagStore.setAssigned(!assigned, tag: tag, to: profile.machineId)
+      },
+      onCreateTag: {
+        tagEditorTag = nil
+        tagEditorAssignToMachineId = profile.machineId
+        showTagEditor = true
+      }
+    )
+  }
+
+  private var machinesGridPane: some View {
     #if os(macOS)
     // Avoid GeometryReader: it re-evaluates the entire grid on every window
     // bounds change during titlebar drag and amplifies move lag.
@@ -689,15 +852,42 @@ struct WWNMachinesGridViewModern: View {
     #else
     GeometryReader { proxy in
       let detailWidth = max(proxy.size.width, 320)
+      #if os(tvOS)
+      // Room for `.card` focus lift (~1.1x) so edge cards are not clipped.
+      let gridPadding: CGFloat = 60
+      let gridSpacing: CGFloat = 48
+      #else
+      let gridPadding: CGFloat = 16
+      let gridSpacing: CGFloat = 16
+      #endif
       ScrollView {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: gridSpacing) {
+          #if os(tvOS)
+          HStack(alignment: .center, spacing: 24) {
+            summaryStrip
+            tvHeaderActions
+          }
+          .focusSection()
+          #else
           summaryStrip
+          #endif
+          #if os(tvOS)
+          // Search / Sort sit right of a short card row. A full-width
+          // section gives Down from those buttons a target in its beam.
           machinesGrid(forWidth: detailWidth)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .focusSection()
+          #else
+          machinesGrid(forWidth: detailWidth)
+          #endif
         }
-        .padding(16)
-        .frame(maxWidth: 1320, alignment: .leading)
+        .padding(gridPadding)
+        .frame(maxWidth: 1600, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .topLeading)
       }
+      #if os(tvOS)
+      .scrollClipDisabled()
+      #endif
     }
     #endif
   }
@@ -741,12 +931,16 @@ struct WWNMachinesGridViewModern: View {
   }
 
   private var visibleProfiles: [WWNMachineProfile] {
+    filteredProfiles(matching: searchQuery)
+  }
+
+  private func filteredProfiles(matching rawQuery: String) -> [WWNMachineProfile] {
     var base = model.profiles
     if let filterTagID,
        tagStore.tags.contains(where: { $0.id == filterTagID }) {
       base = base.filter { tagStore.isAssigned(filterTagID, to: $0.machineId) }
     }
-    let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if query.isEmpty {
       // Sort by the chosen key; pins stay on top regardless.
       return model.displayOrder(base)
@@ -861,7 +1055,11 @@ struct WWNMachinesGridViewModern: View {
   }
 
   @ViewBuilder
-  private func machineCard(for profile: WWNMachineProfile) -> some View {
+  private func machineCard(
+    for profile: WWNMachineProfile,
+    highlight: String? = nil,
+    onSelect: (() -> Void)? = nil
+  ) -> some View {
     let machineStatus = model.status(for: profile.machineId)
     WWNMachineCardView(
       profile: profile,
@@ -871,28 +1069,19 @@ struct WWNMachinesGridViewModern: View {
       scopeLabel: model.machineScopeLabel(for: profile),
       subtitle: model.machineSubtitle(for: profile),
       summary: model.machineConfigurationSummary(for: profile),
-      launchSupported: model.launchSupported(for: profile),
       isActive: profile.machineId == model.activeMachineId,
-      isRunning: machineStatus == .connected || machineStatus == .connecting,
       isPinned: model.isPinned(profile.machineId),
       tags: tagStore.tags(for: profile.machineId),
-      searchQuery: searchQuery,
-      onEdit: { editorDestination = .edit(profile) },
-      onDelete: { model.delete(profile) },
-      onConnect: {
-        model.connect(profile) {
-          onConnect?()
-        }
-      },
-      onStop: { model.disconnect(profile) },
-      onFocus: { model.focusRunningMachine(profile) }
+      searchQuery: highlight ?? searchQuery,
+      onSelect: onSelect ?? { detailMachineId = profile.machineId }
     )
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    #if os(tvOS)
+    .padding(20)
+    #else
     .padding(1)
+    #endif
     .id(profile.machineId)
-    .contextMenu {
-      machineCardContextMenu(for: profile)
-    }
     #if !os(macOS)
     .transition(.scale(scale: 0.95).combined(with: .opacity))
     #endif
@@ -904,6 +1093,14 @@ struct WWNMachinesGridViewModern: View {
     let minCardWidth: CGFloat
     #if os(iOS)
     minCardWidth = width < 720 ? max(width - 32, 280) : 320
+    #elseif os(tvOS)
+    // 10-foot: wider cards, still a multi-column thumbnail grid.
+    let availableWidth = width - 48
+    if availableWidth >= 900 {
+      minCardWidth = 360
+    } else {
+      minCardWidth = max(availableWidth / 2 - 16, 320)
+    }
     #else
     // Prefer a card grid sooner on macOS so ~1000px windows don't feel like a list.
     let availableWidth = width - 32
@@ -913,7 +1110,11 @@ struct WWNMachinesGridViewModern: View {
       minCardWidth = max(availableWidth, 320)
     }
     #endif
+    #if os(tvOS)
+    return [GridItem(.adaptive(minimum: minCardWidth, maximum: 560), spacing: 24)]
+    #else
     return [GridItem(.adaptive(minimum: minCardWidth, maximum: 520), spacing: 14)]
+    #endif
   }
 
   @ViewBuilder
@@ -933,124 +1134,6 @@ struct WWNMachinesGridViewModern: View {
       }
     }
   }
-
-  // MARK: - Context Menu
-
-  /// Right-click (macOS) / long-press (iOS) menu on a machine card. Card
-  /// actions come first; pinning sits under a divider for separation.
-  @ViewBuilder
-  private func machineCardContextMenu(for profile: WWNMachineProfile) -> some View {
-    let machineStatus = model.status(for: profile.machineId)
-    let running = machineStatus == .connected || machineStatus == .connecting
-    let preparing = machineStatus == .preparing
-
-    if running {
-      Button {
-        model.focusRunningMachine(profile)
-      } label: {
-        Label("Focus", systemImage: "scope")
-      }
-      Button(role: .destructive) {
-        model.disconnect(profile)
-      } label: {
-        Label("Stop", systemImage: "stop.fill")
-      }
-    } else if !preparing {
-      Button {
-        model.connect(profile) {
-          onConnect?()
-        }
-      } label: {
-        Label("Start", systemImage: "play.fill")
-      }
-      .disabled(!model.launchSupported(for: profile))
-    }
-
-    Button {
-      editorDestination = .edit(profile)
-    } label: {
-      Label("Edit…", systemImage: "slider.horizontal.3")
-    }
-    Button(role: .destructive) {
-      model.delete(profile)
-    } label: {
-      Label("Delete", systemImage: "trash")
-    }
-    .disabled(running || preparing)
-
-    Divider()
-
-    #if !os(tvOS)
-    tagsContextMenu(for: profile)
-
-    Divider()
-    #endif
-
-    let pinned = model.isPinned(profile.machineId)
-    let pinLimitReached = !pinned && model.pinnedMachineIds.count >= WWNMachinesViewModel.maxPinnedMachines
-    Button {
-      _ = model.togglePinned(profile.machineId)
-    } label: {
-      Label(pinned ? "Unpin" : "Pin", systemImage: pinned ? "pin.slash" : "pin")
-    }
-    .disabled(pinLimitReached)
-  }
-
-  /// Finder-style tag assignment submenu (colored dots + checkmarks) with a
-  /// "Create Tag…" entry. On macOS the color must be an `NSImage` Label icon;
-  /// SwiftUI `Circle` / `WWNTagDot` never reach `NSMenuItem.image`.
-  #if !os(tvOS)
-  @ViewBuilder
-  private func tagsContextMenu(for profile: WWNMachineProfile) -> some View {
-    Menu {
-      if tagStore.tags.isEmpty {
-        Text("No tags yet")
-          .font(.caption)
-      }
-      ForEach(tagStore.tags) { tag in
-        #if os(macOS)
-        Toggle(isOn: Binding(
-          get: { tagStore.isAssigned(tag.id, to: profile.machineId) },
-          set: { tagStore.setAssigned($0, tag: tag, to: profile.machineId) }
-        )) {
-          Label {
-            Text(tag.name)
-          } icon: {
-            // `.original` keeps the tag color; default can re-template to menu ink.
-            Image(nsImage: WWNTagSwatchImage.make(colorHex: tag.colorHex))
-              .renderingMode(.original)
-          }
-        }
-        #else
-        let assigned = tagStore.isAssigned(tag.id, to: profile.machineId)
-        Button {
-          tagStore.setAssigned(!assigned, tag: tag, to: profile.machineId)
-        } label: {
-          HStack(spacing: 8) {
-            WWNTagDot(colorHex: tag.colorHex, size: 9)
-            Text(tag.name)
-              .frame(maxWidth: .infinity, alignment: .leading)
-            if assigned {
-              Image(systemName: "checkmark")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            }
-          }
-        }
-        #endif
-      }
-      Divider()
-      Button {
-        tagEditorTag = nil
-        showTagEditor = true
-      } label: {
-        Label("Create Tag…", systemImage: "plus")
-      }
-    } label: {
-      Label("Tags", systemImage: "tag")
-    }
-  }
-  #endif
 
   /// Lightweight fzf-style subsequence matcher with adjacency and boundary bonuses.
   private func fzfScore(pattern: String, candidate: String) -> Int? {
@@ -1132,45 +1215,22 @@ struct WWNMachinesGridViewModern: View {
 
 }
 
-#if os(tvOS)
-/// tvOS has no `searchable(isPresented:)`. Toolbar Search toggles this field
-/// so launch focus stays on machine cards (not a full-screen keyboard).
-private struct WWNTvosMachinesSearchable: ViewModifier {
-  @Binding var text: String
-  @Binding var isPresented: Bool
-
+#if os(visionOS)
+/// Liquid Glass minimized toolbar search (visionOS 26+). Expands in-toolbar
+/// when selected. Earlier visionOS keeps the always-visible searchable field.
+private struct WWNVisionMachinesSearchToolbarBehavior: ViewModifier {
+  @ViewBuilder
   func body(content: Content) -> some View {
-    VStack(spacing: 16) {
-      if isPresented {
-        HStack(spacing: 24) {
-          TextField("Search machines", text: $text)
-            .textFieldStyle(.plain)
-            .frame(maxWidth: 640)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-            .accessibility(identifier: "wwn.machines.search")
-          Button("Done") {
-            isPresented = false
-          }
-          .buttonStyle(.bordered)
-          if !text.isEmpty {
-            Button("Clear") {
-              text = ""
-            }
-            .buttonStyle(.bordered)
-          }
-        }
-        .padding(.horizontal, 48)
-        .padding(.top, 24)
-      }
+    if #available(visionOS 26.0, *) {
+      content.searchToolbarBehavior(.minimize)
+    } else {
       content
     }
   }
 }
 #endif
 
-#if os(iOS) || os(visionOS)
+#if os(iOS)
 /// iPhone: system `.searchable` owned by the split-detail navigation item.
 /// Keep dismissing via `WWNHostKeyboard` when the split column changes.
 @available(iOS 16.0, *)
@@ -1199,7 +1259,7 @@ private struct WWNIosPhoneLegacyBottomChrome<Chrome: View>: ViewModifier {
   @ViewBuilder
   func body(content: Content) -> some View {
     if enabled {
-      if #available(iOS 15.0, visionOS 1.0, *) {
+      if #available(iOS 15.0, *) {
         content.safeAreaInset(edge: .bottom, spacing: 0) { chrome() }
       } else {
         VStack(spacing: 0) {
@@ -1259,236 +1319,6 @@ enum MachineEditorDestination: Identifiable {
 extension WWNMachineProfile: Identifiable {
   public var id: String { machineId }
 }
-
-#if os(tvOS)
-/// Compact, focusable machine row for the tvOS Machines list.
-/// Do not add a trailing chevron. `NavigationLink` already provides one.
-#if os(iOS)
-@available(iOS 16.0, *)
-#endif
-struct WWNMachineTVRow: View {
-  let profile: WWNMachineProfile
-  let status: WWNMachineTransientStatus
-  let typeLabel: String
-  let scopeLabel: String
-  let subtitle: String
-  let isActive: Bool
-  let isRunning: Bool
-
-  var body: some View {
-    HStack(spacing: 28) {
-      Image(systemName: iconName)
-        .font(.system(size: 44, weight: .semibold))
-        .foregroundStyle(statusColor)
-        .frame(width: 72, height: 72)
-
-      VStack(alignment: .leading, spacing: 10) {
-        Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
-          .font(.title2.weight(.bold))
-          .lineLimit(1)
-        Text(subtitle.isEmpty ? typeLabel : subtitle)
-          .font(.title3)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-        HStack(spacing: 14) {
-          MachineStatusChip(text: scopeLabel, font: .title3.weight(.semibold))
-          MachineStatusChip(text: typeLabel, font: .title3.weight(.semibold))
-          MachineFittingLabel(
-            text: status.title,
-            font: .title3.weight(.bold),
-            alignment: .leading
-          )
-          .foregroundStyle(statusColor)
-          .frame(minWidth: 0)
-          .layoutPriority(1)
-          if isActive {
-            MachineStatusChip(text: "Active", font: .title3.weight(.semibold))
-          }
-        }
-      }
-
-      Spacer(minLength: 0)
-    }
-    .padding(.vertical, 18)
-    .wwnA11yContainer(
-      WWNA11y.machinesCard(profile.machineId),
-      label: WWNA11y.machinesDescriptor(name: profile.name, subtitle: subtitle)
-    )
-  }
-
-  private var iconName: String {
-    switch profile.type {
-    case kWWNMachineTypeVirtualMachine:
-      return "desktopcomputer"
-    case kWWNMachineTypeContainer:
-      return "shippingbox"
-    default:
-      switch WWNNativeShellConfiguration.kind(for: profile) {
-      case kWWNNativeShellKindTerminal: return "terminal"
-      case kWWNNativeShellKindWasm: return "doc.badge.gearshape"
-      case kWWNNativeShellKindWaypipe: return "arrow.triangle.2.circlepath"
-      default: return "display"
-      }
-    }
-  }
-
-  private var statusColor: Color {
-    switch status {
-    case .connected: return .green
-    case .connecting: return .blue
-    case .preparing: return .blue
-    case .degraded: return .orange
-    case .error: return .red
-    case .disconnected: return .secondary
-    }
-  }
-}
-
-/// Detail actions for one machine. Large focusable buttons for Siri Remote.
-#if os(iOS)
-@available(iOS 16.0, *)
-#endif
-struct WWNMachineTVDetailView: View {
-  let profile: WWNMachineProfile
-  let status: WWNMachineTransientStatus
-  let typeLabel: String
-  let scopeLabel: String
-  let subtitle: String
-  let summary: String
-  let launchSupported: Bool
-  let isActive: Bool
-  let isRunning: Bool
-  let onEdit: () -> Void
-  let onDelete: () -> Void
-  let onConnect: () -> Void
-  let onStop: () -> Void
-  let onFocus: () -> Void
-
-  @Environment(\.presentationMode) private var presentationMode
-  @FocusState private var focusedActionId: String?
-
-  private func dismiss() {
-    presentationMode.wrappedValue.dismiss()
-  }
-
-  var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 40) {
-        VStack(alignment: .leading, spacing: 16) {
-          Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
-            .font(.largeTitle.weight(.bold))
-          Text(subtitle)
-            .font(.title)
-            .foregroundStyle(.secondary)
-          Text(summary)
-            .font(.title2)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-          HStack(spacing: 28) {
-            Label(scopeLabel, systemImage: "circle.grid.2x2")
-            Label(typeLabel, systemImage: "tag")
-            Label(status.title, systemImage: "circle.fill")
-              .foregroundStyle(statusColor)
-          }
-          .font(.title2.weight(.semibold))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-
-        VStack(alignment: .leading, spacing: 22) {
-          ForEach(tvActionItems) { item in
-            MachineActionBar(items: [item], layout: .stack)
-              .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
-              .focused($focusedActionId, equals: item.accessibilityID)
-          }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-      }
-      .padding(64)
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .navigationTitle("Machine")
-    .onAppear {
-      focusedActionId = tvActionItems.first?.accessibilityID
-    }
-  }
-
-  private var tvActionItems: [MachineActionItem] {
-    var items: [MachineActionItem] = []
-    if isRunning {
-      items.append(
-        MachineActionItem(
-          title: "Focus",
-          systemImage: "scope",
-          prominent: true,
-          accessibilityID: WWNA11y.machinesFocus,
-          accessibilityLabel: "Focus Session",
-          action: onFocus
-        )
-      )
-      items.append(
-        MachineActionItem(
-          title: "Stop",
-          systemImage: "stop.fill",
-          role: .destructive,
-          prominent: true,
-          tint: .red,
-          accessibilityID: WWNA11y.machinesStop,
-          accessibilityLabel: "Stop Session",
-          action: onStop
-        )
-      )
-    } else {
-      items.append(
-        MachineActionItem(
-          title: "Start",
-          systemImage: "play.fill",
-          prominent: true,
-          enabled: launchSupported,
-          accessibilityID: WWNA11y.machinesStart,
-          accessibilityLabel: "Start Machine",
-          action: onConnect
-        )
-      )
-    }
-    items.append(
-      MachineActionItem(
-        title: "Edit",
-        systemImage: "slider.horizontal.3",
-        accessibilityID: WWNA11y.machinesEdit,
-        accessibilityLabel: "Edit Profile",
-        action: onEdit
-      )
-    )
-    items.append(
-      MachineActionItem(
-        title: "Delete",
-        systemImage: "trash",
-        role: .destructive,
-        enabled: !isRunning,
-        accessibilityID: WWNA11y.machinesDelete,
-        accessibilityLabel: "Delete Profile",
-        action: {
-          onDelete()
-          dismiss()
-        }
-      )
-    )
-    return items
-  }
-
-  private var statusColor: Color {
-    switch status {
-    case .connected: return .green
-    case .connecting: return .blue
-    case .preparing: return .blue
-    case .degraded: return .orange
-    case .error: return .red
-    case .disconnected: return .secondary
-    }
-  }
-}
-#endif
 
 // MARK: - iOS Hosting Bridge
 
@@ -1704,6 +1534,7 @@ struct WWNMachinesGridViewLegacy: View {
   @ObservedObject private var tagStore = WWNMachineTagStore.shared
   @State private var editorDestination: MachineEditorDestination?
   @State private var searchQuery = ""
+  @State private var detailMachineId: String?
 
   private var profiles: [WWNMachineProfile] {
     let all = model.profiles
@@ -1720,46 +1551,16 @@ struct WWNMachinesGridViewLegacy: View {
 
   var body: some View {
     NavigationView {
-      VStack(spacing: 0) {
-        TextField("Search machines", text: $searchQuery)
-          .textFieldStyle(RoundedBorderTextFieldStyle())
-          .padding(12)
-        List {
-          if filterTagID != nil, let onClearTagFilter {
-            Button("Clear tag filter", action: onClearTagFilter)
-          }
-          ForEach(profiles, id: \.machineId) { profile in
-            VStack(alignment: .leading, spacing: 6) {
-              Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
-                .font(.headline)
-              Text(model.machineSubtitle(for: profile))
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-              HStack(spacing: 12) {
-                Button("Start") {
-                  model.connect(profile) { onConnect?() }
-                }
-                .disabled(!model.launchSupported(for: profile))
-                Button("Edit") { editorDestination = .edit(profile) }
-                Button("Delete") { model.delete(profile) }
-                  .foregroundColor(.red)
-              }
-              .font(.footnote)
-            }
-            .padding(.vertical, 4)
-          }
+      Group {
+        if let detailMachineId,
+           let profile = model.profiles.first(where: { $0.machineId == detailMachineId }) {
+          legacyMachineDetail(profile)
+        } else {
+          legacyMachineList
         }
       }
-      .navigationBarTitle("Machines")
-      .navigationBarItems(
-        trailing: Button(action: { editorDestination = .add }) {
-          Image(systemName: "plus")
-        }
-      )
     }
     .navigationViewStyle(StackNavigationViewStyle())
-    // iOS 13–15: card sheet (no detent API). Same background attachment as
-    // Modern so presentation stays reliable under NavigationView.
     .backport.machineEditorSheet(item: $editorDestination) { destination in
       switch destination {
       case .add:
@@ -1774,6 +1575,98 @@ struct WWNMachinesGridViewLegacy: View {
         }
       }
     }
+  }
+
+  private var legacyMachineList: some View {
+    VStack(spacing: 0) {
+      TextField("Search machines", text: $searchQuery)
+        .textFieldStyle(RoundedBorderTextFieldStyle())
+        .padding(12)
+      List {
+        if filterTagID != nil, let onClearTagFilter {
+          Button("Clear tag filter", action: onClearTagFilter)
+        }
+        ForEach(profiles, id: \.machineId) { profile in
+          Button {
+            detailMachineId = profile.machineId
+          } label: {
+            VStack(alignment: .leading, spacing: 6) {
+              Text(profile.name.isEmpty ? "Unnamed Machine" : profile.name)
+                .font(.headline)
+              Text(model.machineSubtitle(for: profile))
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+          }
+          .buttonStyle(PlainButtonStyle())
+        }
+      }
+    }
+    .navigationBarTitle("Machines")
+    .navigationBarItems(
+      trailing: Button(action: { editorDestination = .add }) {
+        Image(systemName: "plus")
+      }
+    )
+  }
+
+  private func legacyMachineDetail(_ profile: WWNMachineProfile) -> some View {
+    let status = model.status(for: profile.machineId)
+    let running = status == .connected || status == .connecting
+    return List {
+      Section {
+        Text(model.machineConfigurationSummary(for: profile))
+          .font(.footnote)
+          .foregroundColor(.secondary)
+      }
+      Section {
+        if running {
+          Button("Focus") { model.focusRunningMachine(profile) }
+          Button("Stop") { model.disconnect(profile) }
+            .foregroundColor(.red)
+        } else {
+          Button("Start") {
+            model.connect(profile) { onConnect?() }
+          }
+          .disabled(!model.launchSupported(for: profile))
+        }
+        Button("Edit") { editorDestination = .edit(profile) }
+        Button("Delete") {
+          model.delete(profile)
+          detailMachineId = nil
+        }
+        .foregroundColor(.red)
+        .disabled(running)
+      }
+      Section(header: Text("Pin")) {
+        let pinned = model.isPinned(profile.machineId)
+        Button(pinned ? "Unpin" : "Pin") {
+          _ = model.togglePinned(profile.machineId)
+        }
+      }
+      Section(header: Text("Tags")) {
+        ForEach(tagStore.tags) { tag in
+          let assigned = tagStore.isAssigned(tag.id, to: profile.machineId)
+          Button(action: {
+            tagStore.setAssigned(!assigned, tag: tag, to: profile.machineId)
+          }) {
+            HStack {
+              Text(tag.name)
+              Spacer()
+              if assigned {
+                Image(systemName: "checkmark")
+              }
+            }
+          }
+        }
+      }
+    }
+    .navigationBarTitle(profile.name.isEmpty ? "Machine" : profile.name)
+    .navigationBarItems(
+      leading: Button("Back") { detailMachineId = nil }
+    )
   }
 }
 #endif

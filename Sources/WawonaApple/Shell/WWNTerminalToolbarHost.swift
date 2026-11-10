@@ -4,6 +4,11 @@ import UIKit
 
 private func claimTerminalFocus(_ field: UITextField, tries: Int = 8) {
     DispatchQueue.main.async {
+        #if os(visionOS)
+        if let key = field as? WWNTerminalKeyField {
+            key.allowFocus = true
+        }
+        #endif
         let ready = field.window != nil && field.becomeFirstResponder()
         if !ready, tries > 1 { claimTerminalFocus(field, tries: tries - 1) }
     }
@@ -39,7 +44,9 @@ struct WWNTerminalToolbarHost: UIViewRepresentable {
         context.coordinator.parent = self
         uiView.coordinator = context.coordinator
         uiView.accessory?.wwnDelegate = context.coordinator
-        if autoFocus, context.coordinator.focusTick != focusTick || !uiView.isFirstResponder {
+        // Same as WWNTerminalKeyHost: only on focusTick change, never on
+        // every !isFirstResponder (steals Done / toolbar taps).
+        if autoFocus, context.coordinator.focusTick != focusTick {
             context.coordinator.focusTick = focusTick
             claimTerminalFocus(uiView)
         }
@@ -306,9 +313,18 @@ struct WWNTerminalKeyHost: UIViewRepresentable {
     func updateUIView(_ uiView: WWNTerminalKeyField, context: Context) {
         uiView.onInjectData = onInjectData
         uiView.onInjectText = onInjectText
-        if autoFocus, context.coordinator.focusTick != focusTick || !uiView.isFirstResponder {
+        // Claim only when focusTick changes. Seed coordinator at 0 so the
+        // first update with focusTick=0 does not open visionOS IME over Done.
+        // autoFocus=false (visionOS Terminal): claim only after grid tap
+        // bumps the tick. Never re-steal on !isFirstResponder (cancels Done).
+        if context.coordinator.focusTick != focusTick {
+            let previous = context.coordinator.focusTick
             context.coordinator.focusTick = focusTick
-            claimTerminalFocus(uiView)
+            if autoFocus {
+                claimTerminalFocus(uiView)
+            } else if focusTick > previous {
+                claimTerminalFocus(uiView)
+            }
         }
         if uiView.isFirstResponder, let bytes = WWNTerminalCursorMode.takePendingFocusIn() {
             onInjectData(bytes)
@@ -318,13 +334,18 @@ struct WWNTerminalKeyHost: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator {
-        var focusTick = -1
+        var focusTick = 0
     }
 }
 
-final class WWNTerminalKeyField: UITextField {
+final class WWNTerminalKeyField: UITextField, UITextFieldDelegate {
     var onInjectData: ((Data) -> Void)?
     var onInjectText: ((String) -> Void)?
+    /// visionOS: soft IME must not open until the grid bumps focusTick.
+    /// Ungated canBecomeFirstResponder lets AX/system steal focus and cover Done.
+    var allowFocus = false
+    /// Soft-IME is open for this field (Escape host must not steal focus).
+    static weak var focusedInstance: WWNTerminalKeyField?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -336,37 +357,93 @@ final class WWNTerminalKeyField: UITextField {
         spellCheckingType = .no
         smartQuotesType = .no; smartDashesType = .no; smartInsertDeleteType = .no
         alpha = 0.02
+        // Never absorb pointer/gaze hits. Stay first-responder for IME /
+        // hardware keys only. Keep out of AX tree so the Terminal sheet is
+        // not classified as one giant text-field (steals Done activate).
+        isAccessibilityElement = false
+        accessibilityElementsHidden = true
+        accessibilityIdentifier = "wwn.guestConsole.send"
+        delegate = self
+        addTarget(self, action: #selector(flushEditingText), for: .editingChanged)
+        returnKeyType = .default
+    }
+
+    /// Pass all hit tests through so Done / Clear / ^C stay tappable.
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        false
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
 
+    #if os(tvOS)
+    // Refuse first responder: tvOS UISystemInputViewController.setupKeyboard
+    // layout-loops the main thread even with an empty inputView.
+    override var canBecomeFirstResponder: Bool { false }
+    #elseif os(visionOS)
+    override var canBecomeFirstResponder: Bool { allowFocus }
+    #else
     override var canBecomeFirstResponder: Bool { true }
+    #endif
 
     override func becomeFirstResponder() -> Bool {
+        #if os(tvOS)
+        return false
+        #else
+        #if os(visionOS)
+        guard allowFocus else { return false }
+        #endif
         let was = isFirstResponder
         let ok = super.becomeFirstResponder(); if ok { WWNTerminalCursorMode.noteResponder(true) }
+        if ok {
+            Self.focusedInstance = self
+        }
         if ok, !was, let bytes = WWNTerminalCursorMode.focusReport(true) {
             onInjectData?(bytes)
         }
         return ok
+        #endif
     }
 
     override func resignFirstResponder() -> Bool {
+        flushEditingText()
         let was = isFirstResponder
         let ok = super.resignFirstResponder()
         if was, ok, let bytes = WWNTerminalCursorMode.focusReport(false) { onInjectData?(bytes) }
-        if was, ok { WWNTerminalCursorMode.noteResponder(false) }
+        if was, ok {
+            if Self.focusedInstance === self { Self.focusedInstance = nil }
+            WWNTerminalCursorMode.noteResponder(false)
+        }
         return ok
     }
 
-    override func insertText(_ text: String) {
-        onInjectText?(text)
+    override func insertText(_ incoming: String) {
+        // Soft IME path. Clear any AX-buffered `.text` so we do not double-send.
+        self.text = nil
+        onInjectText?(incoming)
+    }
+
+    /// agent-device / AX `type` sets `UITextField.text` and never calls
+    /// `insertText`. Flush that buffer into the PTY.
+    @objc private func flushEditingText() {
+        guard let pending = text, !pending.isEmpty else { return }
+        text = nil
+        onInjectText?(pending)
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        flushEditingText()
+        onInjectData?(Data([0x0D]))
+        return false
     }
 
     override var hasText: Bool { true }
 
     override func deleteBackward() {
+        if let pending = text, !pending.isEmpty {
+            text = String(pending.dropLast())
+            return
+        }
         onInjectData?(Data([0x7F]))
     }
 
@@ -397,4 +474,143 @@ final class WWNTerminalKeyField: UITextField {
         onInjectData?(Data(WWNTerminalKeyBytes.legacyBytes(command)))
     }
 }
+
+/// UIKit Done for visionOS / tvOS Terminal. SwiftUI `Button` actions are
+/// often swallowed while the soft IME owns first responder; this control
+/// resigns focus on tap / AX activate then runs `onDone`.
+struct WWNTerminalDoneButton: UIViewRepresentable {
+    var title: String = "Done"
+    var accessibilityId: String
+    var onDone: () -> Void
+
+    func makeUIView(context: Context) -> WWNTerminalDoneUIButton {
+        let button = WWNTerminalDoneUIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.accessibilityIdentifier = accessibilityId
+        button.accessibilityLabel = title
+        button.isAccessibilityElement = true
+        button.accessibilityTraits = .button
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.setContentHuggingPriority(.required, for: .vertical)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        button.setContentCompressionResistancePriority(.required, for: .vertical)
+        button.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.tapped),
+            for: .touchUpInside
+        )
+        context.coordinator.onDone = onDone
+        button.onActivate = { [weak coordinator = context.coordinator] in
+            coordinator?.tapped()
+        }
+        return button
+    }
+
+    func updateUIView(_ uiView: WWNTerminalDoneUIButton, context: Context) {
+        context.coordinator.onDone = onDone
+        uiView.onActivate = { [weak coordinator = context.coordinator] in
+            coordinator?.tapped()
+        }
+        uiView.setTitle(title, for: .normal)
+        uiView.accessibilityIdentifier = accessibilityId
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onDone: onDone)
+    }
+
+    final class Coordinator: NSObject {
+        var onDone: () -> Void
+        init(onDone: @escaping () -> Void) { self.onDone = onDone }
+
+        @objc func tapped() {
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder),
+                to: nil, from: nil, for: nil
+            )
+            DispatchQueue.main.async { [onDone] in onDone() }
+        }
+    }
+}
+
+final class WWNTerminalDoneUIButton: UIButton {
+    var onActivate: (() -> Void)?
+
+    override var intrinsicContentSize: CGSize {
+        #if os(visionOS)
+        CGSize(width: 96, height: 44)
+        #else
+        CGSize(width: 72, height: 36)
+        #endif
+    }
+
+    override func accessibilityActivate() -> Bool {
+        NSLog("WWNTerminalDoneUIButton: accessibilityActivate title=%@", title(for: .normal) ?? "")
+        onActivate?()
+        return true
+    }
+}
+
+#if os(visionOS) || os(tvOS)
+/// visionOS: Escape / Cmd-W / Cmd-. when pinch coords miss Done.
+/// tvOS: Siri Remote Menu press (and Escape on paired keyboard) leave Terminal.
+public struct WWNTerminalEscapeDismissHost: UIViewControllerRepresentable {
+    public var onEscape: () -> Void
+    public init(onEscape: @escaping () -> Void) { self.onEscape = onEscape }
+
+    public func makeUIViewController(context: Context) -> WWNTerminalEscapeDismissController {
+        let vc = WWNTerminalEscapeDismissController()
+        vc.onEscape = onEscape
+        return vc
+    }
+
+    public func updateUIViewController(
+        _ uiViewController: WWNTerminalEscapeDismissController,
+        context: Context
+    ) {
+        uiViewController.onEscape = onEscape
+    }
+}
+
+public final class WWNTerminalEscapeDismissController: UIViewController {
+    public var onEscape: (() -> Void)?
+
+    public override var canBecomeFirstResponder: Bool { true }
+
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        #if os(visionOS)
+        if WWNTerminalKeyField.focusedInstance == nil {
+            _ = becomeFirstResponder()
+        }
+        #else
+        _ = becomeFirstResponder()
+        #endif
+    }
+
+    public override var keyCommands: [UIKeyCommand]? {
+        [
+            UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(escape)),
+            UIKeyCommand(input: "w", modifierFlags: .command, action: #selector(escape)),
+            UIKeyCommand(input: ".", modifierFlags: .command, action: #selector(escape)),
+        ]
+    }
+
+    #if os(tvOS)
+    public override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if presses.contains(where: { $0.type == .menu }) {
+            NSLog("WWNIosGuestConsole: Menu press dismiss")
+            onEscape?()
+            return
+        }
+        super.pressesBegan(presses, with: event)
+    }
+    #endif
+
+    @objc private func escape() {
+        NSLog("WWNIosGuestConsole: Escape dismiss")
+        onEscape?()
+    }
+}
+#endif
 #endif

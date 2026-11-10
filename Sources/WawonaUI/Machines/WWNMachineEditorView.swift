@@ -106,10 +106,15 @@ struct WWNMachineEditorViewModern: View {
       Form {
         Section {
           WWNTvFormTextField("Display Name", text: $draft.name, prompt: "Enter a name")
-          Picker("Type", selection: $draft.type) {
-            machineTypeOptions
+          // Only Native Shell on tvOS. A one-option navigationLink Picker
+          // traps focus with no escape. Show the value; never push a list.
+          HStack {
+            Text("Type")
+            Spacer(minLength: 16)
+            Text("Native Shell")
+              .foregroundStyle(.secondary)
           }
-          .pickerStyle(.navigationLink)
+          .accessibilityElement(children: .combine)
           Toggle("Show Session Thumbnail", isOn: $draft.machineThumbnailEnabled)
         } header: {
           Text("Connection Profile")
@@ -119,12 +124,15 @@ struct WWNMachineEditorViewModern: View {
 
         if draft.type == kWWNMachineTypeNative {
           Section("Native Shell Session") {
-            Picker("Session", selection: $draft.nativeShellKind) {
-              Text("Terminal").tag(kWWNNativeShellKindTerminal)
-              Text("Wasm").tag(kWWNNativeShellKindWasm)
-              Text("Waypipe").tag(kWWNNativeShellKindWaypipe)
-            }
-            .pickerStyle(.navigationLink)
+            WWNTvChoicePicker(
+              title: "Session",
+              selection: $draft.nativeShellKind,
+              options: [
+                (kWWNNativeShellKindTerminal, "Terminal"),
+                (kWWNNativeShellKindWasm, "Wasm"),
+                (kWWNNativeShellKindWaypipe, "Waypipe"),
+              ]
+            )
             if draft.nativeShellKind == kWWNNativeShellKindTerminal
               || draft.nativeShellKind == kWWNNativeShellKindWaypipe {
               Toggle("Use SSH", isOn: $draft.nativeShellUseSSH)
@@ -140,12 +148,15 @@ struct WWNMachineEditorViewModern: View {
 
           if draft.nativeShellKind == kWWNNativeShellKindWasm {
             Section("Wasm") {
-              Picker("Source", selection: $draft.wasmLaunchMode) {
-                Text("Local file").tag("file")
-                Text("Search repo").tag("repo")
-                Text("Command").tag("command")
-              }
-              .pickerStyle(.navigationLink)
+              WWNTvChoicePicker(
+                title: "Source",
+                selection: $draft.wasmLaunchMode,
+                options: [
+                  ("file", "Local file"),
+                  ("repo", "Search repo"),
+                  ("command", "Command"),
+                ]
+              )
               if draft.wasmLaunchMode == "file" {
                 WWNTvFormTextField("Wasm module path", text: $draft.wasmModulePath)
               } else if draft.wasmLaunchMode == "repo" {
@@ -181,11 +192,14 @@ struct WWNMachineEditorViewModern: View {
               prompt: "22",
               numericRange: 1...65_535
             )
-            Picker("Auth", selection: $draft.sshAuthMethod) {
-              Text("Password").tag(0)
-              Text("Public Key").tag(1)
-            }
-            .pickerStyle(.navigationLink)
+            WWNTvChoicePicker(
+              title: "Auth",
+              selection: $draft.sshAuthMethod,
+              options: [
+                (0, "Password"),
+                (1, "Public Key"),
+              ]
+            )
             if draft.sshAuthMethod == 0 {
               WWNTvFormTextField("Password", text: $draft.sshPassword, secure: true)
             } else {
@@ -198,12 +212,15 @@ struct WWNMachineEditorViewModern: View {
           }
 
           Section("Waypipe") {
-            Picker("Compress", selection: $draft.waypipeCompress) {
-              Text("None").tag("none")
-              Text("LZ4").tag("lz4")
-              Text("Zstd").tag("zstd")
-            }
-            .pickerStyle(.navigationLink)
+            WWNTvChoicePicker(
+              title: "Compress",
+              selection: $draft.waypipeCompress,
+              options: [
+                ("none", "None"),
+                ("lz4", "LZ4"),
+                ("zstd", "Zstd"),
+              ]
+            )
             Toggle("Debug", isOn: $draft.waypipeDebug)
             Toggle("Login Shell", isOn: $draft.waypipeLoginShell)
             Toggle("XWayland", isOn: $draft.waypipeXwls)
@@ -219,12 +236,15 @@ struct WWNMachineEditorViewModern: View {
         Section {
           Toggle("Auto Scale", isOn: $draft.autoScale)
           Toggle("Respect Safe Area", isOn: $draft.respectSafeArea)
-          Picker("Display Backend", selection: $draft.compositorBackend) {
-            Text("Auto").tag("auto")
-            Text("Wayland (nested)").tag("wayland")
-            Text("DRM/KMS (iLand)").tag("drm")
-          }
-          .pickerStyle(.navigationLink)
+          WWNTvChoicePicker(
+            title: "Display Backend",
+            selection: $draft.compositorBackend,
+            options: [
+              ("auto", "Auto"),
+              ("wayland", "Wayland (nested)"),
+              ("drm", "DRM/KMS (iLand)"),
+            ]
+          )
           Button("Open Wawona Settings", systemImage: "gearshape") {
             openGlobalSettings()
           }
@@ -235,20 +255,16 @@ struct WWNMachineEditorViewModern: View {
         }
 
         Section {
-          Picker("Vulkan Driver", selection: $draft.vulkanDriver) {
-            Text("None").tag("none")
-            if PlatformCapabilities.allowsGpuStack {
-              Text("MoltenVK").tag("moltenvk")
-            }
-          }
-          .pickerStyle(.navigationLink)
-          Picker("OpenGL Driver", selection: $draft.openGLDriver) {
-            Text("None").tag("none")
-            if PlatformCapabilities.allowsGlesStack {
-              Text("ANGLE").tag("angle")
-            }
-          }
-          .pickerStyle(.navigationLink)
+          WWNTvChoicePicker(
+            title: "Vulkan Driver",
+            selection: $draft.vulkanDriver,
+            options: vulkanDriverOptions
+          )
+          WWNTvChoicePicker(
+            title: "OpenGL Driver",
+            selection: $draft.openGLDriver,
+            options: openGLDriverOptions
+          )
           Toggle("Enable DMABUF", isOn: $draft.dmabufEnabled)
           Toggle("Color Operations / HDR", isOn: $draft.colorOperations)
         } header: {
@@ -296,6 +312,9 @@ struct WWNMachineEditorViewModern: View {
       .background {
         Color(white: 0.07).ignoresSafeArea()
       }
+      // Form already applies tvOS overscan insets; extra margins shift rows
+      // and push the toolbar out of the Up focus path.
+      .focusSection()
       .navigationTitle(title)
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
@@ -305,6 +324,12 @@ struct WWNMachineEditorViewModern: View {
         ToolbarItem(placement: .confirmationAction) {
           Button("Save", action: save)
             .backport.glassProminentToolbarButton()
+        }
+      }
+      .onAppear {
+        // tvOS product surface: Native Shell only.
+        if draft.type != kWWNMachineTypeNative {
+          draft.type = kWWNMachineTypeNative
         }
       }
       .fullScreenCover(isPresented: $showEnvironmentEditor) {
@@ -333,13 +358,20 @@ struct WWNMachineEditorViewModern: View {
     .presentationBackground(Color(white: 0.07))
   }
 
-  @ViewBuilder
-  private var machineTypeOptions: some View {
-    Text("Native Shell").tag(kWWNMachineTypeNative)
-    #if !os(tvOS) && !os(watchOS)
-    Text("Virtual Machine").tag(kWWNMachineTypeVirtualMachine)
-    Text("Container").tag(kWWNMachineTypeContainer)
-    #endif
+  private var vulkanDriverOptions: [(value: String, label: String)] {
+    var options = [("none", "None")]
+    if PlatformCapabilities.allowsGpuStack {
+      options.append(("moltenvk", "MoltenVK"))
+    }
+    return options
+  }
+
+  private var openGLDriverOptions: [(value: String, label: String)] {
+    var options = [("none", "None")]
+    if PlatformCapabilities.allowsGlesStack {
+      options.append(("angle", "ANGLE"))
+    }
+    return options
   }
   #endif
 
@@ -517,9 +549,11 @@ private struct WWNTvFormTextField: View {
         Text(displayValue)
           .foregroundStyle(text.isEmpty ? .secondary : .primary)
           .multilineTextAlignment(.trailing)
+          .lineLimit(1)
       }
     }
-    .buttonStyle(.plain)
+    // Default Form row style: same focus platter and size as Picker/Toggle
+    // rows. `.plain` has no focus look and lets the row resize on focus.
     .alert(title, isPresented: $showEditor) {
       if secure {
         SecureField(prompt.isEmpty ? title : prompt, text: $draft)

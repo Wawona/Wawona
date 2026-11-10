@@ -83,7 +83,10 @@ struct MachineActionBar: View {
   }
 
   static var defaultLayout: MachineActionBarLayout {
-    #if os(tvOS) || os(watchOS)
+    #if os(watchOS) || os(tvOS)
+    // tvOS / watchOS: one full-width chip per row. Flow chips under a
+    // focusable card paint as nested buttons (card focus ring + chip
+    // capsules) and clip at 10ft.
     .stack
     #else
     .flow
@@ -115,25 +118,70 @@ private struct MachineActionChip: View {
   let item: MachineActionItem
   var expands: Bool
 
+  /// Stop / Delete: error red. Start (prominent, no role): system accent blue.
+  /// `borderedProminent` alone is gray glass on tvOS / visionOS without tint.
+  private var chipTint: Color? {
+    if let tint = item.tint { return tint }
+    if item.role == .destructive { return .red }
+    #if os(tvOS)
+    // tvOS accentColor is white, which matches the focus fill and hides the label.
+    if item.prominent { return .blue }
+    #else
+    if item.prominent { return Color.accentColor }
+    #endif
+    return nil
+  }
+
   var body: some View {
     Group {
+      #if os(tvOS)
+      // Filled capsule with its own focus look (white fill + lift). `.plain`
+      // alone shows no focus at all on tvOS.
+      Button(action: item.action) { label }
+        .buttonStyle(WWNTvCapsuleButtonStyle(fill: capsuleFill, expands: expands))
+      #elseif os(visionOS)
+      Button(action: item.action) {
+        label
+          .foregroundStyle(Color.white)
+          .padding(.horizontal, capsulePaddingH)
+          .padding(.vertical, capsulePaddingV)
+          .frame(maxWidth: expands ? .infinity : nil)
+          .background(Capsule().fill(capsuleFill))
+      }
+      .buttonStyle(PlainButtonStyle())
+      #else
       if item.prominent {
         WawonaButton(role: item.role, action: item.action) { label }
           .backport.borderedButton(prominent: true)
-          .accentColor(item.tint)
       } else {
         WawonaButton(role: item.role, action: item.action) { label }
           .backport.borderedButton()
-          .accentColor(item.tint)
       }
+      #endif
     }
-    .disabled(!item.enabled)
+    #if !os(tvOS) && !os(visionOS)
+    .modifier(MachineActionChipTint(color: chipTint))
     .backport.controlSize(controlSize)
+    #endif
+    .disabled(!item.enabled)
     .fixedSize(horizontal: !expands, vertical: true)
     .frame(maxWidth: expands ? .infinity : nil)
     .accessibility(identifier: item.accessibilityID)
     .accessibility(label: Text(item.accessibilityLabel))
   }
+
+  #if os(tvOS) || os(visionOS)
+  private var capsuleFill: Color {
+    if let tint = chipTint { return tint }
+    return Color.white.opacity(0.18)
+  }
+
+  #endif
+
+  #if os(visionOS)
+  private var capsulePaddingH: CGFloat { 14 }
+  private var capsulePaddingV: CGFloat { 8 }
+  #endif
 
   private var label: some View {
     HStack(spacing: 5) {
@@ -148,7 +196,7 @@ private struct MachineActionChip: View {
 
   private var labelFont: Font {
     #if os(tvOS)
-    .title3.weight(.semibold)
+    .body.weight(.semibold)
     #elseif os(watchOS)
     .body.weight(.semibold)
     #else
@@ -164,6 +212,21 @@ private struct MachineActionChip: View {
     #else
     .small
     #endif
+  }
+}
+
+/// Apply chip color after buttonStyle so prominent Stop stays error red, not
+/// the window accent (primary blue).
+private struct MachineActionChipTint: ViewModifier {
+  let color: Color?
+
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    if let color {
+      content.backport.tint(color)
+    } else {
+      content
+    }
   }
 }
 

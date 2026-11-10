@@ -8,6 +8,8 @@ enum WawonaA11y {
   static let welcomeAddFirst = "wwn.welcome.add_first"
 
   static let machinesRoot = "wwn.machines.root"
+  static let machinesDetail = "wwn.machines.detail"
+  static let machinesDetailBack = "wwn.machines.detail.back"
   static let machinesSettings = "wwn.machines.settings"
   static let machinesImages = "wwn.machines.images"
   static let machinesAdd = "wwn.machines.add"

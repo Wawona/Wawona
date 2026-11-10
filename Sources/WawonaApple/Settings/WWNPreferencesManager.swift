@@ -56,7 +56,39 @@ public final class WWNPreferencesManager: NSObject {
 
     @objc(preferredSharedRuntimeDir)
     public class func preferredSharedRuntimeDir() -> String {
-        #if os(iOS) || targetEnvironment(simulator)
+        #if os(watchOS)
+        // Device watch cannot mkdir `/tmp/wawona-<uid>`. Same contract as
+        // `WWNWatchShellEnvironment.watchRuntimeDir`.
+        #if targetEnvironment(simulator)
+        let udid = ProcessInfo.processInfo.environment["SIMULATOR_UDID"] ?? ""
+        let udidSuffix: String
+        if udid.count >= 8 {
+            udidSuffix = "_" + String(udid.prefix(8)).lowercased()
+        } else if !udid.isEmpty {
+            udidSuffix = "_" + udid.lowercased()
+        } else {
+            udidSuffix = ""
+        }
+        return "/tmp/wawona_sim_\(getuid())\(udidSuffix)"
+        #else
+        var tmp = NSTemporaryDirectory()
+        if tmp.hasSuffix("/") {
+            tmp.removeLast()
+        }
+        let candidate = (tmp as NSString).appendingPathComponent("wwn-rt")
+        let fm = FileManager.default
+        do {
+            try fm.createDirectory(
+                atPath: candidate,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            return candidate
+        } catch {
+            return tmp.isEmpty ? candidate : tmp
+        }
+        #endif
+        #elseif os(iOS) || targetEnvironment(simulator)
         let fm = FileManager.default
         #if targetEnvironment(simulator)
         // Per-UDID dir: multi-sim / multi-agent must not share one wayland-0

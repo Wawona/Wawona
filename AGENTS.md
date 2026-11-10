@@ -252,10 +252,13 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
 ## Nix fresh builds (hard)
 
 Products and Terminal are **Nix**. `nix run .#wawona-macos`, `nix run .#terminal`,
-or tip via `WAWONA_TEST_REBUILD=1` + `ensure-tip-wawona-macos.sh`. Never
-`/Applications/Wawona.app`. Never host-cargo `/tmp` overlays as the ship path.
-Never boot Vision Pro when the task is Wawona Terminal on macOS. Rule/skill:
-`wawona-nix-fresh-build`. Guide: `docs/compilation.md`. Query wwn-mcp first.
+or tip via `WAWONA_TEST_REBUILD=1` + `ensure-tip-wawona-macos.sh` /
+`ensure-tip-wawona-apple-sim.sh <tvOS|visionOS|iOS|watchOS>`. Never
+`/Applications/Wawona.app`. Never a morning `/tmp/wawona-*-tip` after
+`Sources/` edits (stamps `git-HEAD` + `product-FP`; binary mtime is not
+enough). Never host-cargo `/tmp` overlays as the ship path. Never boot Vision
+Pro when the task is Wawona Terminal on macOS. Rules: `wawona-nix-fresh-build`,
+`wawona-test-tip-app`. Guide: `docs/compilation.md`. Query wwn-mcp first.
 
 ## Local before CI (do not burn the queue)
 

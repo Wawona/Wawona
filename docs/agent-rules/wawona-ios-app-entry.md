@@ -54,6 +54,15 @@ Default Rust fallback `/tmp/wawona-<uid>` **fails to bind** on iOS Simulator
 (`Failed to bind primary socket at /tmp/wawona-503/wayland-0`). Then
 Machines Start reports `Host compositor failed to start.`
 
+**watchOS device:** sandbox cannot `mkdir` `/tmp/wawona-<uid>` (TestFlight
+build 226: `Failed to create XDG_RUNTIME_DIR /tmp/wawona-501`). Use
+`NSTemporaryDirectory()/wwn-rt` via `WWNWatchShellEnvironment.watchRuntimeDir`
+/ `preferredSharedRuntimeDir`. Keep the path short for `AF_UNIX` `sun_path`.
+Rust `ensure_runtime_dir` falls through to `TMPDIR/wwn-rt` when the env path
+is unwritable. **Wawona Terminal** on watch is in-process zsh + PTY: Start
+must **not** require the host compositor (`WatchMachineSessionBridge` skips
+`WWNCoreStart` for Native Shell Terminal). Wasm / waypipe still start it.
+
 ## iOS 13 SwiftUI floor (reminders)
 
 Do not use these without a backport / alternate path when `IPHONEOS_DEPLOYMENT_TARGET=13.0`:

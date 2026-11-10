@@ -50,16 +50,20 @@ struct WWNSettingsTextEditorView: View {
         .backport.groupedForm()
         #endif
         .backport.navigationTitle(title, inline: true)
+        // tvOS: explicit Cancel so Menu / focus can leave the push without
+        // hitting Settings Done on the root (HIG hierarchical settings).
         .backport.navigationActions {
             WawonaButton("Cancel") {
                 presentationMode.wrappedValue.dismiss()
             }
+            .accessibility(identifier: "wwn.settings.editor.cancel")
         } trailing: {
             WawonaButton("Save") {
                 onSave(text)
                 presentationMode.wrappedValue.dismiss()
             }
             .backport.borderedButton(prominent: true)
+            .accessibility(identifier: "wwn.settings.editor.save")
         }
         .onAppear {
             if text.isEmpty {

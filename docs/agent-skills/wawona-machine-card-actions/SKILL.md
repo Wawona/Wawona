@@ -1,50 +1,56 @@
 ---
 name: wawona-machine-card-actions
 description: >-
-  Machines grid card action chips (Focus/Stop/Edit/Delete/Start) must always
-  fit inside the card. Use when editing MachineActionBar, MachineActionFlow,
-  WWNMachineCardView, or any LazyVGrid machine card chrome on Apple.
+  Machines: select a grid/list card, then act on the machine detail view
+  (Start/Stop/Focus/Edit/Delete + Tags/Pin). Use when editing MachineActionBar,
+  WWNMachineDetailView, WWNMachineCardView, QuickConnectView, Android
+  MachineDetailScreen, or Linux home card detail.
 ---
 
-# Machine card action chips (fit inside card)
+# Machines: select then act (detail-first)
 
 Rule: `wawona-machine-card-actions`.
 RAG: `wwn-mcp/knowledge/wawona/machine-card-actions.md`.
-Code: `Sources/WawonaUI/Machines/MachineActionBar.swift`,
-`Sources/WawonaUI/Machines/WWNMachineCardView.swift`.
 
-Load `wawona-apple-swift` first for any Apple UI edit.
+Load `wawona-apple-swift` / `wawona-android-compose` before host UI edits.
 
-## Contract
+## Contract (all platforms)
 
-On a running machine card, **Focus, Stop, Edit, Delete** (and Start when idle)
-must all be fully visible inside the card glass. No clipped second row. Titles
-stay one line per chip; the **bar** wraps chips, never letters inside a chip.
+1. **Grid / list cards are select-only.** Tap/click opens machine detail.
+   No Start/Stop/Focus/Edit/Delete chips on the card face.
+2. **Detail owns actions.** Start, Stop, Focus, Edit, Delete, Tags, and Pin
+   live only on the machine detail screen (or Linux detail dialog).
+3. **tvOS / platforms without context menus:** Tags and Pin must appear in
+   detail. Do not rely on long-press / right-click for those.
 
-## Layout rules
+| Host | Detail host |
+|---|---|
+| Apple (macOS / iOS / iPadOS / tvOS / visionOS) | `WWNMachineDetailView` |
+| watchOS | `QuickConnectView` (+ Tags / Pin / Delete) |
+| Android | `MachineDetailScreen` |
+| Linux | Adw detail dialog from card click |
 
-1. **Always** `MachineActionFlow` for `.flow` (iOS 16+). Do **not** put
-   `ViewThatFits` around a single-line `HStack` first. That path measures the
-   Flow with infinite width, reports one-row height, then places a wrapped
-   second row that the card clips (Delete cut off).
-2. `MachineActionFlow.arrange`: when `proposal.width` is nil/infinite
-   (common under `LazyVGrid`), use `resolvedMaxWidth` that assumes ~2 chips
-   per line for 3-4 actions so `sizeThatFits` height includes wrap.
-3. Card content: `.fixedSize(horizontal: false, vertical: true)` **before**
-   `.frame(maxHeight: .infinity)` so the grid row grows with wrapped actions
-   instead of stretching and clipping.
+A11y: `wwn.machines.detail`, `wwn.machines.detail.back`.
 
-tvOS / watchOS stay `.stack` (one full-width chip per row).
+## Action bar layout (detail only)
 
-## Verify
+`MachineActionBar` / `MachineActionFlow` still apply **inside detail**:
 
-Start a Native Shell machine on iPhone Simulator. Card must show all four
-running actions fully inside the glass. Screenshot under
-`.agent-device/test-artifacts/`.
+1. `.flow` (phone / Mac / pad): always `MachineActionFlow`. Do not wrap with
+   `ViewThatFits` + single-line `HStack` first.
+2. Nil / infinite proposal width: `resolvedMaxWidth` (~2 chips/line).
+3. tvOS / watchOS detail: `.stack` (one full-width chip per row).
+
+## Card appearance
+
+Keep a visible one-point outline around each machine card in light and dark
+appearance. Adaptive semantic color (macOS separator; iOS primary at 16%/28%;
+Android `outlineVariant`). Never fixed white on light iOS fills.
 
 ## Hard rejects
 
-- `ViewThatFits { HStack { chips }; MachineActionFlow { chips } }` for card actions
-- Treating nil proposal width as infinity in a custom `Layout` wrap
-- Card chrome that clips overflow instead of growing height for wrap
-- Truncating or dropping Delete/Edit to "make the row fit"
+- Action chips on grid cards again
+- Hiding Tags/Pin on tvOS because there is no context menu
+- Nested `NavigationStack` on macOS split for detail (swap in-pane /
+  `detailMachineId` instead)
+- Truncating or dropping Delete/Edit to "make the row fit" on detail

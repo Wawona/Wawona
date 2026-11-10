@@ -618,6 +618,10 @@ struct WawonaMainWindowView: View {
     /// on iOS 16 NavigationSplitView (Display / Settings tap): AttributeGraph
     /// still reads the `ObservableObject` while `Published` writes.
     @State private var listSelection: WWNMainDestination? = .machines
+    #if os(tvOS)
+    /// The floating split sidebar does not take focus when it opens. Route it.
+    @FocusState private var tvSidebarFocus: WWNMainDestination?
+    #endif
     /// Settings cover sits above Machines. Keep the Machines split **mounted**
     /// so WindowGroup unified titlebar/toolbar stays intact; strip Machines
     /// toolbar items via `settingsOwnsWindowToolbar` and hide the split under
@@ -661,6 +665,11 @@ struct WawonaMainWindowView: View {
                 .opacity(router.isSettingsPresented ? 0 : 1)
                 .allowsHitTesting(!router.isSettingsPresented)
                 .accessibility(hidden: router.isSettingsPresented)
+                #if os(tvOS)
+                // Opacity and hit testing do not gate the focus engine. Without
+                // this the Remote can focus (and toggle) hidden Machines chrome.
+                .disabled(router.isSettingsPresented)
+                #endif
                 #if os(macOS)
                 .modifier(WWNMacStripSidebarToggleWhenSettings(
                     active: router.settingsOwnsWindowToolbar
@@ -684,6 +693,9 @@ struct WawonaMainWindowView: View {
                 ))
                 .zIndex(1)
                 .allowsHitTesting(router.isSettingsPresented)
+                #if os(tvOS)
+                .disabled(!router.isSettingsPresented)
+                #endif
             }
         }
         .onReceive(NotificationCenter.default.publisher(
@@ -806,7 +818,7 @@ struct WawonaMainWindowView: View {
         // Adopting Liquid Glass (WWDC25 / SDK 26): system NavigationSplitView
         // owns the floating glass sidebar. Never replace with an opaque HStack.
         // columnVisibility Binding (not `.constant(.all)`) restores Hide/Show.
-        // Detail uses backgroundExtensionEffect so Machines cards peek under glass.
+        // tvOS: never backgroundExtensionEffect (mirrors title strip + leading edge).
         if #available(tvOS 16.0, *) {
             NavigationSplitView(columnVisibility: Binding(
                 get: { showSidebar ? .all : .detailOnly },
@@ -814,10 +826,17 @@ struct WawonaMainWindowView: View {
             )) {
                 sidebar
                     .backport.sidebarWidth()
+                    .focusSection()
+                    .onMoveCommand { direction in
+                        if direction == .right { withAnimation { showSidebar = false } }
+                    }
             } detail: {
                 NavigationStack {
                     detail
-                        .backport.liquidGlassBackgroundExtension()
+                        // The Left-edge sidebar peek never takes focus, and Up
+                        // cannot reach the toolbar toggle. Menu opens the sidebar;
+                        // Menu from the sidebar still exits to the Home screen.
+                        .onExitCommand(perform: revealTvSidebar)
                         .toolbar {
                             ToolbarItem(placement: .navigationBarLeading) {
                                 Button {
@@ -836,6 +855,12 @@ struct WawonaMainWindowView: View {
                                 ))
                             }
                         }
+                        // While the sidebar overlays it, a focusable detail (toolbar
+                        // toggle included) pulls Up/Down out of the sidebar and the
+                        // system collapses it. Disable after `.toolbar` so the item
+                        // inherits it.
+                        .disabled(showSidebar)
+                        .focusSection()
                 }
             }
             .preferredColorScheme(.dark)
@@ -843,6 +868,13 @@ struct WawonaMainWindowView: View {
                 // Present: park sidebar (detailOnly) so Metal is not under glass.
                 if visible {
                     withAnimation { showSidebar = false }
+                }
+            }
+            .backport.onChange(of: showSidebar) { _, open in
+                guard open else { return }
+                // The sidebar is not focusable until its slide-in finishes.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    tvSidebarFocus = listSelection ?? .machines
                 }
             }
         } else {
@@ -895,10 +927,36 @@ struct WawonaMainWindowView: View {
         #endif
     }
 
+    #if os(tvOS)
+    private func revealTvSidebar() {
+        let target = listSelection ?? .machines
+        if showSidebar {
+            tvSidebarFocus = target
+        } else {
+            withAnimation { showSidebar = true }
+        }
+    }
+    #endif
+
     // MARK: - Sidebar
 
+    /// tvOS: List cells in the floating sidebar never take focus, so the rows
+    /// are plain focusable Buttons in a stack. Buttons drive `listSelection`.
+    @ViewBuilder
+    private func sidebarList<Rows: View>(@ViewBuilder _ rows: () -> Rows) -> some View {
+        #if os(tvOS)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 6) { rows() }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 20)
+        }
+        #else
+        List(selection: $listSelection) { rows() }
+        #endif
+    }
+
     private var sidebar: some View {
-        List(selection: $listSelection) {
+        sidebarList {
             // Safari-style "N Tabs" above Machines. Overview is a toolbar
             // button, not a flat sidebar row.
             nTabsSidebarSection
@@ -1166,6 +1224,9 @@ struct WawonaMainWindowView: View {
             #if os(macOS) || os(tvOS)
             Button {
                 listSelection = destination
+                #if os(tvOS)
+                withAnimation { showSidebar = false }
+                #endif
             } label: {
                 sidebarRowLabel(
                     title: title,
@@ -1174,7 +1235,12 @@ struct WawonaMainWindowView: View {
                     tagColorHex: tagColorHex
                 )
             }
+            #if os(tvOS)
+            .buttonStyle(WWNTvRowButtonStyle(selected: listSelection == destination))
+            .focused($tvSidebarFocus, equals: destination)
+            #else
             .buttonStyle(.plain)
+            #endif
             #else
             if #available(iOS 16.0, *) {
                 NavigationLink(value: destination) {
@@ -1201,8 +1267,9 @@ struct WawonaMainWindowView: View {
         }
         .tag(destination)
         #if os(tvOS)
-        // Inset enough for focus morph, not so much that titles clip.
-        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        // The row style paints focus; keep the List cell itself flat.
+        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+        .listRowBackground(Color.clear)
         #endif
         .accessibility(identifier: accessibilityID ?? "")
         .accessibility(addTraits: listSelection == destination ? .isSelected : [])

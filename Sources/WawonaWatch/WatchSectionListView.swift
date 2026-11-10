@@ -19,6 +19,8 @@ struct WatchSectionListView: View {
                     identifier: "wwn.watch.section.machines",
                     action: { choose(.machines) }
                 )
+                // Watch has no Machines toolbar. Keep Tab Overview as a
+                // section row; phone/pad/Mac use the toolbar button instead.
                 WatchSectionRow(
                     title: "Tab Overview",
                     systemImage: "square.on.square",

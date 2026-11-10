@@ -17,14 +17,17 @@ Platform tokens: GitHub `macOS` \| `iOS` \| `Android` \| `Linux`; stores also `t
 
 ## macOS GitHub DMG contents
 
-Volume root is **pkg-only**:
+Volume root is **drag-install**:
 
 | On the DMG | Not on the DMG |
 |---|---|
-| `WawonaAgent.pkg` | Loose `Wawona.app` |
-| `README.txt` (thank-you + install notes) | `/Applications` symlink |
+| `Wawona.app` (Developer ID signed + notarized) | `WawonaAgent.pkg` |
+| `/Applications` symlink | PrefPane |
+| `README.txt` (thank-you + install notes) | |
 
-`Wawona.app` is signed in `sign-staging/` and embedded in the pkg payload. Users install only via the pkg (LaunchAgents, System Settings pane, app, helpers).
+Users drag `Wawona.app` to Applications. Launch Agents / Login Item install from
+Settings → Permissions (or the first-launch offer). Optional maintainer pkg
+stays off the release volume (`scripts/macos-launch-agent-pkg.sh` for lab use).
 
 ## Hard rejects
 
@@ -32,7 +35,7 @@ Volume root is **pkg-only**:
 - Scheme-first store IPAs: `Wawona-iOS-{calver}-{build}.ipa`
 - Missing platform or arch on a ship basename
 - Passing a product-build short name straight to `gh release upload`, `upload_to_testflight`, or `upload_to_play_store` without renaming
-- Shipping a loose `Wawona.app` (or Applications symlink) on the GitHub Release DMG
+- Shipping `WawonaAgent.pkg` on the GitHub Release DMG (drag-install only)
 
 product-build short names are fine **inside** Gate artifacts only.
 

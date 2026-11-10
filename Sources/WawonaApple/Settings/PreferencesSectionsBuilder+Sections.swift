@@ -171,6 +171,7 @@ extension WWNPreferencesSectionsBuilder {
         case .desktop: return .systemTeal
         case .waypipe: return .systemGreen
         case .ssh: return .systemBlue
+        case .permissions: return .systemOrange
         case .about: return .systemPurple
         case .dependencies: return .systemBrown
         }
@@ -191,6 +192,7 @@ extension WWNPreferencesSectionsBuilder {
         case .desktop: return .systemTeal
         case .waypipe: return .systemGreen
         case .ssh: return .systemBlue
+        case .permissions: return .systemOrange
         case .about: return .systemPurple
         case .dependencies: return .systemBrown
         }

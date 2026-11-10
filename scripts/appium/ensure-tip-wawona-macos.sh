@@ -56,35 +56,15 @@ if [[ ! -x "$APP/Contents/MacOS/Wawona" ]]; then
 fi
 # Rebuild when product tree drifts vs tip stamp (committed or dirty).
 # Scripts/docs-only tip commits reuse the stamped binary. Clean launch
-# still runs every time. Product paths: Sources/, src/, Darwin/, Cargo.*,
-# flake, VERSION, xcodegen.
-PRODUCT_PATHS=(
-  Sources/ src/ Darwin/ Cargo.toml Cargo.lock Package.swift
-  dependencies/ xcodegen.nix flake.nix flake.lock VERSION
-)
+# still runs every time. Shared helper: require-tip-wawona-app.sh.
 if [[ "$need_build" -eq 0 ]]; then
-  stamped="$(cat "$STAMP" 2>/dev/null || true)"
-  if [[ -z "$stamped" ]]; then
+  if ! wawona_tip_stamp_is_fresh "$TIP_ROOT" "$ROOT"; then
     need_build=1
   else
-    product_dirty=0
-    if [[ "$stamped" != "$HEAD" ]]; then
-      if ! git diff --quiet "$stamped" "$HEAD" -- "${PRODUCT_PATHS[@]}" 2>/dev/null; then
-        product_dirty=1
-      fi
-    fi
-    # Uncommitted product edits vs working tree also force rebuild.
-    if ! git diff --quiet -- "${PRODUCT_PATHS[@]}" 2>/dev/null; then
-      product_dirty=1
-    fi
-    if ! git diff --quiet --cached -- "${PRODUCT_PATHS[@]}" 2>/dev/null; then
-      product_dirty=1
-    fi
-    if [[ "$product_dirty" -eq 1 ]]; then
-      need_build=1
-    elif [[ "$stamped" != "$HEAD" ]]; then
+    stamped="$(cat "$STAMP" 2>/dev/null || true)"
+    if [[ -n "$stamped" && "$stamped" != "$HEAD" ]]; then
       echo "ensure-tip-wawona-macos: HEAD moved (non-product); reuse tip binary" >&2
-      echo "$HEAD" >"$STAMP"
+      wawona_tip_write_stamp "$TIP_ROOT" "$ROOT"
     fi
   fi
 fi
@@ -178,12 +158,13 @@ if [[ "$need_build" -eq 1 ]]; then
     CODE_SIGN_IDENTITY=- \
     "${_xg_extra[@]}" \
     build >&2
-  echo "$HEAD" >"$STAMP"
+  wawona_tip_write_stamp "$TIP_ROOT" "$ROOT"
   ln -sfn "$APP" "$LINK"
 fi
 fi # WAWONA_TIP_SKIP_BUILD
 
 wawona_refuse_stale_app_path "$APP"
+wawona_require_tip_fresh_for_proof "$TIP_ROOT" "$ROOT" || exit 2
 export WAWONA_APP_PATH="$APP"
 export WAWONA_RUNTIME="$RUNTIME"
 export XDG_RUNTIME_DIR="$RUNTIME"

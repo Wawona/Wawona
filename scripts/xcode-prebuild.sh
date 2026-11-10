@@ -216,8 +216,12 @@ echo "Copied $derived/libwawona.a <- $active_out/lib/libwawona.a"
 # Tip path: prefer in-tree `nix-ghostty-vt` (engine.rs in libwawona). Overlay
 # libwawona_terminal.a only as fallback when the backend still ships the stub
 # ABI, or when WAWONA_TERMINAL_OVERLAY=1 forces it.
+# macOS has in-tree nix-ghostty-vt. Apple-mobile / tvOS / visionOS still ship
+# engine_stub until Ghostty VT cross archives exist; overlay when a matching
+# libwawona_terminal.a is provided (WAWONA_TERMINAL_LIB). Never overlay a
+# host-darwin Terminal.a into an Apple-mobile tip (wrong Mach-O platform).
 case "${TARGET_NAME:-}" in
-  Wawona-macOS)
+  Wawona-macOS|Wawona-iOS|Wawona-tvOS|Wawona-visionOS|Wawona-watchOS)
     _has_real_vt=0
     # Grep the archive directly. `strings | grep -q` under `set -o pipefail`
     # returns 141 (SIGPIPE) when grep exits early, so the if always fails.
@@ -233,12 +237,18 @@ case "${TARGET_NAME:-}" in
     else
       _term_a="${WAWONA_TERMINAL_LIB:-}"
       if [ -z "$_term_a" ] || [ ! -f "$_term_a" ]; then
-        for _cand in /nix/store/*/lib/libwawona_terminal.a; do
-          if [ -f "$_cand" ] && grep -Eqa 'VtEngine|libghostty_vt' "$_cand" 2>/dev/null; then
-            _term_a="$_cand"
-            break
-          fi
-        done
+        # Host macOS only: scan store for darwin Terminal.a. Mobile tips must
+        # set WAWONA_TERMINAL_LIB to a same-SDK archive.
+        case "${TARGET_NAME:-}" in
+          Wawona-macOS)
+            for _cand in /nix/store/*/lib/libwawona_terminal.a; do
+              if [ -f "$_cand" ] && grep -Eqa 'VtEngine|libghostty_vt' "$_cand" 2>/dev/null; then
+                _term_a="$_cand"
+                break
+              fi
+            done
+            ;;
+        esac
       fi
       _overlay_sh="${SRCROOT:-}/scripts/overlay-libghostty-term.sh"
       if [ ! -x "$_overlay_sh" ] && [ ! -f "$_overlay_sh" ]; then
@@ -251,7 +261,14 @@ case "${TARGET_NAME:-}" in
         rm -f "$derived/libwawona_terminal.a" "$derived/wwn-terminal-force-load.xcconfig"
       else
         rm -f "$derived/wwn-terminal-force-load.xcconfig"
-        echo "warning: no in-tree nix-ghostty-vt and no libwawona_terminal.a overlay" >&2
+        case "${TARGET_NAME:-}" in
+          Wawona-macOS)
+            echo "warning: no in-tree nix-ghostty-vt and no libwawona_terminal.a overlay" >&2
+            ;;
+          *)
+            echo "note: ${TARGET_NAME:-} uses engine_stub until Ghostty VT cross + WAWONA_TERMINAL_LIB" >&2
+            ;;
+        esac
       fi
     fi
     ;;

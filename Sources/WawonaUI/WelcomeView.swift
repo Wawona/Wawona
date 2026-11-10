@@ -9,6 +9,8 @@ import WawonaModel
 struct WelcomeAlertModifier: ViewModifier {
     @ObservedObject var preferences: WawonaPreferences
     @Binding var isPresented: Bool
+    /// macOS: set true after Continue so Login Item / agents alert can follow.
+    var onContinue: (() -> Void)? = nil
 
     func body(content: Content) -> some View {
         // iOS 13 Alert API (not the iOS 15+ ViewBuilder alert). Button title
@@ -22,6 +24,7 @@ struct WelcomeAlertModifier: ViewModifier {
                     preferences.hasCompletedWelcome = true
                     preferences.save()
                     isPresented = false
+                    onContinue?()
                 }
             )
         }
@@ -32,8 +35,13 @@ extension View {
     /// Present the first-launch welcome as a system alert over Machines.
     func wawonaWelcomeAlert(
         preferences: WawonaPreferences,
-        isPresented: Binding<Bool>
+        isPresented: Binding<Bool>,
+        onContinue: (() -> Void)? = nil
     ) -> some View {
-        modifier(WelcomeAlertModifier(preferences: preferences, isPresented: isPresented))
+        modifier(WelcomeAlertModifier(
+            preferences: preferences,
+            isPresented: isPresented,
+            onContinue: onContinue
+        ))
     }
 }

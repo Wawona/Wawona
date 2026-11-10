@@ -17,59 +17,63 @@ struct WWNMachineCardView: View {
     let scopeLabel: String
     let subtitle: String
     let summary: String
-    let launchSupported: Bool
     let isActive: Bool
-    let isRunning: Bool
     var isPinned: Bool = false
     var tags: [WWNMachineTag] = []
     /// When non-empty, matching characters in the machine name are highlighted.
     var searchQuery: String = ""
-    let onEdit: () -> Void
-    let onDelete: () -> Void
-    let onConnect: () -> Void
-    let onStop: () -> Void
-    let onFocus: () -> Void
+    /// Opens machine detail (Start/Stop/Focus/Edit/Delete + Tags/Pin).
+    let onSelect: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      headerBanner
+    Button(action: onSelect) {
+      VStack(alignment: .leading, spacing: 12) {
+        headerBanner
 
-      HStack(spacing: 6) {
-        statusBadge
-        Spacer(minLength: 4)
-        MachineStatusChip(text: scopeLabel.uppercased())
-        MachineStatusChip(text: typeLabel.uppercased())
-        if isActive {
-          MachineStatusChip(text: "ACTIVE")
+        HStack(spacing: 6) {
+          statusBadge
+          Spacer(minLength: 4)
+          MachineStatusChip(text: scopeLabel.uppercased())
+          MachineStatusChip(text: typeLabel.uppercased())
+          if isActive {
+            MachineStatusChip(text: "ACTIVE")
+          }
         }
+
+        Text(summary)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .lineLimit(3)
+          .multilineTextAlignment(.leading)
       }
-
-      Text(summary)
-        .font(.footnote)
-        .foregroundStyle(.secondary)
-        .lineLimit(3)
-
-      actionButtons
+      .padding(16)
+      .frame(maxWidth: .infinity, alignment: .topLeading)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+      #if os(tvOS)
+      // `.card` scales its label on focus, so the surface must live inside it.
+      .modifier(cardSurface)
+      #endif
     }
-    .padding(16)
-    // Hug content height so a wrapped Focus/Stop/Edit/Delete row is not
-    // clipped when LazyVGrid equalizes siblings. Stretch width only.
-    .frame(maxWidth: .infinity, alignment: .topLeading)
-    .fixedSize(horizontal: false, vertical: true)
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    .modifier(WWNMachineCardMaterial(cornerRadius: 20))
-    .overlay {
-      RoundedRectangle(cornerRadius: 20, style: .continuous)
-        .strokeBorder(cardOutlineColor, lineWidth: 1)
-    }
-    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    #if os(tvOS)
+    .buttonStyle(.card)
+    #else
+    .buttonStyle(.plain)
+    .modifier(cardSurface)
+    #endif
     // Hard: no `.shadow`, no Liquid Glass elevation on machine cards.
     #if !os(macOS)
     .animation(.spring(duration: 0.4, bounce: 0.24), value: status)
     #endif
     .wwnA11yContainer(WWNA11y.machinesCard(profile.machineId), label: descriptor)
+    .accessibilityHint("Opens machine actions")
+  }
+
+  private var cardSurface: WWNMachineCardSurface {
+    WWNMachineCardSurface(outline: cardOutlineColor)
   }
 
   /// What a person reads off this card. See `WWNA11y.machinesDescriptor`.
@@ -79,6 +83,14 @@ struct WWNMachineCardView: View {
 
   // MARK: - Header Banner
 
+  private var bannerHeight: CGFloat {
+    #if os(tvOS)
+    140
+    #else
+    90
+    #endif
+  }
+
   private var headerBanner: some View {
     let bannerShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
     return ZStack {
@@ -87,13 +99,13 @@ struct WWNMachineCardView: View {
         Image(nsImage: thumbnailImage)
           .resizable()
           .scaledToFill()
-          .frame(height: 90)
+          .frame(height: bannerHeight)
           .clipped()
         #else
         Image(uiImage: thumbnailImage)
           .resizable()
           .scaledToFill()
-          .frame(height: 90)
+          .frame(height: bannerHeight)
           .clipped()
         #endif
       } else {
@@ -105,14 +117,14 @@ struct WWNMachineCardView: View {
               endPoint: .bottomTrailing
             )
           )
-          .frame(height: 90)
+          .frame(height: bannerHeight)
       }
 
       // Flat scrim only. A bottom-heavy black gradient reads as a drop
       // shadow under the banner on light Machine Configuration cards.
       RoundedRectangle(cornerRadius: 16, style: .continuous)
         .fill(Color.black.opacity(0.28))
-        .frame(height: 90)
+        .frame(height: bannerHeight)
 
       HStack {
         VStack(alignment: .leading, spacing: 4) {
@@ -159,86 +171,8 @@ struct WWNMachineCardView: View {
       }
       .padding(.horizontal, 12)
     }
-    .frame(height: 90)
+    .frame(height: bannerHeight)
     .clipShape(bannerShape)
-  }
-
-  // MARK: - Action Buttons
-
-  private var actionButtons: some View {
-    MachineActionBar(items: actionItems)
-  }
-
-  private var actionItems: [MachineActionItem] {
-    var items: [MachineActionItem] = []
-    if isRunning {
-      items.append(
-        MachineActionItem(
-          title: "Focus",
-          systemImage: "scope",
-          accessibilityID: WWNA11y.machinesFocus,
-          accessibilityLabel: "Focus \(descriptor)",
-          action: onFocus
-        )
-      )
-      items.append(
-        MachineActionItem(
-          title: "Stop",
-          systemImage: "stop.fill",
-          role: .destructive,
-          prominent: true,
-          tint: .red,
-          accessibilityID: WWNA11y.machinesStop,
-          accessibilityLabel: "Stop \(descriptor)",
-          action: onStop
-        )
-      )
-    } else if isPreparing {
-      items.append(
-        MachineActionItem(
-          title: "Starting container...",
-          systemImage: "gearshape.2",
-          prominent: true,
-          enabled: false,
-          accessibilityID: WWNA11y.machinesStart,
-          accessibilityLabel: "Starting container \(descriptor)",
-          action: {}
-        )
-      )
-    } else {
-      items.append(
-        MachineActionItem(
-          title: "Start",
-          systemImage: "play.fill",
-          prominent: true,
-          enabled: launchSupported,
-          accessibilityID: WWNA11y.machinesStart,
-          accessibilityLabel: "Start \(descriptor)",
-          action: onConnect
-        )
-      )
-    }
-    items.append(
-      MachineActionItem(
-        title: "Edit",
-        systemImage: "slider.horizontal.3",
-        accessibilityID: WWNA11y.machinesEdit,
-        accessibilityLabel: "Edit \(descriptor)",
-        action: onEdit
-      )
-    )
-    items.append(
-      MachineActionItem(
-        title: "Delete",
-        systemImage: "trash",
-        role: .destructive,
-        enabled: !isRunning && !isPreparing,
-        accessibilityID: WWNA11y.machinesDelete,
-        accessibilityLabel: "Delete \(descriptor)",
-        action: onDelete
-      )
-    )
-    return items
   }
 
   // MARK: - Computed Properties
@@ -246,12 +180,12 @@ struct WWNMachineCardView: View {
   private var cardOutlineColor: Color {
     #if os(macOS)
     Color(nsColor: .separatorColor)
-    #else
+    #elseif os(tvOS)
     Color.white.opacity(0.22)
+    #else
+    Color.primary.opacity(colorScheme == .dark ? 0.28 : 0.16)
     #endif
   }
-
-  private var isPreparing: Bool { status == .preparing }
 
   private var iconName: String {
     switch profile.type {
@@ -363,11 +297,34 @@ private struct WWNMachineCardMaterial: ViewModifier {
     content.background {
       shape.fill(Color(UIColor.secondarySystemGroupedBackground))
     }
+    #elseif os(tvOS)
+    // Flat fill only. Never `.glassEffect` on cards (Adopting Liquid Glass:
+    // glass is for navigation chrome, not content cards).
+    // tvOS has no secondarySystemBackground; use an opaque dark surface.
+    content.background {
+      shape.fill(Color(white: 0.14))
+    }
     #else
     content.background {
       shape.fill(Color.secondary.opacity(0.12))
     }
     #endif
+  }
+}
+
+/// Fill, hairline, and clip for one machine card.
+#if os(iOS)
+@available(iOS 16.0, *)
+#endif
+private struct WWNMachineCardSurface: ViewModifier {
+  let outline: Color
+
+  func body(content: Content) -> some View {
+    let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+    content
+      .modifier(WWNMachineCardMaterial(cornerRadius: 20))
+      .overlay { shape.strokeBorder(outline, lineWidth: 1) }
+      .clipShape(shape)
   }
 }
 

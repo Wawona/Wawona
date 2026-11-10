@@ -28,7 +28,7 @@ public final class WWNPreferences: NSObject {
     }
 
     @objc public func rebuildSections() {
-        sections = WWNPreferencesSectionsBuilder.buildSections() as? [WWNPreferencesSection] ?? []
+        sections = WWNPreferencesSectionsBuilder.buildSections()
     }
 
     #if os(macOS)

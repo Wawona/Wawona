@@ -56,9 +56,9 @@ public struct EnvironmentVariablesView: View {
     /// Optional draft map for editors that save later.
     public var draftMachineOverrides: Binding<EnvironmentOverrideMap>?
 
-    #if os(iOS) || os(visionOS)
-    /// Global Settings chrome owns `[+][x]` when non-nil. Machine editors
-    /// leave this nil and keep a local trailing Add.
+    #if os(macOS) || os(iOS) || os(visionOS)
+    /// Global Settings chrome owns Add (+ Done / close) when non-nil.
+    /// Machine editors leave this nil and keep a local trailing Add.
     @Environment(\.wwnSettingsChromeBridge) private var chromeBridge
     #endif
 
@@ -117,9 +117,31 @@ public struct EnvironmentVariablesView: View {
         return EnvironmentCategory.allCases.filter { cats.contains($0) && $0 != .secrets }
     }
 
+    /// Global Settings macOS chrome already owns NSToolbar (Done / Add). A
+    /// second `.searchable` insert into that bar SIGTRAPs AppKit on macOS 26.
+    /// Keep toolbar searchable for machine editors / iOS; in-content field here.
+    /// tvOS also searches in content: toolbar `.searchable` there stacks a
+    /// second bar over the chip strip and the list.
+    private var usesInContentSearch: Bool {
+        #if os(macOS)
+        chromeBridge != nil
+        #elseif os(tvOS)
+        true
+        #else
+        false
+        #endif
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
+            if usesInContentSearch {
+                searchField
+            }
+
             categoryPicker
+            #if os(tvOS)
+                .focusSection()
+            #endif
 
             Divider()
 
@@ -183,15 +205,33 @@ public struct EnvironmentVariablesView: View {
             .listStyle(.inset)
             #endif
         }
-        .backport.searchable(text: $searchText, prompt: "Search variables")
+        .modifier(EnvironmentVariablesSearchableModifier(
+            searchText: $searchText,
+            enabled: !usesInContentSearch
+        ))
         .backport.navigationTitle("Environment Variables", inline: true)
         .accessibility(identifier: "wwn.settings.environment")
-        #if os(iOS) || os(visionOS)
+        #if os(macOS) || os(iOS) || os(visionOS)
         .wwnSettingsChromeAddRegistration(onAdd: { isPresentingNewSheet = true })
         .modifier(EnvironmentVariablesLocalAddToolbar(usesLocalAdd: chromeBridge == nil) {
             isPresentingNewSheet = true
         })
+        #elseif os(tvOS)
+        // One primary item. navigationActions with an empty leading slot
+        // rendered two overlapping toolbar buttons on tvOS.
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                // Section tint fills the primary toolbar platter and its label
+                // alike (blank cyan pill). Default tint matches Done.
+                Button("Add Variable", systemImage: "plus") {
+                    isPresentingNewSheet = true
+                }
+                .tint(nil)
+                .accessibility(identifier: "wwn.settings.environment.new")
+            }
+        }
         #else
+        // watch: local trailing Add (no Global Settings chrome bridge).
         .backport.navigationActions(trailingIsPrimary: true, leading: { EmptyView() }, trailing: {
                 WawonaButton {
                     isPresentingNewSheet = true
@@ -216,6 +256,36 @@ public struct EnvironmentVariablesView: View {
         }
     }
 
+    @ViewBuilder
+    private var searchField: some View {
+        #if os(tvOS)
+        TextField("Search variables", text: $searchText)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            .padding(.horizontal, 60)
+            .padding(.top, 20)
+            .padding(.bottom, 8)
+            .accessibility(identifier: "wwn.settings.environment.search")
+        #else
+        TextField("Search variables", text: $searchText)
+            .textFieldStyle(.roundedBorder)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+            .accessibility(identifier: "wwn.settings.environment.search")
+        #endif
+    }
+
+    /// tvOS accentColor is white, which made the selected All chip a white
+    /// fill under a white label.
+    private var allChipAccent: Color {
+        #if os(tvOS)
+        Color.blue
+        #else
+        Color.accentColor
+        #endif
+    }
+
     /// Horizontal filter chips (Android Env Vars FilterChip parity). Not a
     /// segmented control: long category lists stay scrollable with color marks.
     private var categoryPicker: some View {
@@ -224,7 +294,7 @@ public struct EnvironmentVariablesView: View {
                 EnvironmentCategoryChip(
                     title: "All",
                     systemImage: "square.grid.2x2",
-                    accent: Color.accentColor,
+                    accent: allChipAccent,
                     selected: selectedCategory == nil
                 ) {
                     selectedCategory = nil
@@ -240,10 +310,18 @@ public struct EnvironmentVariablesView: View {
                     }
                 }
             }
+            #if os(tvOS)
+            .padding(.horizontal, 60)
+            .padding(.vertical, 24)
+            #else
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
+            #endif
             .accessibility(identifier: "wwn.settings.environment.category")
         }
+        #if os(tvOS)
+        .scrollClipDisabled()
+        #endif
     }
 
     private func rowView(for row: ResolvedEnvironmentEntry) -> some View {
@@ -670,6 +748,22 @@ public struct EnvironmentVariableDetailView: View {
         }
         .backport.groupedForm()
         .backport.navigationTitle(variableName, inline: true)
+        #if os(tvOS)
+        // Explicit Back. Menu alone was unreliable; Settings Done on the root
+        // dismissed the whole host instead of popping this push.
+        .backport.navigationActions {
+            WawonaButton("Back") {
+                if let onBack {
+                    onBack()
+                } else {
+                    dismiss()
+                }
+            }
+            .accessibility(identifier: "wwn.settings.environment.detail.back")
+        } trailing: {
+            EmptyView()
+        }
+        #endif
         .accessibility(identifier: "wwn.settings.environment.detail")
     }
 
@@ -761,9 +855,24 @@ struct NewEnvironmentVariableSheet: View {
     }
 }
 
-#if os(iOS) || os(visionOS)
+/// Toolbar `.searchable` only when Global Settings is not already owning
+/// NSToolbar (macOS). Conditional omit avoids a second bar insert SIGTRAP.
+private struct EnvironmentVariablesSearchableModifier: ViewModifier {
+    @Binding var searchText: String
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.backport.searchable(text: $searchText, prompt: "Search variables")
+        } else {
+            content
+        }
+    }
+}
+
+#if os(macOS) || os(iOS) || os(visionOS)
 /// Machine-editor / standalone host: local trailing Add when Global Settings
-/// chrome bridge is absent.
+/// chrome bridge is absent. Inside Global Settings, Add lives on host chrome.
 private struct EnvironmentVariablesLocalAddToolbar: ViewModifier {
     let usesLocalAdd: Bool
     let onAdd: () -> Void
@@ -807,7 +916,8 @@ private struct EnvironmentCategorySectionHeader: View {
 }
 
 /// Colored category chip for Env Vars filter strip (Android FilterChip parity).
-/// Icon + title always use the section accent; selected adds fill + weight.
+/// Accent lives in the capsule fill. Label stays high-contrast: soft accent
+/// glyphs wash out on tvOS / visionOS when the chip is unfocused.
 private struct EnvironmentCategoryChip: View {
     let title: String
     let systemImage: String
@@ -820,20 +930,49 @@ private struct EnvironmentCategoryChip: View {
             HStack(spacing: 6) {
                 Image(systemName: systemImage)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(accent)
                 Text(title)
                     .font(.subheadline.weight(selected ? .semibold : .medium))
-                    .foregroundColor(accent)
             }
+            .foregroundColor(labelColor)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .backport.background(
-                selected ? accent.opacity(0.18) : accent.opacity(0.08),
-                in: Capsule()
-            )
+            .backport.background(fillColor, in: Capsule())
+            .overlay(chipStroke)
         }
+        #if os(tvOS)
+        .buttonStyle(WWNTvChipButtonStyle())
+        #else
         .buttonStyle(PlainButtonStyle())
+        #endif
         .accessibility(addTraits: selected ? .isSelected : [])
         .accessibility(label: Text(title))
+    }
+
+    /// visionOS / tvOS glass vibrancy makes soft accent glyphs disappear. White
+    /// on an opaque capsule stays readable; accent is the fill (selected) or
+    /// stroke (idle).
+    private var labelColor: Color {
+        #if os(tvOS) || os(visionOS)
+        Color.white
+        #else
+        accent
+        #endif
+    }
+
+    private var fillColor: Color {
+        #if os(tvOS) || os(visionOS)
+        selected ? accent : Color.black.opacity(0.55)
+        #else
+        selected ? accent.opacity(0.18) : accent.opacity(0.08)
+        #endif
+    }
+
+    @ViewBuilder
+    private var chipStroke: some View {
+        #if os(tvOS) || os(visionOS)
+        Capsule().strokeBorder(accent, lineWidth: selected ? 0 : 1.5)
+        #else
+        EmptyView()
+        #endif
     }
 }

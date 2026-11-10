@@ -63,6 +63,12 @@ const SETTINGS_SECTIONS: &[SettingsSectionMeta] = &[
         a11y_id: "wwn.settings.ssh",
     },
     SettingsSectionMeta {
+        name: "Permissions",
+        icon: "security-high-symbolic",
+        css_class: "wwn-icon-orange",
+        a11y_id: "wwn.settings.permissions",
+    },
+    SettingsSectionMeta {
         name: "About",
         icon: "dialog-information-symbolic",
         css_class: "wwn-icon-purple",
@@ -73,12 +79,6 @@ const SETTINGS_SECTIONS: &[SettingsSectionMeta] = &[
         icon: "application-x-executable-symbolic",
         css_class: "wwn-icon-brown",
         a11y_id: "wwn.settings.dependencies",
-    },
-    SettingsSectionMeta {
-        name: "Launch Agent",
-        icon: "system-run-symbolic",
-        css_class: "wwn-icon-slate",
-        a11y_id: "wwn.settings.launchagent",
     },
     SettingsSectionMeta {
         name: "Diagnostics",
@@ -701,10 +701,14 @@ pub fn build_settings_view_internal(
     deps_page.add(&deps_group);
     stack.add_named(&deps_page, Some("Dependencies"));
 
-    // MARK: Launch Agent
+    // MARK: Permissions (Launch Agent + updates)
     let agent_page = adw::PreferencesPage::new();
     let agent_group = adw::PreferencesGroup::new();
     agent_group.set_title("Launch Agent and Runtime");
+    agent_group.set_description(Some(
+        "systemd user units keep the compositor host socket alive across sessions. \
+         The tray unit owns the menubar indicator.",
+    ));
     let install_btn = gtk::Button::with_label("Install systemd user units + autostart");
     let uninstall_btn = gtk::Button::with_label("Uninstall systemd units + autostart");
     let start_host_btn = gtk::Button::with_label("Start compositor host service");
@@ -745,7 +749,31 @@ pub fn build_settings_view_internal(
         let _ = service::stop_tray_service();
     });
     agent_page.add(&agent_group);
-    stack.add_named(&agent_page, Some("Launch Agent"));
+
+    let updates_group = adw::PreferencesGroup::new();
+    updates_group.set_title("Updates");
+    updates_group.set_description(Some(
+        "Compare this build to the latest GitHub Release. Open the release page \
+         to download a newer AppImage.",
+    ));
+    let open_releases_btn = gtk::Button::with_label("Open latest release");
+    open_releases_btn.connect_clicked(|_| {
+        let _ = std::process::Command::new("xdg-open")
+            .arg("https://github.com/Wawona/Wawona/releases/latest")
+            .spawn();
+    });
+    add_row(&updates_group, "Check for Updates", &open_releases_btn);
+    agent_page.add(&updates_group);
+
+    let sb_note = adw::PreferencesGroup::new();
+    sb_note.set_title("Swinging Bridge");
+    sb_note.set_description(Some(
+        "Swinging Bridge is a macOS/Android client bridge into a Linux compositor. \
+         Not a Linux host permission.",
+    ));
+    agent_page.add(&sb_note);
+
+    stack.add_named(&agent_page, Some("Permissions"));
 
     // MARK: Diagnostics
     let diag_page = adw::PreferencesPage::new();

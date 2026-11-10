@@ -24,7 +24,7 @@ extension WWNRelay {
     }
 
     static func kind(for profile: WWNMachineProfile) -> String? {
-        let t = profile.type ?? ""
+        let t = profile.type
         if t == "virtual_machine" { return "vm" }
         if t == "container" { return "container" }
         if t == "wasm" { return "wasm" }

@@ -1,5 +1,6 @@
 //! Machines home. 1:1 with macOS `WWNMachinesGridView`: summary strip,
-//! adaptive card grid, and card actions (Start / Stop / Focus / Edit / Delete).
+//! adaptive card grid. Select a card to open detail (Start / Stop / Focus /
+//! Edit / Delete / Tags / Pin).
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -643,21 +644,7 @@ fn build_machine_card(
     summary.add_css_class("caption");
     summary.set_xalign(0.0);
 
-    // Content-sized chips, packed from the start. A FlowBox that hexpands
-    // gives every slot, including hidden Focus/Stop, an equal share of the
-    // card, which opens a wide gap between Start and Edit.
-    let actions = gtk::FlowBox::new();
-    actions.set_selection_mode(gtk::SelectionMode::None);
-    actions.set_column_spacing(6);
-    actions.set_row_spacing(6);
-    actions.set_min_children_per_line(1);
-    actions.set_max_children_per_line(8);
-    actions.set_homogeneous(false);
-    actions.set_hexpand(false);
-    actions.set_halign(gtk::Align::Start);
-    actions.set_valign(gtk::Align::Start);
-    actions.add_css_class("machine-actions-row");
-
+    // Action buttons stay unparented until the detail dialog owns them.
     let start_btn = button_with_icon_label("media-playback-start-symbolic", "Start");
     start_btn.add_css_class("suggested-action");
     crate::linux::ui::a11y::set_wwn_a11y(
@@ -703,21 +690,16 @@ fn build_machine_card(
     delete_btn.set_sensitive(!running);
 
     for btn in [&start_btn, &focus_btn, &stop_btn, &edit_btn, &delete_btn] {
-        btn.set_hexpand(false);
-        btn.set_halign(gtk::Align::Center);
-        actions.append(btn);
-        if let Some(slot) = btn.parent() {
-            slot.set_hexpand(false);
-            slot.set_halign(gtk::Align::Start);
-            slot.set_visible(btn.is_visible());
-        }
+        btn.set_hexpand(true);
+        btn.set_halign(gtk::Align::Fill);
+        btn.add_css_class("machine-action-button");
     }
 
     vbox.append(&banner);
     vbox.append(&badge_row);
     vbox.append(&summary);
-    vbox.append(&actions);
     frame.set_child(Some(&vbox));
+    frame.set_cursor(gtk::gdk::Cursor::from_name("pointer", None).as_ref());
 
     MachineCard {
         root: frame,
@@ -1071,6 +1053,207 @@ fn attach_card_actions(
     let edit_btn = card.edit_btn;
     let delete_btn = card.delete_btn;
 
+    // Detail dialog owns the action chips (grid cards are select-only).
+    let detail = adw::Dialog::new();
+    detail.set_title(if profile.name.is_empty() {
+        "Machine"
+    } else {
+        &profile.name
+    });
+    detail.set_content_width(420);
+    let detail_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    detail_box.set_margin_top(16);
+    detail_box.set_margin_bottom(16);
+    detail_box.set_margin_start(16);
+    detail_box.set_margin_end(16);
+    let summary_lbl = gtk::Label::new(Some(&machine_configuration_summary(profile)));
+    summary_lbl.set_wrap(true);
+    summary_lbl.set_xalign(0.0);
+    summary_lbl.add_css_class("dim-label");
+    detail_box.append(&summary_lbl);
+    for btn in [
+        &start_btn,
+        &focus_btn,
+        &stop_btn,
+        &edit_btn,
+        &delete_btn,
+    ] {
+        detail_box.append(*btn);
+    }
+
+    detail_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
+    let is_fav = profile.favorite;
+    let pin_label = if is_fav {
+        "Unpin"
+    } else {
+        "Pin"
+    };
+    let pin_btn = button_with_icon_label("view-pin-symbolic", pin_label);
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &pin_btn,
+        crate::linux::ui::a11y::id::MACHINES_PIN,
+        Some(pin_label),
+    );
+    pin_btn.set_hexpand(true);
+    pin_btn.set_halign(gtk::Align::Fill);
+    let mid_pin = profile.id.clone();
+    let state_pin = state.clone();
+    let parent_pin = parent.clone();
+    let shell_pin = shell.clone();
+    let sessions_pin = sessions.clone();
+    let on_edit_pin = on_edit.clone();
+    let on_open_term_pin = on_open_terminal.clone();
+    let detail_pin = detail.clone();
+    pin_btn.connect_clicked(move |_| {
+        detail_pin.close();
+        let mut app = state_pin.borrow_mut();
+        if let Some(mut p) = app.store.profile(&mid_pin).cloned() {
+            p.favorite = !is_fav;
+            let _ = app.store.upsert(p);
+        }
+        drop(app);
+        rebuild_home(RebuildHome {
+            shell: &shell_pin,
+            state: &state_pin,
+            parent: &parent_pin,
+            sessions: sessions_pin.clone(),
+            layout,
+            on_edit: on_edit_pin.clone(),
+            on_open_terminal: on_open_term_pin.clone(),
+        });
+    });
+    detail_box.append(&pin_btn);
+
+    let tags_header = gtk::Label::new(Some("Tags"));
+    tags_header.add_css_class("dim-label");
+    tags_header.set_xalign(0.0);
+    tags_header.set_margin_top(4);
+    detail_box.append(&tags_header);
+
+    let all_tags = state.borrow().tags.tags.clone();
+    for tag in all_tags {
+        let is_assigned = state.borrow().tags.is_assigned(&tag.id, &profile.id);
+        let tag_btn = tag_menu_item(&tag, is_assigned);
+        tag_btn.set_hexpand(true);
+        tag_btn.set_halign(gtk::Align::Fill);
+        let tag_id = tag.id.clone();
+        let mid_tag = profile.id.clone();
+        let state_tag = state.clone();
+        let parent_tag = parent.clone();
+        let shell_tag = shell.clone();
+        let sessions_tag = sessions.clone();
+        let on_edit_tag = on_edit.clone();
+        let on_open_term_tag = on_open_terminal.clone();
+        let detail_tag = detail.clone();
+        tag_btn.connect_clicked(move |_| {
+            detail_tag.close();
+            {
+                let mut app = state_tag.borrow_mut();
+                app.tags.toggle_assignment(&tag_id, &mid_tag);
+                app.persist_tags();
+            }
+            rebuild_home(RebuildHome {
+                shell: &shell_tag,
+                state: &state_tag,
+                parent: &parent_tag,
+                sessions: sessions_tag.clone(),
+                layout,
+                on_edit: on_edit_tag.clone(),
+                on_open_terminal: on_open_term_tag.clone(),
+            });
+        });
+        detail_box.append(&tag_btn);
+    }
+
+    let new_tag_btn = button_with_icon_label("list-add-symbolic", "New Tag...");
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &new_tag_btn,
+        crate::linux::ui::a11y::id::MACHINES_TAG_CREATE,
+        Some("New Tag"),
+    );
+    new_tag_btn.set_hexpand(true);
+    new_tag_btn.set_halign(gtk::Align::Fill);
+    let mid_newtag = profile.id.clone();
+    let state_newtag = state.clone();
+    let parent_newtag = parent.clone();
+    let shell_newtag = shell.clone();
+    let sessions_newtag = sessions.clone();
+    let on_edit_newtag = on_edit.clone();
+    let on_open_term_newtag = on_open_terminal.clone();
+    let detail_newtag = detail.clone();
+    new_tag_btn.connect_clicked(move |_| {
+        detail_newtag.close();
+        let parent_c = parent_newtag.clone();
+        let state_c = state_newtag.clone();
+        let shell_c = shell_newtag.clone();
+        let sessions_c = sessions_newtag.clone();
+        let on_edit_c = on_edit_newtag.clone();
+        let on_open_term_c = on_open_term_newtag.clone();
+        let on_rebuild_fn = Rc::new(move || {
+            rebuild_home(RebuildHome {
+                shell: &shell_c,
+                state: &state_c,
+                parent: &parent_c,
+                sessions: sessions_c.clone(),
+                layout,
+                on_edit: on_edit_c.clone(),
+                on_open_terminal: on_open_term_c.clone(),
+            });
+        });
+        show_new_tag_dialog(
+            &parent_newtag,
+            Some(&mid_newtag),
+            state_newtag.clone(),
+            on_rebuild_fn,
+        );
+    });
+    detail_box.append(&new_tag_btn);
+
+    let close_btn = gtk::Button::with_label("Back");
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &close_btn,
+        "wwn.machines.detail.back",
+        Some("Back"),
+    );
+    close_btn.set_hexpand(true);
+    close_btn.set_halign(gtk::Align::Fill);
+    let detail_close = detail.clone();
+    close_btn.connect_clicked(move |_| {
+        detail_close.close();
+    });
+    detail_box.append(&close_btn);
+    detail.set_child(Some(&detail_box));
+    crate::linux::ui::a11y::set_wwn_a11y(
+        &detail,
+        "wwn.machines.detail",
+        Some("Machine detail"),
+    );
+
+    let present_detail = {
+        let detail = detail.clone();
+        let parent = parent.clone();
+        Rc::new(move || {
+            detail.present(Some(&parent));
+        }) as Rc<dyn Fn()>
+    };
+
+    let present_click = present_detail.clone();
+    let click = gtk::GestureClick::new();
+    click.set_button(1);
+    click.connect_released(move |gesture, n_press, _x, _y| {
+        if n_press != 1 {
+            return;
+        }
+        if let Some(event) = gesture.current_event() {
+            if event.modifier_state().contains(gtk::gdk::ModifierType::CONTROL_MASK) {
+                return;
+            }
+        }
+        present_click();
+    });
+    card.root.add_controller(click);
+
     let mid = profile.id.clone();
     let mname = profile.name.clone();
     let shell_r = shell.clone();
@@ -1079,7 +1262,9 @@ fn attach_card_actions(
     let sessions_r = sessions.clone();
     let on_edit_r = on_edit.clone();
     let on_open_term_r = on_open_terminal.clone();
+    let detail_start = detail.clone();
     start_btn.connect_clicked(move |_| {
+        detail_start.close();
         let terminal_cmd = {
             let app = state_r.borrow();
             app.store
@@ -1204,7 +1389,9 @@ fn attach_card_actions(
     let sessions_f = sessions.clone();
     let on_edit_f = on_edit.clone();
     let on_open_term_f = on_open_terminal.clone();
+    let detail_focus = detail.clone();
     focus_btn.connect_clicked(move |_| {
+        detail_focus.close();
         let terminal_cmd = {
             let app = state_f.borrow();
             app.store
@@ -1238,7 +1425,9 @@ fn attach_card_actions(
     let sessions_s = sessions.clone();
     let on_edit_s = on_edit.clone();
     let on_open_term_s = on_open_terminal.clone();
+    let detail_stop = detail.clone();
     stop_btn.connect_clicked(move |_| {
+        detail_stop.close();
         stop_machine(&mid, &sessions_s);
         let mut app = state_s.borrow_mut();
         if app.store.active_machine_id.as_deref() == Some(mid.as_str()) {
@@ -1262,7 +1451,9 @@ fn attach_card_actions(
     let shell_e = shell.clone();
     let sessions_e = sessions.clone();
     let on_edit_e = on_edit.clone();
+    let detail_edit = detail.clone();
     edit_btn.connect_clicked(move |_| {
+        detail_edit.close();
         if let Some(cb) = on_edit_e.as_ref() {
             cb(existing.clone());
         } else {
@@ -1286,7 +1477,9 @@ fn attach_card_actions(
     let sessions_d = sessions.clone();
     let on_edit_d = on_edit.clone();
     let on_open_term_d = on_open_terminal.clone();
+    let detail_delete = detail.clone();
     delete_btn.connect_clicked(move |_| {
+        detail_delete.close();
         let mut app = state_d.borrow_mut();
         let _ = app.store.delete(&mid);
         drop(app);
@@ -1301,292 +1494,28 @@ fn attach_card_actions(
         });
     });
 
-    // Right-click / long-press context menu
-    let popover = gtk::Popover::new();
-    popover.set_parent(&card.root);
-    popover.set_has_arrow(true);
-
-    let menu_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    menu_box.set_margin_start(6);
-    menu_box.set_margin_end(6);
-    menu_box.set_margin_top(6);
-    menu_box.set_margin_bottom(6);
-
-    let is_fav = profile.favorite;
-    let pin_label = if is_fav {
-        "Unpin Machine"
-    } else {
-        "Pin Machine"
-    };
-    let pin_item = popover_menu_button("view-pin-symbolic", pin_label, false);
-    if is_fav {
-        if let Some(content) = pin_item.child().and_then(|c| c.downcast::<gtk::Box>().ok()) {
-            if let Some(img) = content
-                .first_child()
-                .and_then(|c| c.downcast::<gtk::Image>().ok())
-            {
-                img.add_css_class("wwn-icon-orange");
-            }
-        }
-    }
-    let mid_pin = profile.id.clone();
-    let state_pin = state.clone();
-    let parent_pin = parent.clone();
-    let shell_pin = shell.clone();
-    let sessions_pin = sessions.clone();
-    let on_edit_pin = on_edit.clone();
-    let on_open_term_pin = on_open_terminal.clone();
-    let popover_pin = popover.clone();
-    pin_item.connect_clicked(move |_| {
-        popover_pin.popdown();
-        let mut app = state_pin.borrow_mut();
-        if let Some(mut p) = app.store.profile(&mid_pin).cloned() {
-            p.favorite = !is_fav;
-            let _ = app.store.upsert(p);
-        }
-        drop(app);
-        rebuild_home(RebuildHome {
-            shell: &shell_pin,
-            state: &state_pin,
-            parent: &parent_pin,
-            sessions: sessions_pin.clone(),
-            layout,
-            on_edit: on_edit_pin.clone(),
-            on_open_terminal: on_open_term_pin.clone(),
-        });
-    });
-    menu_box.append(&pin_item);
-
-    // TAGS section
-    menu_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-
-    let tags_header = gtk::Label::new(Some("TAGS"));
-    tags_header.add_css_class("dim-label");
-    tags_header.add_css_class("caption");
-    tags_header.set_xalign(0.0);
-    tags_header.set_margin_start(8);
-    tags_header.set_margin_top(4);
-    tags_header.set_margin_bottom(2);
-    menu_box.append(&tags_header);
-
-    let all_tags = state.borrow().tags.tags.clone();
-    for tag in all_tags {
-        let is_assigned = state.borrow().tags.is_assigned(&tag.id, &profile.id);
-        let tag_btn = tag_menu_item(&tag, is_assigned);
-
-        let tag_id = tag.id.clone();
-        let mid_tag = profile.id.clone();
-        let state_tag = state.clone();
-        let parent_tag = parent.clone();
-        let shell_tag = shell.clone();
-        let sessions_tag = sessions.clone();
-        let on_edit_tag = on_edit.clone();
-        let on_open_term_tag = on_open_terminal.clone();
-        let popover_tag = popover.clone();
-        tag_btn.connect_clicked(move |_| {
-            popover_tag.popdown();
-            {
-                let mut app = state_tag.borrow_mut();
-                app.tags.toggle_assignment(&tag_id, &mid_tag);
-                app.persist_tags();
-            }
-            rebuild_home(RebuildHome {
-                shell: &shell_tag,
-                state: &state_tag,
-                parent: &parent_tag,
-                sessions: sessions_tag.clone(),
-                layout,
-                on_edit: on_edit_tag.clone(),
-                on_open_terminal: on_open_term_tag.clone(),
-            });
-        });
-        menu_box.append(&tag_btn);
-    }
-
-    let new_tag_btn = popover_menu_button("list-add-symbolic", "New Tag...", false);
-    let mid_newtag = profile.id.clone();
-    let state_newtag = state.clone();
-    let parent_newtag = parent.clone();
-    let shell_newtag = shell.clone();
-    let sessions_newtag = sessions.clone();
-    let on_edit_newtag = on_edit.clone();
-    let on_open_term_newtag = on_open_terminal.clone();
-    let popover_newtag = popover.clone();
-    new_tag_btn.connect_clicked(move |_| {
-        popover_newtag.popdown();
-        let parent_c = parent_newtag.clone();
-        let state_c = state_newtag.clone();
-        let shell_c = shell_newtag.clone();
-        let sessions_c = sessions_newtag.clone();
-        let on_edit_c = on_edit_newtag.clone();
-        let on_open_term_c = on_open_term_newtag.clone();
-        let on_rebuild_fn = Rc::new(move || {
-            rebuild_home(RebuildHome {
-                shell: &shell_c,
-                state: &state_c,
-                parent: &parent_c,
-                sessions: sessions_c.clone(),
-                layout,
-                on_edit: on_edit_c.clone(),
-                on_open_terminal: on_open_term_c.clone(),
-            });
-        });
-        show_new_tag_dialog(
-            &parent_newtag,
-            Some(&mid_newtag),
-            state_newtag.clone(),
-            on_rebuild_fn,
-        );
-    });
-    menu_box.append(&new_tag_btn);
-
-    menu_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-
-    let edit_item = popover_menu_button("emblem-system-symbolic", "Edit Profile", false);
-    let existing_c = profile.clone();
-    let parent_edit = parent.clone();
-    let state_edit = state.clone();
-    let shell_edit = shell.clone();
-    let sessions_edit = sessions.clone();
-    let on_edit_item = on_edit.clone();
-    let popover_edit = popover.clone();
-    edit_item.connect_clicked(move |_| {
-        popover_edit.popdown();
-        if let Some(cb) = on_edit_item.as_ref() {
-            cb(existing_c.clone());
-        } else {
-            editor::show_editor(
-                &parent_edit,
-                &state_edit,
-                Some(existing_c.clone()),
-                existing_c.machine_type,
-                &shell_edit,
-                sessions_edit.clone(),
-                layout,
-                None,
-            );
-        }
-    });
-    menu_box.append(&edit_item);
-
-    let dup_item = popover_menu_button("edit-copy-symbolic", "Duplicate Machine", false);
-    let profile_dup = profile.clone();
-    let state_dup = state.clone();
-    let parent_dup = parent.clone();
-    let shell_dup = shell.clone();
-    let sessions_dup = sessions.clone();
-    let on_edit_dup = on_edit.clone();
-    let on_open_term_dup = on_open_terminal.clone();
-    let popover_dup = popover.clone();
-    dup_item.connect_clicked(move |_| {
-        popover_dup.popdown();
-        let mut new_p = profile_dup.clone();
-        new_p.id = crate::domain::machine_profile::new_uuid();
-        new_p.name = format!("{} (Copy)", profile_dup.name);
-        let mut app = state_dup.borrow_mut();
-        let _ = app.store.upsert(new_p);
-        drop(app);
-        rebuild_home(RebuildHome {
-            shell: &shell_dup,
-            state: &state_dup,
-            parent: &parent_dup,
-            sessions: sessions_dup.clone(),
-            layout,
-            on_edit: on_edit_dup.clone(),
-            on_open_terminal: on_open_term_dup.clone(),
-        });
-    });
-    menu_box.append(&dup_item);
-
-    menu_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-
-    let (running, _) = machine_session_status(&profile.id, &sessions);
-    let del_item = popover_menu_button("user-trash-symbolic", "Delete Machine", true);
-    if running {
-        del_item.set_sensitive(false);
-    } else {
-        let mid_del = profile.id.clone();
-        let state_del = state.clone();
-        let parent_del = parent.clone();
-        let shell_del = shell.clone();
-        let sessions_del = sessions.clone();
-        let on_edit_del = on_edit.clone();
-        let on_open_term_del = on_open_terminal.clone();
-        let popover_del = popover.clone();
-        del_item.connect_clicked(move |_| {
-            popover_del.popdown();
-            let mut app = state_del.borrow_mut();
-            let _ = app.store.delete(&mid_del);
-            drop(app);
-            rebuild_home(RebuildHome {
-                shell: &shell_del,
-                state: &state_del,
-                parent: &parent_del,
-                sessions: sessions_del.clone(),
-                layout,
-                on_edit: on_edit_del.clone(),
-                on_open_terminal: on_open_term_del.clone(),
-            });
-        });
-    }
-    menu_box.append(&del_item);
-
-    popover.set_child(Some(&menu_box));
-
+    // Right-click / long-press also open detail (no separate context menu).
+    let present_rc = present_detail.clone();
     let right_click = gtk::GestureClick::new();
     right_click.set_button(3);
     right_click.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let popover_rc = popover.clone();
-    right_click.connect_pressed(move |_, _, x, y| {
-        let rect = gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1);
-        popover_rc.set_pointing_to(Some(&rect));
-        popover_rc.popup();
+    right_click.connect_pressed(move |_, _, _, _| {
+        present_rc();
     });
     card.root.add_controller(right_click);
 
-    // Context menu:
-    // 1. Right-click for mouse / KBM input.
-    // 2. Touch-only long press (tap-and-hold) for touchscreen input.
-    // Mouse click-and-hold is explicitly ignored so click-and-drag or deliberate clicks never trigger it.
+    let present_lp = present_detail.clone();
     let long_press = gtk::GestureLongPress::new();
     long_press.set_touch_only(true);
-    let popover_lp = popover.clone();
-    long_press.connect_pressed(move |gesture, x, y| {
+    long_press.connect_pressed(move |gesture, _, _| {
         if let Some(dev) = gesture.current_event_device() {
             if dev.source() != gtk::gdk::InputSource::Touchscreen {
                 return;
             }
         }
-        let rect = gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1);
-        popover_lp.set_pointing_to(Some(&rect));
-        popover_lp.popup();
+        present_lp();
     });
     card.root.add_controller(long_press);
-}
-
-fn popover_menu_button(icon: &str, label: &str, is_destructive: bool) -> gtk::Button {
-    let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    content.set_margin_start(8);
-    content.set_margin_end(8);
-    content.set_margin_top(4);
-    content.set_margin_bottom(4);
-    let image = gtk::Image::from_icon_name(icon);
-    image.set_pixel_size(16);
-    if is_destructive {
-        image.add_css_class("destructive-action");
-    }
-    let text = gtk::Label::new(Some(label));
-    text.set_xalign(0.0);
-    text.set_hexpand(true);
-    if is_destructive {
-        text.add_css_class("destructive-action");
-    }
-    content.append(&image);
-    content.append(&text);
-    let btn = gtk::Button::new();
-    btn.add_css_class("flat");
-    btn.set_child(Some(&content));
-    btn
 }
 
 fn tag_menu_item(tag: &crate::linux::tag_store::MachineTag, is_assigned: bool) -> gtk::Button {

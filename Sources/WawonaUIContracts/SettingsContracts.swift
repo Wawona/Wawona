@@ -169,6 +169,8 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
     case desktop
     case waypipe
     case ssh
+    /// Launch Agents / Login Items / TCC / Check for Updates (desktop hosts).
+    case permissions
     case about
     case dependencies
 
@@ -187,6 +189,7 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
         case .desktop: return "Desktop"
         case .waypipe: return "Waypipe"
         case .ssh: return "SSH"
+        case .permissions: return "Permissions"
         case .about: return "About"
         case .dependencies: return "Dependencies"
         }
@@ -224,6 +227,7 @@ public enum GlobalSettingsSectionID: String, Sendable, CaseIterable, Hashable {
         case .desktop: return "macwindow.on.rectangle"
         case .waypipe: return "arrow.triangle.2.circlepath"
         case .ssh: return "lock.shield"
+        case .permissions: return "checkmark.shield"
         case .about: return "info.circle"
         case .dependencies: return "shippingbox"
         }
@@ -304,6 +308,22 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
     case watchSendDocument
     case watchOpenDocumentsHint
     case dependenciesInventory
+    /// Background compositor LaunchAgent / systemd unit status.
+    case compositorAgent
+    /// Menubar / tray agent status.
+    case menubarAgent
+    /// Login Item / open-at-login.
+    case loginItem
+    /// Allow periodic GitHub release checks.
+    case checkForUpdates
+    /// Run one update check now.
+    case checkForUpdatesNow
+    /// Download / open the newer release when available.
+    case installUpdate
+    /// Swinging Bridge Screen Recording (macOS) / MediaProjection (Android).
+    case swingingBridgeScreenCapture
+    /// Swinging Bridge Accessibility.
+    case swingingBridgeAccessibility
 }
 
 /// Single catalog for global Wawona Settings. Every host (Apple, Android,
@@ -341,7 +361,7 @@ public struct GlobalSettingsCatalog: Sendable {
     /// Legacy filter for Desktop / About / Dependencies only. Prefer
     /// `visibleSections` for the sole in-app Global Settings host.
     public static let appSidebarSectionIDs: Set<GlobalSettingsSectionID> = [
-        .desktop, .about, .dependencies,
+        .desktop, .permissions, .about, .dependencies,
     ]
 
     public static func visibleSections(for host: GlobalSettingsHost) -> [GlobalSettingsSectionID] {
@@ -375,7 +395,7 @@ public struct GlobalSettingsCatalog: Sendable {
         case .macOS:
             return [
                 .display, .input, .graphics, .environment,
-                .iCloudSync, .desktop, .waypipe, .ssh, .about,
+                .iCloudSync, .desktop, .waypipe, .ssh, .permissions, .about,
                 .dependencies,
             ]
         case .iOS:
@@ -398,12 +418,12 @@ public struct GlobalSettingsCatalog: Sendable {
         case .android:
             return [
                 .display, .input, .graphics, .environment,
-                .desktop, .waypipe, .ssh, .about, .dependencies,
+                .desktop, .waypipe, .ssh, .permissions, .about, .dependencies,
             ]
         case .linux:
             return [
                 .display, .input, .graphics, .environment,
-                .waypipe, .ssh, .about, .dependencies,
+                .waypipe, .ssh, .permissions, .about, .dependencies,
             ]
         case .tvOS:
             return [
@@ -603,6 +623,27 @@ public struct GlobalSettingsCatalog: Sendable {
                 .sshHost, .sshUser, .sshPort, .sshAuthMethod, .sshPassword,
                 .sshKeyType, .sshKeyPath, .sshKeyPassphrase, .sshGenerateKey,
             ]
+        case .permissions:
+            switch host {
+            case .macOS:
+                return [
+                    .compositorAgent, .menubarAgent, .loginItem,
+                    .checkForUpdates, .checkForUpdatesNow, .installUpdate,
+                    .swingingBridgeScreenCapture, .swingingBridgeAccessibility,
+                ]
+            case .linux:
+                return [
+                    .compositorAgent, .menubarAgent, .loginItem,
+                    .checkForUpdates, .checkForUpdatesNow, .installUpdate,
+                ]
+            case .android:
+                return [
+                    .checkForUpdates, .checkForUpdatesNow, .installUpdate,
+                    .swingingBridgeScreenCapture, .swingingBridgeAccessibility,
+                ]
+            default:
+                return []
+            }
         case .about:
             return [
                 .aboutWebsite, .aboutAuthor, .aboutSource, .aboutSponsors,

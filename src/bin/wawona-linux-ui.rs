@@ -615,6 +615,15 @@ mod app {
         a11y::set_wwn_a11y(&new_btn, a11y::id::MACHINES_ADD, Some("Add Machine"));
         header.pack_end(&new_btn);
 
+        let tab_overview_btn = gtk::Button::from_icon_name("view-grid-symbolic");
+        tab_overview_btn.set_tooltip_text(Some("Tab Overview"));
+        a11y::set_wwn_a11y(
+            &tab_overview_btn,
+            a11y::id::MACHINES_OVERVIEW,
+            Some("Tab Overview"),
+        );
+        header.pack_end(&tab_overview_btn);
+
         let search_toggle_btn = gtk::ToggleButton::new();
         search_toggle_btn.set_icon_name("system-search-symbolic");
         search_toggle_btn.set_tooltip_text(Some("Search Machines (Ctrl+F)"));
@@ -809,6 +818,62 @@ mod app {
             lbl
         };
 
+        // Safari-style expandable "N Tabs" above Machines. Tab Overview opens
+        // from the header toolbar button, not a flat sidebar row.
+        let tabs_section_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        tabs_section_box.set_margin_start(8);
+        tabs_section_box.set_margin_end(8);
+        tabs_section_box.set_margin_top(8);
+        tabs_section_box.set_visible(false);
+
+        let tabs_header_btn = gtk::Button::new();
+        tabs_header_btn.add_css_class("flat");
+        tabs_header_btn.set_halign(gtk::Align::Fill);
+        a11y::set_wwn_a11y(&tabs_header_btn, "wwn.tabs.section", Some("Tabs"));
+        let tabs_header_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        tabs_header_row.set_margin_start(10);
+        tabs_header_row.set_margin_end(10);
+        tabs_header_row.set_margin_top(6);
+        tabs_header_row.set_margin_bottom(6);
+        let tabs_icon = gtk::Image::from_icon_name("view-grid-symbolic");
+        tabs_icon.set_pixel_size(16);
+        tabs_icon.add_css_class("wwn-icon-blue");
+        tabs_header_row.append(&tabs_icon);
+        let tabs_title = gtk::Label::new(Some("0 Tabs"));
+        tabs_title.set_xalign(0.0);
+        tabs_title.set_hexpand(true);
+        tabs_title.add_css_class("heading");
+        tabs_header_row.append(&tabs_title);
+        let tabs_chevron = gtk::Image::from_icon_name("pan-down-symbolic");
+        tabs_chevron.set_pixel_size(14);
+        tabs_header_row.append(&tabs_chevron);
+        tabs_header_btn.set_child(Some(&tabs_header_row));
+        tabs_section_box.append(&tabs_header_btn);
+
+        let tabs_list = gtk::ListBox::new();
+        tabs_list.set_selection_mode(gtk::SelectionMode::Single);
+        tabs_list.add_css_class("navigation-sidebar");
+        tabs_list.set_margin_start(12);
+        tabs_section_box.append(&tabs_list);
+
+        let tabs_expanded = Rc::new(Cell::new(true));
+        {
+            let tabs_list_c = tabs_list.clone();
+            let tabs_chevron_c = tabs_chevron.clone();
+            let tabs_expanded_c = tabs_expanded.clone();
+            tabs_header_btn.connect_clicked(move |_| {
+                let next = !tabs_expanded_c.get();
+                tabs_expanded_c.set(next);
+                tabs_list_c.set_visible(next);
+                tabs_chevron_c.set_icon_name(Some(if next {
+                    "pan-down-symbolic"
+                } else {
+                    "pan-end-symbolic"
+                }));
+            });
+        }
+        sidebar_box.append(&tabs_section_box);
+
         let row_machines = make_sidebar_row(
             "Machines",
             &[
@@ -820,14 +885,6 @@ mod app {
             a11y::id::MACHINES_ROOT,
         );
         sidebar_list.append(&row_machines);
-
-        let row_overview = make_sidebar_row(
-            "Tab Overview",
-            &["view-grid-symbolic", "window-restore-symbolic"],
-            "wwn-icon-blue",
-            a11y::id::MACHINES_OVERVIEW,
-        );
-        sidebar_list.append(&row_overview);
 
         let row_work_status = make_sidebar_row(
             "Work Status",
@@ -843,7 +900,7 @@ mod app {
 
         sidebar_list.set_header_func(move |row, _before| match row.index() {
             0 => row.set_header(Some(&make_section_hdr("Machines"))),
-            2 => row.set_header(Some(&make_section_hdr("Project"))),
+            1 => row.set_header(Some(&make_section_hdr("Project"))),
             _ => row.set_header(gtk::Widget::NONE),
         });
 
@@ -1068,7 +1125,7 @@ mod app {
             })
         };
 
-        {
+        let show_tab_overview_page: Rc<dyn Fn()> = {
             let content_stack = content_stack.clone();
             let tab_overview_slot = tab_overview_slot.clone();
             let sidebar_list_c = sidebar_list.clone();
@@ -1076,6 +1133,56 @@ mod app {
             let sessions = machine_sessions.clone();
             let on_rebuild = on_rebuild.clone();
             let active_terminal_tab = active_terminal.clone();
+            Rc::new(move || {
+                while let Some(c) = tab_overview_slot.first_child() {
+                    tab_overview_slot.remove(&c);
+                }
+                let stack_c = content_stack.clone();
+                let side_c = sidebar_list_c.clone();
+                let on_rebuild_c = on_rebuild.clone();
+                let active_term_c = active_terminal_tab.clone();
+                let on_select = Rc::new({
+                    let stack_c = stack_c.clone();
+                    let side_c = side_c.clone();
+                    let on_rebuild_c = on_rebuild_c.clone();
+                    let active_term_c = active_term_c.clone();
+                    move |mid: String| {
+                        on_rebuild_c();
+                        if active_term_c.borrow().as_deref() == Some(&mid) {
+                            stack_c.set_visible_child_name("terminal");
+                        } else {
+                            stack_c.set_visible_child_name("machines");
+                            if let Some(r0) = side_c.row_at_index(0) {
+                                side_c.select_row(Some(&r0));
+                            }
+                        }
+                    }
+                });
+                let on_close = Rc::new({
+                    let stack_c = stack_c.clone();
+                    let side_c = side_c.clone();
+                    move || {
+                        stack_c.set_visible_child_name("machines");
+                        if let Some(r0) = side_c.row_at_index(0) {
+                            side_c.select_row(Some(&r0));
+                        }
+                    }
+                });
+                let tab_view =
+                    build_tab_overview_view(&state, sessions.clone(), on_select, on_close);
+                tab_overview_slot.append(&tab_view);
+                content_stack.set_visible_child_name("tab_overview");
+            })
+        };
+
+        {
+            let show = show_tab_overview_page.clone();
+            tab_overview_btn.connect_clicked(move |_| show());
+        }
+
+        {
+            let content_stack = content_stack.clone();
+            let on_rebuild = on_rebuild.clone();
             let split_view_for_list = split_view.clone();
             let tags_list_c = tags_list.clone();
             let home_c = home.clone();
@@ -1095,46 +1202,6 @@ mod app {
                         }
                     }
                     1 => {
-                        while let Some(c) = tab_overview_slot.first_child() {
-                            tab_overview_slot.remove(&c);
-                        }
-                        let stack_c = content_stack.clone();
-                        let side_c = sidebar_list_c.clone();
-                        let on_rebuild_c = on_rebuild.clone();
-                        let active_term_c = active_terminal_tab.clone();
-                        let on_select = Rc::new({
-                            let stack_c = stack_c.clone();
-                            let side_c = side_c.clone();
-                            let on_rebuild_c = on_rebuild_c.clone();
-                            let active_term_c = active_term_c.clone();
-                            move |mid: String| {
-                                on_rebuild_c();
-                                if active_term_c.borrow().as_deref() == Some(&mid) {
-                                    stack_c.set_visible_child_name("terminal");
-                                } else {
-                                    stack_c.set_visible_child_name("machines");
-                                    if let Some(r0) = side_c.row_at_index(0) {
-                                        side_c.select_row(Some(&r0));
-                                    }
-                                }
-                            }
-                        });
-                        let on_close = Rc::new({
-                            let stack_c = stack_c.clone();
-                            let side_c = side_c.clone();
-                            move || {
-                                stack_c.set_visible_child_name("machines");
-                                if let Some(r0) = side_c.row_at_index(0) {
-                                    side_c.select_row(Some(&r0));
-                                }
-                            }
-                        });
-                        let tab_view =
-                            build_tab_overview_view(&state, sessions.clone(), on_select, on_close);
-                        tab_overview_slot.append(&tab_view);
-                        content_stack.set_visible_child_name("tab_overview");
-                    }
-                    2 => {
                         content_stack.set_visible_child_name("work_status");
                     }
                     _ => {}
@@ -1308,7 +1375,7 @@ mod app {
 
         match std::env::var("WAWONA_INITIAL_PAGE").as_deref() {
             Ok("tab_overview") => {
-                sidebar_list.select_row(Some(&row_overview));
+                show_tab_overview_page();
             }
             Ok("settings") => {
                 open_settings();
@@ -1456,6 +1523,13 @@ mod app {
             let open_editor_edit = open_editor.clone();
             let open_terminal_rebuild = open_terminal.clone();
             let rebuild_tags_c = rebuild_tags_list.clone();
+            let tabs_section_c = tabs_section_box.clone();
+            let tabs_list_c = tabs_list.clone();
+            let tabs_title_c = tabs_title.clone();
+            let tabs_expanded_c = tabs_expanded.clone();
+            let content_stack_tabs = content_stack.clone();
+            let active_term_tabs = active_terminal.clone();
+            let sidebar_list_tabs = sidebar_list.clone();
             *rebuild_slot.borrow_mut() = Some(Rc::new(move || {
                 rebuild_tags_c();
                 let open_ed = open_editor_edit.clone();
@@ -1471,6 +1545,80 @@ mod app {
                     })),
                     on_open_terminal: Some(open_term),
                 });
+
+                while let Some(c) = tabs_list_c.first_child() {
+                    tabs_list_c.remove(&c);
+                }
+                let mut running: Vec<(String, String)> = {
+                    let sessions = sessions_c.borrow();
+                    let state = state_c.borrow();
+                    sessions
+                        .keys()
+                        .map(|id| {
+                            let name = state
+                                .store
+                                .profiles
+                                .iter()
+                                .find(|p| p.id == *id)
+                                .map(|p| {
+                                    let n = p.name.trim();
+                                    if n.is_empty() {
+                                        "Client".to_string()
+                                    } else {
+                                        n.to_string()
+                                    }
+                                })
+                                .unwrap_or_else(|| "Client".to_string());
+                            (id.clone(), name)
+                        })
+                        .collect()
+                };
+                running.sort_by(|a, b| a.1.cmp(&b.1));
+                let n = running.len();
+                tabs_section_c.set_visible(n > 0);
+                let title_owned = if n == 1 {
+                    "1 Tab".to_string()
+                } else {
+                    format!("{n} Tabs")
+                };
+                tabs_title_c.set_text(&title_owned);
+                tabs_list_c.set_visible(tabs_expanded_c.get());
+                for (mid, name) in running {
+                    let row = gtk::ListBoxRow::new();
+                    row.set_focusable(false);
+                    let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                    row_box.set_margin_start(10);
+                    row_box.set_margin_end(10);
+                    row_box.set_margin_top(6);
+                    row_box.set_margin_bottom(6);
+                    let icon = gtk::Image::from_icon_name("window-new-symbolic");
+                    icon.set_pixel_size(14);
+                    icon.add_css_class("wwn-icon-blue");
+                    row_box.append(&icon);
+                    let label = gtk::Label::new(Some(&name));
+                    label.set_xalign(0.0);
+                    label.set_hexpand(true);
+                    row_box.append(&label);
+                    row.set_child(Some(&row_box));
+                    a11y::set_wwn_a11y(&row, &format!("wwn.tabs.tab.{mid}"), Some(&name));
+                    let stack_c = content_stack_tabs.clone();
+                    let side_c = sidebar_list_tabs.clone();
+                    let active_c = active_term_tabs.clone();
+                    let mid_c = mid.clone();
+                    let click = gtk::GestureClick::new();
+                    click.connect_released(move |_, _, _, _| {
+                        if active_c.borrow().as_deref() == Some(&mid_c) {
+                            stack_c.set_visible_child_name("terminal");
+                        } else {
+                            stack_c.set_visible_child_name("machines");
+                            if let Some(r0) = side_c.row_at_index(0) {
+                                side_c.select_row(Some(&r0));
+                            }
+                        }
+                    });
+                    row.add_controller(click);
+                    tabs_list_c.append(&row);
+                }
             }));
         }
         if let Some(rebuild) = rebuild_slot.borrow().as_ref() {

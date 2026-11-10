@@ -243,12 +243,37 @@ final class AppMainDelegate: NSObject, AppMainDelegateBase {
     #elseif canImport(AppKit)
         func applicationWillFinishLaunching(_ notification: Notification) {
             _ = notification
+            // Before any WindowGroup window: no AppKit tab strip on Machines /
+            // Settings. Client tabs live under Tab Overview only.
+            NSWindow.allowsAutomaticWindowTabbing = false
             SharedAppDelegate.shared.onInit()
         }
 
         func applicationDidFinishLaunching(_ notification: Notification) {
             _ = notification
             SharedAppDelegate.shared.onLaunch()
+            NSWindow.allowsAutomaticWindowTabbing = false
+            NotificationCenter.default.addObserver(
+                forName: NSWindow.didBecomeKeyNotification,
+                object: nil,
+                queue: .main
+            ) { note in
+                guard let window = note.object as? NSWindow else { return }
+                window.tabbingMode = .disallowed
+                window.toolbarStyle = .unified
+                window.titleVisibility = .visible
+                if window.tabGroup?.isTabBarVisible == true {
+                    window.toggleTabBar(nil)
+                }
+            }
+            for window in NSApp.windows {
+                window.tabbingMode = .disallowed
+                window.toolbarStyle = .unified
+                window.titleVisibility = .visible
+                if window.tabGroup?.isTabBarVisible == true {
+                    window.toggleTabBar(nil)
+                }
+            }
             DistributedNotificationCenter.default().addObserver(
                 self,
                 selector: #selector(handleReopen(_:)),
