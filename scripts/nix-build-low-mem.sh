@@ -11,7 +11,6 @@
 # Usage (from repo root):
 #   ./scripts/nix-build-low-mem.sh
 #   ./scripts/nix-build-low-mem.sh .#wawona-macos
-#   ./scripts/nix-build-low-mem.sh .#wawona-macos .#xcodegen-macos
 #
 # Environment:
 #   WAWONA_NIX_MAX_JOBS  concurrent derivations (default 1)

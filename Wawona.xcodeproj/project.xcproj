@@ -1682,7 +1682,7 @@
       "$(SRCROOT)/src/platform/macos",
       "$(SRCROOT)/src/platform/ios",
     ],
-    "IPHONEOS_DEPLOYMENT_TARGET": "13.0",
+    "IPHONEOS_DEPLOYMENT_TARGET": "15.0",
     "MACOSX_DEPLOYMENT_TARGET": "14.0",
     "MTL_ENABLE_DEBUG_INFO[config=Debug]": "INCLUDE_SOURCE",
     "MTL_ENABLE_DEBUG_INFO[config=Release]": "NO",

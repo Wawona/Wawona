@@ -4,7 +4,7 @@
 # Debug-watchsimulator slices exist. Replace embedded frameworks with the
 # matching watch(OS) SDK products after Embed.
 #
-# WatchOS keeps embed=false (see xcodegen.nix) so Xcode never runs Embed
+# The watch target does not embed WawonaModel/WawonaUIContracts, so Xcode never runs Embed
 # Frameworks / codeSign=true for these two. This script is the only copy into
 # Watch/Wawona.app/Frameworks, and therefore the only place that can re-sign
 # them. Device installd rejects unsigned nested frameworks (0xe800801c).
@@ -19,8 +19,7 @@ esac
 
 APP_FW="${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}/Frameworks"
 
-# WawonaModel/WawonaUIContracts are embed=false, link=false dependencies (see
-# xcodegen.nix dependencies comment). Xcode's own Embed Frameworks phase
+# WawonaModel/WawonaUIContracts are embed=false, link=false dependencies. Xcode's own Embed Frameworks phase
 # never runs for them, so this script is the *only* thing that creates
 # Frameworks/ and copies them in; do not early-exit just because it is
 # missing.

@@ -1373,7 +1373,6 @@
             TEAM_ID = teamId;
             xcodeProject = appleProject (sliceSet ["iphoneos" "watchos"]);
             simulator = false;
-            deploymentTarget = "13.0";
           };
           wawona-ios-modeb-sileo-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
@@ -1384,7 +1383,6 @@
             simulator = false;
             release = true;
             modeB = true;
-            deploymentTarget = "13.0";
           };
           wawona-ios-modeb-tipa-app-device = pkgs.callPackage ./dependencies/wawona/ios.nix {
             inherit wawonaSrc wawonaVersion;
@@ -1398,7 +1396,6 @@
             simulator = false;
             release = true;
             modeB = true;
-            deploymentTarget = "14.0";
           };
           # Historical name remains the Sileo iOS 13+ app.  New callers must
           # choose the explicit channel output above.
@@ -1585,15 +1582,12 @@
             TEAM_ID = teamId;
             xcodeProject = appleProject (sliceSet ["iphonesimulator" "watchsimulator"]);
             simulator = true;
-            # iPadOS began at 13. iPads on 11-12 run the shared iOS product.
-            deploymentTarget = "13.0";
           };
           wawona-ipados-app-device = pkgs.callPackage ./dependencies/wawona/ipados.nix {
             inherit wawonaSrc wawonaVersion;
             TEAM_ID = teamId;
             xcodeProject = appleProject (sliceSet ["iphoneos" "watchos"]);
             simulator = false;
-            deploymentTarget = "13.0";
           };
           wawona-tvos-app-sim = pkgs.callPackage ./dependencies/wawona/tvos.nix {
             inherit wawonaSrc wawonaVersion teamId;
@@ -1628,7 +1622,6 @@
                 xcodeProject = appleProject (sliceSet ["iphoneos" "watchos"]);
                 simulator = false;
                 generateIPA = true;
-                deploymentTarget = "13.0";
               }
             else missingTeamRelease "wawona-ios-ipa";
           wawona-ios-xcarchive =
@@ -1640,7 +1633,6 @@
                 xcodeProject = appleProject (sliceSet ["iphoneos" "watchos"]);
                 simulator = false;
                 generateXCArchive = true;
-                deploymentTarget = "13.0";
               }
             else missingTeamRelease "wawona-ios-xcarchive";
           mkPlatformIpa = name: file: args:
@@ -1656,7 +1648,6 @@
                 })
             else missingTeamRelease name;
           wawona-ipados-ipa = mkPlatformIpa "wawona-ipados-ipa" ./dependencies/wawona/ipados.nix {
-            deploymentTarget = "13.0";
           };
           wawona-tvos-ipa = mkPlatformIpa "wawona-tvos-ipa" ./dependencies/wawona/tvos.nix {
           };

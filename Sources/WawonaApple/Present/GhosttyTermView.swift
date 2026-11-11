@@ -18,7 +18,9 @@ public final class WWNGhosttyTermView: UIView {
   public override init(frame: CGRect) {
     super.init(frame: frame)
     backgroundColor = UIColor(red: 0.05, green: 0.06, blue: 0.08, alpha: 1)
+    #if !os(tvOS)
     textView.isEditable = false
+    #endif
     textView.isSelectable = false
     textView.backgroundColor = .clear
     textView.textColor = UIColor(white: 0.91, alpha: 1)

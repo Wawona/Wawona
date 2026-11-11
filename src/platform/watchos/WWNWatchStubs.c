@@ -2,7 +2,7 @@
 // Compile-time safety stubs for watchOS.
 //
 // These weak definitions allow the project to link in plain Xcode without Nix.
-// After `nix run .#xcodegen`, -force_load brings in the real implementations
+// With the .deps slices linked (`nix run .#deps`), -force_load brings in the real implementations
 // from the Nix-built static archives (libweston_simple_shm.a, libweston-13.a,
 // libfoot.a, libwaypipe.a, etc.) which override these at link time.
 //
@@ -180,7 +180,7 @@ int fuzzel_main(int argc, char **argv) {
  * phoon_main above: a weak stub here would satisfy the -u and STOP the real
  * archive member (and all uutils applets) from linking. So only define the
  * stub on the arm64_32 slice, which links no derivedRustLib (see
- * xcodegen.nix OTHER_LDFLAGS[arch=arm64_32]) and therefore needs a fallback.
+ * Wawona.xcconfig OTHER_LDFLAGS[arch=arm64_32]) and therefore needs a fallback.
  * arm64 device + arm64 simulator are LP64 and link the real dispatcher. */
 #if !defined(__LP64__)
 /* arm64_32 is the Watch fat-slice compatibility ABI. Wawona's Rust core,
@@ -483,7 +483,7 @@ WWN_WATCH_CLIENT_STUB(constraints_main)
 WWN_WATCH_CLIENT_STUB(wawona_nvim_main)
 #undef WWN_WATCH_CLIENT_STUB
 
-/* Weak fallback only. xcodegen -force_load's libwawona-zsh.a so the real
+/* Weak fallback only. The xcconfig force-loads libwawona-zsh.a so the real
  * App Store-compliant in-process zsh wins at link time. */
 __attribute__((weak))
 int wawona_zsh_main(int argc, char **argv) {

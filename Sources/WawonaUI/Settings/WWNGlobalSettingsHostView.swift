@@ -117,8 +117,7 @@ struct WWNGlobalSettingsHostView: View {
                 }
             )
         }
-        // ToolbarKeys UIKit settings view is iOS/iPadOS only (xcodegen omits it
-        // on tvOS/visionOS).
+        // ToolbarKeys UIKit settings view is iOS/iPadOS only.
         #if os(iOS)
         .sheet(isPresented: $model.presentToolbarKeysSettings) {
             NavigationView {

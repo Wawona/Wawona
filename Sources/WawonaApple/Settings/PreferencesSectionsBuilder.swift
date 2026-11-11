@@ -46,7 +46,7 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
     }
 
     /// Bundled Okular-style inventory from `SettingsDependencies.json`
-    /// (`settings-deps.nix` / `settingsDepsResource` in xcodegen).
+    /// (`settings-deps.nix`, bundled by `deps.nix`).
     @objc public static func loadSettingsDependenciesInventory() -> [[AnyHashable: Any]] {
         guard let url = Bundle.main.url(
             forResource: "SettingsDependencies",

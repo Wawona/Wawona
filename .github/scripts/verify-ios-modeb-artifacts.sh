@@ -143,8 +143,8 @@ if [[ "$mode" == "--sileo" ]]; then
   [[ -x "$executable" ]] || fail "Sileo executable is missing"
   [[ "$(plist_value "$app/Info.plist" CFBundleIdentifier)" == "com.aspauldingcode.Wawona.ModeB" ]] ||
     fail "Sileo bundle identifier is wrong"
-  require_ios_minimum "$executable" "13.0"
-  echo "Sileo iOS 13+ artifact gate OK: $app"
+  require_ios_minimum "$executable" "15.0"
+  echo "Sileo iOS 15+ artifact gate OK: $app"
   exit 0
 fi
 
@@ -188,7 +188,7 @@ echo "Mode B tipa: skipping leftover guest Image/rootfs (Relay frames planned)"
   fail "Mode B bundle identifier is wrong"
 [[ -n "$(plist_value "$app/Info.plist" CFBundleVersion)" ]] ||
   fail "Mode B build number is missing"
-require_ios_minimum "$executable" "14.0"
+require_ios_minimum "$executable" "15.0"
 /usr/bin/nm -gU "$executable" 2>/dev/null | /usr/bin/grep '_wwn_iomfb_open' >/dev/null ||
   fail "Mode B IOMFB sink is not linked"
 /usr/bin/nm -gU "$executable" 2>/dev/null | /usr/bin/grep '_wwn_igetty_ios_initialize' >/dev/null ||
