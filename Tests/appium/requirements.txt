@@ -1,7 +1,0 @@
-Appium-Python-Client>=4.0.0,<5
-pytest>=8.0.0,<9
-pytest-timeout>=2.3.0,<3
-pytest-xdist>=3.5.0,<4
-tomli>=2.0.0; python_version < "3.11"
-selenium>=4.15.0,<5
-Pillow>=10.0.0,<12

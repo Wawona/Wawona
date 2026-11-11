@@ -106,42 +106,19 @@ if [[ ! -f "$FW_DIR/lib_TestingInterop.dylib" && -f "$MAC_LIB/lib_TestingInterop
 fi
 
 BIN="$APP/Contents/MacOS/WebDriverAgentRunner-Runner"
-export DYLD_FRAMEWORK_PATH="${MAC_FW}${DYLD_FRAMEWORK_PATH:+:$DYLD_FRAMEWORK_PATH}"
-export DYLD_LIBRARY_PATH="${MAC_LIB}${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
-export DYLD_FALLBACK_FRAMEWORK_PATH="${SHARED_FW}${DYLD_FALLBACK_FRAMEWORK_PATH:+:$DYLD_FALLBACK_FRAMEWORK_PATH}"
-export DYLD_FALLBACK_LIBRARY_PATH="${SHARED_FW}:${MAC_LIB}${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}"
-export USE_PORT="$PORT"
-export USE_HOST="$HOST"
-
 killall WebDriverAgentRunner-Runner 2>/dev/null || true
 sleep 0.5
 
-# New session: survive agent shell teardown; keep Xcode 26 Testing DYLD only on WDA.
-python3 - "$BIN" "$PIDFILE" "$LOG" "$PORT" "$HOST" \
-  "$DYLD_FRAMEWORK_PATH" "$DYLD_LIBRARY_PATH" \
-  "$DYLD_FALLBACK_FRAMEWORK_PATH" "$DYLD_FALLBACK_LIBRARY_PATH" <<'PY'
-import os, subprocess, sys
-
-bin_path, pidfile, log, port, host, fw, lib, fbw, fbl = sys.argv[1:10]
-env = os.environ.copy()
-env["DYLD_FRAMEWORK_PATH"] = fw
-env["DYLD_LIBRARY_PATH"] = lib
-env["DYLD_FALLBACK_FRAMEWORK_PATH"] = fbw
-env["DYLD_FALLBACK_LIBRARY_PATH"] = fbl
-env["USE_PORT"] = port
-env["USE_HOST"] = host
-with open(log, "a", encoding="utf-8") as out:
-    proc = subprocess.Popen(
-        [bin_path],
-        stdout=out,
-        stderr=subprocess.STDOUT,
-        env=env,
-        start_new_session=True,
-        close_fds=True,
-    )
-open(pidfile, "w", encoding="utf-8").write(str(proc.pid))
-print(proc.pid)
-PY
+# Own session: survive agent shell teardown. The Testing DYLD paths go to WDA
+# only, never to this shell or cargo.
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+(cd "$ROOT" && cargo xtask ci detach --log "$LOG" --pid-file "$PIDFILE" \
+  --env "DYLD_FRAMEWORK_PATH=${MAC_FW}${DYLD_FRAMEWORK_PATH:+:$DYLD_FRAMEWORK_PATH}" \
+  --env "DYLD_LIBRARY_PATH=${MAC_LIB}${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" \
+  --env "DYLD_FALLBACK_FRAMEWORK_PATH=${SHARED_FW}${DYLD_FALLBACK_FRAMEWORK_PATH:+:$DYLD_FALLBACK_FRAMEWORK_PATH}" \
+  --env "DYLD_FALLBACK_LIBRARY_PATH=${SHARED_FW}:${MAC_LIB}${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}" \
+  --env "USE_PORT=$PORT" --env "USE_HOST=$HOST" \
+  -- "$BIN")
 
 for _ in $(seq 1 40); do
   if curl -sf "${URL}/status" >/dev/null; then

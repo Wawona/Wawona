@@ -34,7 +34,6 @@ fi
 chmod +x "$ROOT/scripts/appium/ensure-appium.sh"
 chmod +x "$ROOT/scripts/appium/ensure-wda-mac.sh"
 chmod +x "$ROOT/scripts/appium/ensure-colima.sh"
-chmod +x "$ROOT/scripts/appium/run-appium-suite.sh"
 chmod +x "$ROOT/scripts/appium/launch-wayland-client.sh"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -43,7 +42,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 else
   export WAWONA_WAYLAND_GUEST="${WAWONA_WAYLAND_GUEST:-nested}"
 fi
-# Local Mac2 / Linux sessions flap :4723; never start pytest cold.
+# Local Mac2 / Linux sessions flap :4723; never start the suite cold.
 "$ROOT/scripts/appium/ensure-appium.sh"
 # Darwin: tip build + clean launch FIRST (never /Applications or stale DD).
 # Socket proof comes after tip launch so cold start works.
@@ -72,8 +71,6 @@ if [[ "$(uname -s)" == "Darwin" && "${WAWONA_APPIUM_PLATFORM}" == "macos" ]]; th
   echo "WAWONA_APP_PATH=$WAWONA_APP_PATH"
   # Give tip UI a beat after clean launch before Mac2 attaches.
   sleep "${WAWONA_TIP_SETTLE_SEC:-2}"
-  osascript -e 'tell application id "com.aspauldingcode.Wawona" to activate' \
-    >/dev/null 2>&1 || true
 fi
 
 if [[ ! -S "$SOCK" ]]; then
@@ -81,34 +78,11 @@ if [[ ! -S "$SOCK" ]]; then
   exit 2
 fi
 
-cd "$ROOT/Tests/appium"
-if [[ ! -d .venv ]]; then
-  python3 -m venv .venv
-  # shellcheck disable=SC1091
-  source .venv/bin/activate
-  pip install -q -r requirements.txt
-else
-  # shellcheck disable=SC1091
-  source .venv/bin/activate
-fi
-export PYTHONPATH="$ROOT/Tests/appium"
-# Multi-client catalog: fresh Mac2 session per test so one poison does not
-# cascade InvalidSessionId across the matrix.
+# Multi-client catalog: fresh Mac2 session per client so one poisoned session
+# does not cascade across the matrix.
 export WAWONA_APPIUM_DRIVER_SCOPE="${WAWONA_APPIUM_DRIVER_SCOPE:-function}"
-
-if [[ $# -gt 0 ]]; then
-  # Single -k expression: multiple -k flags do not OR in pytest.
-  expr="$(printf '%s or ' "$@" | sed 's/ or $//')"
-  pytest tests/test_catalog_wayland.py -q --tb=short -k "$expr"
-else
-  pytest tests/test_catalog_wayland.py -q --tb=short
-fi
-
-# Partial runs (argv clients) only verify those PNGs; full run verifies matrix.
-if [[ $# -gt 0 ]]; then
-  WAWONA_CATALOG_VERIFY_ONLY="$(printf '%s,' "$@" | sed 's/,$//')" \
-    python3 "$ROOT/scripts/appium/verify-catalog-gallery.py"
-else
-  python3 "$ROOT/scripts/appium/verify-catalog-gallery.py"
-fi
+only="$(printf '%s,' "$@" | sed 's/,$//')"
+cargo xtask appium run --group catalog ${only:+--only "$only"}
+# Partial runs (argv clients) verify only those screenshots.
+cargo xtask appium gallery ${only:+--only "$only"}
 echo "Gallery: $ART/catalog-gallery/index.html"

@@ -9,13 +9,10 @@
 # Env:
 #   WAWONA_TEST_REBUILD=1     force xcodebuild even if HEAD stamp matches
 #   WAWONA_TIP_SKIP_BUILD=1   reuse existing tip binary (still clean launch +
-#                             refuse stale). Lab only when nix/xcode contended;
+#                             refuse stale). Lab only when Xcode is contended;
 #                             never Gate UI. Catalog may use when tip.bin exists.
 #   WAWONA_TIP_SKIP_LAUNCH=1  build/resolve only (no quit/relaunch)
 #   WAWONA_ALLOW_STALE_TEST_APP=1  lab escape (never for catalog)
-#   WAWONA_LINK_LIBGHOSTTY=1|0    optional Zig archive link (default 0).
-#                                 Product paint is TerminalMetalPresent.
-#                                 1 stages libghostty-macos when archive missing.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -25,7 +22,7 @@ source "$ROOT/scripts/lib/require-tip-wawona-app.sh"
 source "$ROOT/scripts/lib/refuse-visionos-target.sh"
 wawona_refuse_visionos_target || exit 3
 
-export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/nix/var/nix/profiles/default/bin:${HOME}/.nix-profile/bin:${PATH:-}"
+export PATH="${HOME}/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
 TIP_ROOT="${WAWONA_TIP_ROOT:-/tmp/wawona-macos-tip}"
 DD="${TIP_ROOT}/DerivedData"
@@ -57,10 +54,10 @@ fi
 # Rebuild when product tree drifts vs tip stamp (committed or dirty).
 # Scripts/docs-only tip commits reuse the stamped binary. Clean launch
 # still runs every time. Product paths: Sources/, src/, Darwin/, Cargo.*,
-# flake, VERSION, the Xcode project.
+# xtask, deps.lock, flake, VERSION, the Xcode project.
 PRODUCT_PATHS=(
   Sources/ src/ Darwin/ Cargo.toml Cargo.lock Package.swift
-  dependencies/ Wawona.xcodeproj flake.nix flake.lock VERSION
+  dependencies/ Wawona.xcodeproj xtask/ deps.lock flake.nix flake.lock VERSION
 )
 if [[ "$need_build" -eq 0 ]]; then
   stamped="$(cat "$STAMP" 2>/dev/null || true)"
@@ -93,18 +90,8 @@ if [[ "$need_build" -eq 1 ]]; then
   # Status on stderr only: stdout is eval'd by capture-catalog-gallery.
   echo "ensure-tip-wawona-macos: building tip Wawona-macOS for $HEAD" >&2
   mkdir -p "$TIP_ROOT" "$DD"
-  # Sibling Terminal (Metal Present) overrides the flake pin, which can lag it.
-  _deps=(run "$ROOT#deps")
-  if [[ -d "$ROOT/../Terminal/apple/Terminal" ]]; then
-    _deps+=(--override-input terminal "path:$ROOT/../Terminal")
-  fi
-  _deps+=(-- macosx)
-  # Metal Present paints by default; WAWONA_LINK_LIBGHOSTTY=1 links Zig GhosttyLib.
-  if [[ "${WAWONA_LINK_LIBGHOSTTY:-0}" = 1 ]]; then
-    _deps+=(libghostty-macos)
-  fi
-  if ! nix "${_deps[@]}" >&2; then
-    echo "FAIL: nix ${_deps[*]}" >&2
+  if ! cargo xtask deps get macosx >&2; then
+    echo "FAIL: cargo xtask deps get macosx" >&2
     exit 2
   fi
   xcodebuild \
@@ -141,15 +128,7 @@ if [[ "${WAWONA_TIP_SKIP_LAUNCH:-0}" != "1" ]]; then
     "$APP/Contents/MacOS/Wawona" \
     >"${TIP_ROOT}/launch.log" 2>&1 &
   disown 2>/dev/null || true
-  for _ in $(seq 1 60); do
-    if python3 -c "import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('$RUNTIME/wayland-0')" \
-      2>/dev/null; then
-      break
-    fi
-    sleep 0.4
-  done
-  if ! python3 -c "import socket;s=socket.socket(socket.AF_UNIX);s.settimeout(1);s.connect('$RUNTIME/wayland-0')" \
-    2>/dev/null; then
+  if ! cargo xtask ci wait-socket "$RUNTIME/wayland-0" --timeout 30 >&2; then
     echo "FAIL: tip Wawona did not bind $RUNTIME/wayland-0" >&2
     tail -40 "${TIP_ROOT}/launch.log" >&2 || true
     exit 2

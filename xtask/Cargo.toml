@@ -11,9 +11,10 @@ name = "xtask"
 path = "src/main.rs"
 
 [dependencies]
+libc = "0.2"
 anyhow = "1"
 bindgen = "0.72"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 flate2 = "1"
 regex = "1"
 serde = { version = "1", features = ["derive"] }

@@ -1716,6 +1716,7 @@ dependencies = [
  "clap",
  "flate2",
  "image",
+ "libc",
  "p256",
  "regex",
  "roxmltree",

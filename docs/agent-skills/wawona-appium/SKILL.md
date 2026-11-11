@@ -20,12 +20,12 @@ description: >-
 
 | Path | Role |
 |------|------|
-| `Tests/appium/` | pytest + page objects |
+| `xtask/src/appium/` | `cargo xtask appium`: WebDriver client, pages, cases |
 | `Tests/appium/matrix.toml` | Platform + catalog guest gates |
 | `Tests/appium/selectors.json` | Canonical `wwn.*` ids |
 | `scripts/appium/launch-wayland-client.sh` | Colima (Darwin) / nested (Linux) guests |
 | `scripts/appium/ensure-colima.sh` | Fail closed unless Colima SSH works |
-| `scripts/appium/verify-wayland-guest-map.py` | Fail closed on map drift |
+| `cargo xtask appium verify` | Fail closed on id, matrix or guest-map drift |
 | `scripts/appium/capture-catalog-gallery.sh` | Gallery PNGs + verify |
 | `.github/workflows/ui-appium.yml` | Nightly / path-filtered runners |
 | `docs/testing/appium-ui-matrix.md` | Human prose |
@@ -129,7 +129,7 @@ Start opens **Wawona Terminal**. A Wayland client attach auto-opens Present (or 
 sees Machines only.
 
 Dark terminals (foot, weston-terminal): blank detector needs **flat AND**
-near-black/white. Low mean alone is not blank (`screenshot_evidence.py`).
+near-black/white. Low mean alone is not blank (`xtask/src/appium/evidence.rs`).
 
 Nested weston in a Colima guest is the product path. If someone debugs a
 host `weston` binary: stale nix `wayland-backend.so` aborts on
@@ -145,7 +145,7 @@ gh run view <id> --log-failed
 → load appium + appium-troubleshooting + driver child
 → reproduce (same caps / platform)
 → fix suite | selectors | guest | product a11y
-→ re-run evidence (local pytest or workflow_dispatch)
+→ re-run evidence (local `cargo xtask appium run` or workflow_dispatch)
 ```
 
 Never greenwash with skip stubs or agent-device/osascript.
@@ -177,7 +177,7 @@ a different commit.
 The Linux runner uses the community Appium Linux driver. Install the pinned
 driver and its AT-SPI runtime before starting the server. Start a session
 D-Bus bus for AT-SPI, verify the installed driver advertises `atspi2`, then
-wait for `/status` to return before running pytest. Do not hide driver or apt
+wait for `/status` to return before running the suite. Do not hide driver or apt
 installation errors with `|| true`.
 
 Linux capabilities must use `platformName=Linux`,

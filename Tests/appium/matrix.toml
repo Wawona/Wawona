@@ -1,7 +1,7 @@
 # Capability matrix for Appium UI tests.
 # Mirrors PlatformCapabilities / wawona-platform-targets.
 # States: available | planned | blocked | forbidden
-# CI verifies this file via scripts/appium/verify-matrix.py
+# CI verifies this file with `cargo xtask appium verify`.
 #
 # Catalog clients are REAL Wayland guests. They launch via
 # scripts/appium/launch-wayland-client.sh into the host Wawona socket:

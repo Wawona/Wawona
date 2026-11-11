@@ -23,6 +23,28 @@ pub enum Cmd {
     Testflight(crate::testflight::Args),
     /// Gate iOS against Android snapshots of the same screens.
     UiParity(crate::parity::Args),
+    /// Start a command in its own session, so a closing agent or CI shell
+    /// cannot hang it up; append its output to --log and print its pid.
+    Detach {
+        #[arg(long)]
+        log: String,
+        #[arg(long)]
+        pid_file: Option<String>,
+        /// Set in the child only: K=V.
+        #[arg(long = "env", value_parser = parse_kv)]
+        env: Vec<(String, String)>,
+        /// Remove from the child's environment.
+        #[arg(long)]
+        unset: Vec<String>,
+        #[arg(last = true, required = true)]
+        cmd: Vec<String>,
+    },
+    /// Wait until a Unix socket accepts a connection; exit 1 after --timeout seconds.
+    WaitSocket {
+        path: String,
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
+    },
     /// Run a command, echoing its output, until a line contains MARKER; exit
     /// 124 after --timeout seconds without it.
     Until {
@@ -82,7 +104,49 @@ pub fn main(c: Cmd) -> Result<()> {
         Cmd::Testflight(a) => crate::testflight::main(a),
         Cmd::UiParity(a) => crate::parity::main(a),
         Cmd::Until { marker, timeout, cmd } => until(&marker, timeout, &cmd),
+        Cmd::Detach { log, pid_file, env, unset, cmd } => detach(&log, pid_file, env, unset, &cmd),
+        Cmd::WaitSocket { path, timeout } => {
+            let end = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
+            while std::os::unix::net::UnixStream::connect(&path).is_err() {
+                if std::time::Instant::now() >= end {
+                    bail!("{path} accepted no connection within {timeout}s");
+                }
+                std::thread::sleep(std::time::Duration::from_millis(400));
+            }
+            Ok(())
+        }
     }
+}
+
+fn parse_kv(s: &str) -> Result<(String, String)> {
+    let (k, v) = s.split_once('=').context("expected K=V")?;
+    Ok((k.into(), v.into()))
+}
+
+fn detach(
+    log: &str,
+    pid_file: Option<String>,
+    env: Vec<(String, String)>,
+    unset: Vec<String>,
+    argv: &[String],
+) -> Result<()> {
+    use std::os::unix::process::CommandExt;
+    let out = std::fs::OpenOptions::new().create(true).append(true).open(log)?;
+    let mut c = cmd(&argv[0]);
+    c.args(&argv[1..]).envs(env).stdin(std::process::Stdio::null()).stdout(out.try_clone()?).stderr(out);
+    for k in unset {
+        c.env_remove(k);
+    }
+    // SAFETY: setsid is async-signal-safe and touches no parent state.
+    unsafe {
+        c.pre_exec(|| if libc::setsid() < 0 { Err(std::io::Error::last_os_error()) } else { Ok(()) });
+    }
+    let pid = c.spawn().with_context(|| format!("spawn {}", argv[0]))?.id();
+    if let Some(p) = pid_file {
+        write(p, pid.to_string())?;
+    }
+    println!("{pid}");
+    Ok(())
 }
 
 fn wasm_smoke() -> Result<()> {

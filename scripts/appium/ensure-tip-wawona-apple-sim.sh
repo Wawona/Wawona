@@ -28,7 +28,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=/dev/null
 source "$ROOT/scripts/lib/require-tip-wawona-app.sh"
 
-export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/nix/var/nix/profiles/default/bin:${HOME}/.nix-profile/bin:${PATH:-}"
+export PATH="${HOME}/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
 case "$PLATFORM" in
   tvOS)
@@ -122,8 +122,8 @@ if [[ "$need_build" -eq 1 ]]; then
   echo "ensure-tip-apple-sim: building $SCHEME for $HEAD (udid=$UDID)" >&2
   mkdir -p "$TIP_ROOT" "$DD"
   _sdk="${SDK_DIR#Debug-}"
-  if ! nix run "$ROOT#deps" -- "$_sdk" >&2; then
-    echo "FAIL: nix run .#deps -- $_sdk" >&2
+  if ! (cd "$ROOT" && cargo xtask deps get "$_sdk") >&2; then
+    echo "FAIL: cargo xtask deps get $_sdk" >&2
     exit 2
   fi
   xcodebuild \
