@@ -1,5 +1,7 @@
 [workspace]
 members = ["."]
+# Its own workspace: it must run before .deps supplies the path crates.
+exclude = ["xtask"]
 
 [package]
 name = "wawona"

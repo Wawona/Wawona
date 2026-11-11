@@ -1,6 +1,7 @@
 # The Android slice of .deps: what the committed Gradle project reads that is
-# not in git. `nix run .#deps -- android` links .deps/android here.
-#   wawona.properties   wawona.nixDepIncludes / nixDepLibs / rustBackendLib (CMake)
+# not in git. `cargo xtask deps android` unpacks it into .deps/android.
+#   slice.json          the C libraries `cargo xtask backend android` builds against
+#   wawona.properties   wawona.nixDepIncludes / nixDepLibs (CMake)
 #   jniLibs/arm64-v8a   runtime .so files and the lib*_bin.so executables android_jni.c runs
 #   assets/             zsh, xkb, fonts, Weston PNGs, Vulkan ICD, applications catalog
 #   cpp/                shader_spv.h and weston-simple-shm sources (CMake)
@@ -9,7 +10,6 @@
   pkgs,
   buildModule,
   wawonaSrc,
-  rustBackend,
   androidCC,
   coreutilsAndroid ? null,
   westonSimpleShmPatchedSrcNix,
@@ -86,6 +86,21 @@ let
     westonAndroid = weston;
     footAndroid = foot;
   };
+  backendLibs = map dep [ "xkbcommon" "libwayland" "zstd" "lz4" "pixman" "openssl" "libffi" "expat" "libxml2" "ffmpeg" ];
+  sliceJson = pkgs.writeText "slice.json" (builtins.toJSON {
+    include_dirs = map (d: "${d.dev or d}/include") backendLibs;
+    lib_dirs = map (d: "${lib.getLib d}/lib") backendLibs;
+    pkgconfig_dirs = lib.concatMap (d: [ "${d.dev or d}/lib/pkgconfig" "${d.dev or d}/share/pkgconfig" ]) backendLibs;
+    link_libs = [ "xkbcommon" "wayland-client" ];
+    env = let ssl = dep "openssl"; in {
+      OPENSSL_DIR = "${ssl}";
+      OPENSSL_LIB_DIR = "${ssl}/lib";
+      OPENSSL_INCLUDE_DIR = "${ssl}/include";
+      OPENSSL_STATIC = "1";
+      OPENSSL_NO_VENDOR = "1";
+      WAWONA_ANDROID_XKBCOMMON_LIBDIR = "${dep "xkbcommon"}/lib";
+    };
+  });
 in
 pkgs.runCommand "wawona-deps-android" { nativeBuildInputs = [ pkgs.glslang ]; } ''
   JNI_LIB_DIR=$out/jniLibs/arm64-v8a
@@ -109,7 +124,6 @@ pkgs.runCommand "wawona-deps-android" { nativeBuildInputs = [ pkgs.glslang ]; } 
   # Shipping the archive names too loads two ANGLE images.
   mv $JNI_LIB_DIR/libEGL.so $JNI_LIB_DIR/libEGL_angle.so
   mv $JNI_LIB_DIR/libGLESv2.so $JNI_LIB_DIR/libGLESv2_angle.so
-  cp -L ${rustBackend}/lib/libwawona_core.so $JNI_LIB_DIR/
 
   # OpenSSH portable (wwn-ssh) under the jniLibs names android_jni.c execs.
   for t in ssh:ssh ssh-keygen:ssh_keygen scp:scp; do
@@ -134,9 +148,9 @@ pkgs.runCommand "wawona-deps-android" { nativeBuildInputs = [ pkgs.glslang ]; } 
 
   chmod -R u+w $out
 
+  cp ${sliceJson} $out/slice.json
   cat > $out/wawona.properties <<'EOF'
   wawona.nixDepIncludes=${lib.concatStringsSep " " includes}
   wawona.nixDepLibs=${lib.concatStringsSep " " libs}
-  wawona.rustBackendLib=${rustBackend}/lib/libwawona_core.so
   EOF
 ''

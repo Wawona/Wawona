@@ -8,12 +8,20 @@ plugins {
     // fails at configuration. verify-kotlin.sh records that blocker in NDJSON.
 }
 
-// `nix run .#deps -- android` links .deps/android: CMake flags, jniLibs, assets.
+// `cargo xtask deps android` unpacks .deps/android: CMake flags, jniLibs, assets.
+// The preBuild task below builds libwawona_core.so into .build/backend/android.
 val deps = rootProject.file(".deps/android")
+val backend = rootProject.file(".build/backend/android")
 val depsProps = Properties().apply {
     val f = deps.resolve("wawona.properties")
     if (f.isFile) f.inputStream().use { load(it) }
 }
+
+val rustBackend = tasks.register<Exec>("rustBackend") {
+    workingDir = rootProject.projectDir
+    commandLine("cargo", "xtask", "backend", "android")
+}
+tasks.named("preBuild") { dependsOn(rustBackend) }
 
 android {
     namespace = "com.aspauldingcode.wawona"
@@ -44,11 +52,14 @@ android {
             cmake {
                 cppFlags("-fPIC")
 
-                arguments("-DWAWONA_ROOT=${rootProject.projectDir}", "-DWAWONA_DEPS=$deps")
+                arguments(
+                    "-DWAWONA_ROOT=${rootProject.projectDir}",
+                    "-DWAWONA_DEPS=$deps",
+                    "-DRUST_BACKEND_LIB=${backend.resolve("lib/libwawona_core.so")}",
+                )
                 for ((key, define) in listOf(
                     "wawona.nixDepIncludes" to "NIX_DEP_INCLUDES",
                     "wawona.nixDepLibs" to "NIX_DEP_LIBS",
-                    "wawona.rustBackendLib" to "RUST_BACKEND_LIB",
                 )) {
                     depsProps.getProperty(key)?.let { arguments("-D$define=$it") }
                 }
@@ -122,6 +133,7 @@ android {
             kotlin.directories += rootProject.file(".deps/terminal/android").path
             kotlin.directories += rootProject.file(".deps/toolbar-keys/android").path
             jniLibs.directories += deps.resolve("jniLibs").path
+            jniLibs.directories += backend.resolve("jniLibs").path
             assets.directories += deps.resolve("assets").path
         }
     }

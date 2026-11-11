@@ -1249,7 +1249,7 @@ def gym_ipa(target)
   # DTPlatformName/DTSDKName, which were both correctly appletvos/xros in the
   # affected archives — to decide "current platform", so it rejected the
   # (correctly platform-scoped) provisioning profile. Fixed at the source in
-  # `scripts/xcode-embed.sh` (deletes the iOS-only keys
+  # `cargo xtask xcode embed` (deletes the iOS-only keys
   # on the tvOS/macOS/visionOS app targets); verified locally end-to-end for
   # both Wawona-tvOS and Wawona-visionOS via `fastlane ios debug_export`.
   # Keep exporting in a minimal, explicit environment regardless — it is a

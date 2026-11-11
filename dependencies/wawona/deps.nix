@@ -1,23 +1,24 @@
-# Per-SDK inputs of the committed Wawona.xcodeproj. `nix run .#deps -- <sdk>`
-# links .deps/<sdk> to one of these slices, named by Xcode's PLATFORM_NAME
-# (plus iphoneos-modeb for Wawona-iOS-ModeB):
-#   Wawona.xcconfig          WWN_HEADERS_<target> and WWN_LDFLAGS_<target>,
-#                            included by src/resources/xcode/wwn-version.xcconfig
-#   backend, zsh, fastfetch  archives scripts/xcode-prebuild.sh stages
-#   bundle/                  what scripts/xcode-embed.sh copies into the app
-#   uniffi                   generated Swift for WawonaModel
+# Per-SDK inputs of the committed Wawona.xcodeproj, named by Xcode's
+# PLATFORM_NAME. CI packs each one (`cargo xtask deps pack`) and
+# `cargo xtask deps <sdk>` unpacks it into .deps/<sdk>:
+#   slice.json        the C libraries `cargo xtask backend` builds against
+#   Wawona.xcconfig   WWN_HEADERS_<target> and WWN_LDFLAGS_<target>,
+#                     included by src/resources/xcode/wwn-version.xcconfig
+#   zsh, fastfetch    archives `cargo xtask xcode prebuild` stages
+#   bundle/           what `cargo xtask xcode embed` copies into the app
 {
   lib,
   pkgs,
   wawonaVersion,
   wawonaSrc,
   ilandGlLdflagsNix,
-  # { <sdk> = { deps, backend }; } for every Apple-mobile SDK, plus macosx.
+  # { <sdk> = { deps, native }; } for every Apple-mobile SDK, plus macosx.
+  # native: the libraries the backend's crates link.
   slices,
   # macOS-only bundled software: fastfetch zsh igetty moltenvk kosmickrisp foot
   # niri fuzzel phoon weston-simple-egl, and Mode B's iland-baremetal and iowatchdog.
   macosExtras,
-  modeB, # { iomfb, igetty, backend }, linked only by Wawona-iOS-ModeB
+  modeB, # { iomfb, igetty }, linked only by Wawona-iOS-ModeB
 }: let
   p = toString;
   isSim = sdk: lib.hasSuffix "simulator" sdk;
@@ -135,7 +136,7 @@
     ln -s ${d.wawona-rootfs}/rootfs bundle/wawona-rootfs
   '');
 
-  # macOS bundle root: Contents/. xcode-embed.sh signs and relocates what lands here.
+  # macOS bundle root: Contents/. cargo xtask xcode embed signs and relocates what lands here.
   # Helpers sit on the terminal's PATH (Resources/bin); the ones Wawona spawns
   # by bundle path are also beside the executable (MacOS).
   macosBundle = d: let
@@ -190,15 +191,37 @@
     cp ${d.angle}/lib/libEGL.dylib bundle/Frameworks/libEGL_angle.dylib
   '';
 
-  mkSlice = sdk: { deps, backend }: let
+  # Read by xtask/src/backend.rs (SliceJson).
+  sliceJson = sdk: native: let
+    ds = lib.filter (d: d != null) (lib.attrValues native);
+    dev = d: d.dev or d;
+  in pkgs.writeText "slice.json" (builtins.toJSON {
+    include_dirs = map (d: "${dev d}/include") (ds ++ [ pkgs.vulkan-headers ]);
+    lib_dirs = map (d: "${lib.getLib d}/lib") ds;
+    pkgconfig_dirs = lib.concatMap (d: [ "${dev d}/lib/pkgconfig" "${dev d}/share/pkgconfig" ]) ds;
+    env = lib.optionalAttrs (native ? openssl) {
+      OPENSSL_DIR = "${dev native.openssl}";
+      OPENSSL_LIB_DIR = "${lib.getLib native.openssl}/lib";
+      OPENSSL_INCLUDE_DIR = "${dev native.openssl}/include";
+      OPENSSL_STATIC = "1";
+      OPENSSL_NO_VENDOR = "1";
+    } // lib.optionalAttrs (native ? zlib) {
+      DEP_Z_INCLUDE = "${dev native.zlib}/include";
+    };
+  });
+
+  mkSlice = sdk: { deps, native }: let
     macos = sdk == "macosx";
     ff = if macos then null else deps.fastfetch;
   in pkgs.runCommand "wawona-deps-${sdk}" { } (''
     mkdir -p $out && cd $out
-    ln -s ${backend} backend
-    if [ -d ${backend}/uniffi/swift ]; then ln -s ${backend}/uniffi/swift uniffi; fi
+    cp ${sliceJson sdk native} slice.json
     cat > Wawona.xcconfig <<'EOF'
     ${xcconfig sdk deps}
+    EOF
+  '' + lib.optionalString (sdk == "iphoneos") ''
+    cat >> Wawona.xcconfig <<'EOF'
+    ${modeBXcconfig}
     EOF
   '' + lib.optionalString (!macos) ''
     ln -s ${deps.zsh} zsh
@@ -206,16 +229,5 @@
     fw=$(sed '/^$/d; s/^/-framework /' ${ff}/nix-support/fastfetch-frameworks | tr '\n' ' ')
     substituteInPlace Wawona.xcconfig --replace-fail @FASTFETCH_FRAMEWORKS@ "$fw"
   '' + (if macos then macosBundle deps else mobileBundle sdk deps));
-  # The Sileo (iOS 13) and TrollStore (iOS 14) products differ only in backend.
-  modeBSlice = backend: (mkSlice "iphoneos" (slices.iphoneos // { inherit backend; })).overrideAttrs (old: {
-      name = "wawona-deps-iphoneos-modeb";
-      buildCommand = old.buildCommand + ''
-        cat > Wawona.xcconfig <<'EOF'
-        ${modeBXcconfig}
-        EOF
-        fw=$(sed '/^$/d; s/^/-framework /' ${slices.iphoneos.deps.fastfetch}/nix-support/fastfetch-frameworks | tr '\n' ' ')
-        substituteInPlace Wawona.xcconfig --replace-fail @FASTFETCH_FRAMEWORKS@ "$fw"
-      '';
-    });
 in
-  lib.mapAttrs mkSlice slices // { iphoneos-modeb = modeBSlice modeB.backend; inherit modeBSlice; }
+  lib.mapAttrs mkSlice slices // { inherit sliceJson; }

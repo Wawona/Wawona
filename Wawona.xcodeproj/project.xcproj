@@ -669,7 +669,7 @@
           "name": "Stamp Build Number",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-stamp-build-number.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(SRCROOT)/.build/wwn-build-number.xcconfig",
@@ -677,13 +677,13 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-stamp-build-number.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode stamp\n",
         }, {
           "kind": "script",
           "name": "Stage Rust Backend",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-prebuild.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(DERIVED_FILE_DIR)/libwawona.a",
@@ -693,7 +693,7 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-prebuild.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode prebuild\n",
         },
         "compile-sources",
         "resources",
@@ -713,7 +713,7 @@
           "log-environment-variables": true,
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-embed.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode embed\n",
         },
       ],
       "build-settings": {
@@ -794,7 +794,7 @@
           "name": "Stamp Build Number",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-stamp-build-number.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(SRCROOT)/.build/wwn-build-number.xcconfig",
@@ -802,13 +802,13 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-stamp-build-number.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode stamp\n",
         }, {
           "kind": "script",
           "name": "Stage Rust Backend",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-prebuild.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(DERIVED_FILE_DIR)/libwawona.a",
@@ -818,7 +818,7 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-prebuild.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode prebuild\n",
         },
         "compile-sources",
         "resources",
@@ -833,7 +833,7 @@
           "log-environment-variables": true,
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-embed.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode embed\n",
         },
       ],
       "build-settings": {
@@ -949,7 +949,7 @@
           "name": "Stamp Build Number",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-stamp-build-number.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(SRCROOT)/.build/wwn-build-number.xcconfig",
@@ -957,13 +957,13 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-stamp-build-number.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode stamp\n",
         }, {
           "kind": "script",
           "name": "Stage Rust Backend",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-prebuild.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(DERIVED_FILE_DIR)/libwawona.a",
@@ -973,7 +973,7 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-prebuild.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode prebuild\n",
         },
         "compile-sources",
         "resources",
@@ -988,7 +988,7 @@
           "log-environment-variables": true,
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-embed.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode embed\n",
         },
       ],
       "build-settings": {
@@ -1066,7 +1066,7 @@
           "name": "Stamp Build Number",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-stamp-build-number.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(SRCROOT)/.build/wwn-build-number.xcconfig",
@@ -1074,13 +1074,13 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-stamp-build-number.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode stamp\n",
         }, {
           "kind": "script",
           "name": "Stage Rust Backend",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-prebuild.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(DERIVED_FILE_DIR)/libwawona.a",
@@ -1089,7 +1089,7 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-prebuild.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode prebuild\n",
         },
         "compile-sources",
         "resources",
@@ -1104,7 +1104,7 @@
           "log-environment-variables": true,
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-embed.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode embed\n",
         },
       ],
       "build-settings": {
@@ -1158,7 +1158,7 @@
           "name": "Stamp Build Number",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-stamp-build-number.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(SRCROOT)/.build/wwn-build-number.xcconfig",
@@ -1166,13 +1166,13 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-stamp-build-number.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode stamp\n",
         }, {
           "kind": "script",
           "name": "Stage Rust Backend",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-prebuild.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(DERIVED_FILE_DIR)/libwawona.a",
@@ -1182,7 +1182,7 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-prebuild.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode prebuild\n",
         },
         "compile-sources",
         "resources",
@@ -1197,7 +1197,7 @@
           "log-environment-variables": true,
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-embed.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode embed\n",
         },
       ],
       "build-settings": {
@@ -1274,7 +1274,7 @@
           "name": "Stamp Build Number",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-stamp-build-number.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(SRCROOT)/.build/wwn-build-number.xcconfig",
@@ -1282,13 +1282,13 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-stamp-build-number.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode stamp\n",
         }, {
           "kind": "script",
           "name": "Stage Rust Backend",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-prebuild.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(DERIVED_FILE_DIR)/libwawona.a",
@@ -1298,7 +1298,7 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-prebuild.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode prebuild\n",
         },
         "compile-sources",
         "resources",
@@ -1313,7 +1313,7 @@
           "log-environment-variables": true,
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-embed.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode embed\n",
         },
       ],
       "build-settings": {
@@ -1401,7 +1401,7 @@
           "name": "Stage Rust Backend",
           "log-environment-variables": true,
           "input-paths": [
-            "$(SRCROOT)/scripts/xcode-prebuild.sh",
+            "$(SRCROOT)/xtask/src/xcode.rs",
           ],
           "output-paths": [
             "$(DERIVED_FILE_DIR)/libwawona.a",
@@ -1410,7 +1410,7 @@
           ],
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-prebuild.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode prebuild\n",
         },
         "compile-sources",
         "resources",
@@ -1431,7 +1431,7 @@
           "log-environment-variables": true,
           "run-on-every-build": true,
           "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/xcode-embed.sh\"\n",
+          "script": "export PATH=\"$HOME/.cargo/bin:$PATH\"\nenv -i HOME=\"$HOME\" PATH=\"$PATH\" cargo build --quiet --manifest-path xtask/Cargo.toml\nexec xtask/target/debug/xtask xcode embed\n",
         },
       ],
       "build-settings": {

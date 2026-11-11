@@ -11,7 +11,7 @@
             ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
             <ActionContent
                title = "Stamp Build Number"
-               scriptText = "&quot;${SRCROOT}/scripts/xcode-stamp-build-number.sh&quot;&#10;">
+               scriptText = "cd &quot;${SRCROOT}&quot; &amp;&amp; export PATH=&quot;$HOME/.cargo/bin:$PATH&quot; &amp;&amp; env -i HOME=&quot;$HOME&quot; PATH=&quot;$PATH&quot; cargo build --quiet --manifest-path xtask/Cargo.toml &amp;&amp; exec xtask/target/debug/xtask xcode stamp&#10;">
                <EnvironmentBuildable>
                   <BuildableReference
                      BuildableIdentifier = "primary"
