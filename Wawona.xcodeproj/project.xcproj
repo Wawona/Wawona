@@ -1112,6 +1112,7 @@
         },
       ],
       "build-settings": {
+        "ARCHS": "arm64",
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
         "CODE_SIGN_ENTITLEMENTS[config=Release]": "src/resources/app-bundle/Wawona-iCloud.entitlements",
         "CODE_SIGN_IDENTITY[config=Debug]": "-",
