@@ -626,6 +626,8 @@
             { "build-phase": "Wawona-tvOS/copy/Embed Frameworks", "code-sign-on-copy": true, "header-preservation": "remove-on-copy" },
             "Wawona-visionOS/frameworks",
             { "build-phase": "Wawona-visionOS/copy/Embed Frameworks", "code-sign-on-copy": true, "header-preservation": "remove-on-copy" },
+            "Wawona-watchOS/frameworks",
+            { "build-phase": "Wawona-watchOS/copy/Embed Frameworks", "code-sign-on-copy": true, "header-preservation": "remove-on-copy" },
           ],
         }, {
           "path": "<PRODUCTS>/WawonaUIContracts.framework",
@@ -645,6 +647,8 @@
             { "build-phase": "Wawona-tvOS/copy/Embed Frameworks", "code-sign-on-copy": true, "header-preservation": "remove-on-copy" },
             "Wawona-visionOS/frameworks",
             { "build-phase": "Wawona-visionOS/copy/Embed Frameworks", "code-sign-on-copy": true, "header-preservation": "remove-on-copy" },
+            "Wawona-watchOS/frameworks",
+            { "build-phase": "Wawona-watchOS/copy/Embed Frameworks", "code-sign-on-copy": true, "header-preservation": "remove-on-copy" },
             "WawonaModel/frameworks",
           ],
         },
@@ -1388,16 +1392,6 @@
       "build-phases": [
         {
           "kind": "script",
-          "name": "Ensure Watch Framework Modules",
-          "log-environment-variables": true,
-          "input-paths": [
-            "$(SRCROOT)/scripts/watchos-ensure-framework-modules.sh",
-          ],
-          "run-on-every-build": true,
-          "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/watchos-ensure-framework-modules.sh\"\n",
-        }, {
-          "kind": "script",
           "name": "Stage Rust Backend",
           "log-environment-variables": true,
           "input-paths": [
@@ -1416,15 +1410,9 @@
         "resources",
         "frameworks",
         {
-          "kind": "script",
-          "name": "Fix Watch Embedded Frameworks",
-          "log-environment-variables": true,
-          "input-paths": [
-            "$(SRCROOT)/scripts/watchos-fix-embedded-frameworks.sh",
-          ],
-          "run-on-every-build": true,
-          "shell": "/bin/sh",
-          "script": "exec \"${SRCROOT}/scripts/watchos-fix-embedded-frameworks.sh\"\n",
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory",
         }, {
           "kind": "script",
           "name": "Embed Bundled Software",
@@ -1502,6 +1490,7 @@
         "frameworks",
       ],
       "build-settings": {
+        "ALLOW_TARGET_PLATFORM_SPECIALIZATION": "YES",
         "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES": "NO",
         "ARCHS[sdk=appletvsimulator*]": "arm64",
         "ARCHS[sdk=iphonesimulator*]": "arm64",
@@ -1538,6 +1527,7 @@
         "PRODUCT_MODULE_NAME": "WawonaModel",
         "PRODUCT_NAME": "WawonaModel",
         "SKIP_INSTALL": "YES",
+        "SDKROOT": "auto",
         "SUPPORTED_PLATFORMS": "macosx iphoneos iphonesimulator appletvos appletvsimulator xros xrsimulator watchos watchsimulator",
         "SUPPORTS_MACCATALYST": "NO",
         "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
@@ -1565,6 +1555,7 @@
         "compile-sources",
       ],
       "build-settings": {
+        "ALLOW_TARGET_PLATFORM_SPECIALIZATION": "YES",
         "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES": "NO",
         "ARCHS[sdk=appletvsimulator*]": "arm64",
         "ARCHS[sdk=iphonesimulator*]": "arm64",
@@ -1597,6 +1588,7 @@
         "PRODUCT_MODULE_NAME": "WawonaUIContracts",
         "PRODUCT_NAME": "WawonaUIContracts",
         "SKIP_INSTALL": "YES",
+        "SDKROOT": "auto",
         "SUPPORTED_PLATFORMS": "macosx iphoneos iphonesimulator appletvos appletvsimulator xros xrsimulator watchos watchsimulator",
         "SUPPORTS_MACCATALYST": "NO",
         "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
