@@ -1,5 +1,5 @@
 # Zero-AI: Start → Wawona Terminal overlay (Compose testTagsAsResourceId).
-# Run: scripts/agent-device-smoke.sh terminal-android
+# Run: cargo xtask lab smoke terminal-android
 context platform=android
 context session=wawona-android-terminal-start
 

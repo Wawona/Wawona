@@ -59,13 +59,12 @@ jobs:
             allow-import-from-derivation = true
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
-      - name: Applications catalog smoke (headless)
-        run: chmod +x ./scripts/applications-catalog-smoke.sh && ./scripts/applications-catalog-smoke.sh
-
       - uses: ./.github/actions/setup-xtask
-        if: ${{ !inputs.products_ready }}
         with:
           key: macos
+
+      - name: Applications catalog smoke (headless)
+        run: cargo xtask lab apps-catalog
 
       - name: Build Wawona.app (macOS)
         if: ${{ !inputs.products_ready }}

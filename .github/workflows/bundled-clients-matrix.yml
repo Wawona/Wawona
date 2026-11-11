@@ -98,7 +98,7 @@ jobs:
           WAWONA_MATRIX_CLIENTS: ${{ inputs.clients }}
         run: |
           # Default: simctl + WAWONA_AUTO_CLIENT (no agent-device).
-          ./scripts/bundled-clients-matrix-gate.sh ios
+          cargo xtask lab matrix ios
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -120,6 +120,9 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: bundled-clients-android
       - uses: actions/download-artifact@v8
         with:
           name: product-android-apk
@@ -143,7 +146,7 @@ jobs:
           script: >-
             export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
             && export WAWONA_MATRIX_CLIENTS="${{ inputs.clients }}"
-            && ./scripts/bundled-clients-matrix-gate.sh android
+            && cargo xtask lab matrix android
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -159,6 +162,9 @@ jobs:
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: bundled-clients-macos
       - uses: actions/download-artifact@v8
         with:
           name: product-macos-app
@@ -174,7 +180,7 @@ jobs:
       - name: Run matrix (macOS)
         env:
           WAWONA_MATRIX_CLIENTS: ${{ inputs.clients }}
-        run: ./scripts/bundled-clients-matrix-gate.sh macos
+        run: cargo xtask lab matrix macos
       - uses: actions/upload-artifact@v7
         if: always()
         with:

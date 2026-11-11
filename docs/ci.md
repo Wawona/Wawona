@@ -186,8 +186,8 @@ group (anti-pattern #7).
 
 **Harness-only commits must be in the path filter.** Because Gate: products
 runs the leak/bundled-clients harness via `products_ready`, edits to
-`scripts/leak-idle-gate.sh`, `scripts/bundled-clients-matrix-gate.sh`, or their
-`.yml` must be listed in [`device-gate.yml`](../.github/workflows/device-gate.yml)
+`xtask/src/lab/` or the leak and bundled-clients
+`.yml` files must be listed in [`device-gate.yml`](../.github/workflows/device-gate.yml)
 `on.push.paths`. Otherwise they green **Gate: packages** and leave **Gate: products**
 on the previous SHA. Until such a path is added, exercise the fix with
 `gh workflow run "Gate: products" --ref development`.
@@ -274,7 +274,7 @@ When the requested simulator SDK is already on the runner, the script sets `WAWO
 9. Re-planning completed curated-matrix / gate fan-out work.
 10. Reintroducing Magic Nix Cache / Attic / Cachix / `cache.wawona.io`.
 11. nixpkgs lineage drift across `wwn-*` without `follows` / `cargo xtask verify nixpkgs-lineage`.
-12. Linking a stale `.build/backend/<sdk>` after `Cargo.lock` changes (re-run `scripts/build-backend.sh <sdk>` or delete it).
+12. Linking a stale `.build/backend/<sdk>` after `Cargo.lock` changes (re-run `cargo xtask backend <slice>` or delete it).
 
 ## Watch: idle memory
 
@@ -288,10 +288,10 @@ advisory diagnostic and does not affect product promotion.
 
 ```bash
 # Local (same script CI runs)
-WAWONA_IOS_APP=result-ios/Wawona.app ./scripts/leak-idle-gate.sh ios
-WAWONA_ANDROID_APK=dist/Wawona.apk ./scripts/leak-idle-gate.sh android
-WAWONA_MACOS_APP=result-macos/Wawona.app ./scripts/leak-idle-gate.sh macos
-./scripts/leak-idle-gate.sh summary   # prints LEAK_GATE_FAIL targets=â¦
+WAWONA_IOS_APP=result-ios/Wawona.app cargo xtask lab leak ios
+WAWONA_ANDROID_APK=dist/Wawona.apk cargo xtask lab leak android
+WAWONA_MACOS_APP=result-macos/Wawona.app cargo xtask lab leak macos
+cargo xtask lab leak summary   # prints LEAK_GATE_FAIL targets=â¦
 ```
 
 CI: Actions â standalone **Watch: idle memory** (schedule/dispatch) â `Leak idle summary`
@@ -302,9 +302,9 @@ lists failing targets.
 Every Machines `kBundledClients` option Ã runnable platforms (nested `weston`/`niri` + demos).
 
 ```bash
-./scripts/bundled-clients-matrix-gate.sh                 # all platforms
-./scripts/bundled-clients-matrix-gate.sh ios android     # subset
-WAWONA_MATRIX_CLIENTS="niri,weston" ./scripts/bundled-clients-matrix-gate.sh ios
+cargo xtask lab matrix                 # all platforms
+cargo xtask lab matrix ios android     # subset
+WAWONA_MATRIX_CLIENTS="niri,weston" cargo xtask lab matrix ios
 ```
 
 See [testing/bundled-clients-matrix-gate.md](./testing/bundled-clients-matrix-gate.md).
@@ -317,7 +317,7 @@ Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,â¦`.
   treat cancelled non-tip Gate: products runs as red for promote.
 - Gate: products fans out product-build by product (`only: ios-sim|â¦`) so **iOS smoke
   starts when `product-ios-sim` is ready**. It does not wait for AppImages/macOS/Android.
-- iOS CI lane: `agent-device-smoke.sh ios-ci` (one prepare for smoke; fuzzel reuses
+- iOS CI lane: `cargo xtask lab smoke ios-ci` (one prepare for smoke; fuzzel reuses
   warm XCTest derived data; skipped on `pull_request` via `WAWONA_SKIP_FUZZEL`).
 - iOS Mode B: Gate: packages runs
   `cargo xtask artifact ios-contract` (scanner + vphone `.ad` contract).
@@ -326,12 +326,12 @@ Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,â¦`.
   **15.0** (the `.deb` also declares `firmware (>= 15.0)`).
   This is a product build, not merely an archive repack.
   Gate: products runs `--mode-a` on the iOS and iPadOS simulator apps. Lab
-  replay is `scripts/agent-device-smoke.sh vphone` against
+  replay is `cargo xtask lab smoke vphone` against
   `vphone wawona-jb`. Xcode Simulator is not IOMFB or JIT proof. Mode B
   `.tipa` stays out of Ship: beta / TestFlight.
 - **Nested niri/fuzzel** on GHA: iOS/Android lanes are advisory; **macOS nested
   niri is skipped** in Gate: products (runners SIGTERM mid-GUI and fail the job
-  even with `continue-on-error`). Run `scripts/niri-fuzzel-smoke-macos.sh` locally
+  even with `continue-on-error`). Run `cargo xtask lab fuzzel macos` locally
   or via Watch: graphics nightly. Catalog smoke remains hard on the macOS lane.
 - Same-session `prepare ios-runner` + `open` (do not kill prepare daemon before open).
 - XCTest runner cache key includes Xcode version (via `cargo xtask ci select-xcode` outputs); hit/miss is logged.

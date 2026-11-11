@@ -87,7 +87,7 @@ that tree to the same `@eN` refs the Simulator XCTest path uses.
 2. User-app icon-grid fallback (SpringBoard-ish 4 columns)
 3. Full-screen placeholder if both fail: `press x y`
 
-Replay: `scripts/agent-device-smoke.sh vphone` or
+Replay: `cargo xtask lab smoke vphone` or
 `agent-device replay Wawona/.agent-device/wawona-ios-vphone-smoke.ad`
 
 Mode B Desktop evidence belongs under
@@ -124,15 +124,15 @@ nix run .#wawona-ios-jb -- --no-install
 
 # Slim tipa (build 10+). Safe on a 32 GB guest with a few GB free.
 WAWONA_BUILD_NUMBER=10 nix build --impure .#wawona-ios-modeb-tipa-slim
-scripts/install-ios-modeb-tipa.sh --slim result-modeb-slim/Wawona-*-iOS-arm64.tipa
+agent-device packages tipa install result-modeb-slim/Wawona-*-iOS-arm64.tipa --device "vphone wawona-jb"
 
 # Slim rootless deb (same binary, /var/jb/Applications).
 nix build --impure .#wawona-ios-modeb-deb-rootless-slim -o result-modeb-deb-slim
-scripts/install-ios-modeb-deb.sh --rootless result-modeb-deb-slim/Wawona-*-iOS-arm64-rootless.deb
+agent-device packages apt install result-modeb-deb-slim/Wawona-*-iOS-arm64-rootless.deb --device "vphone wawona-jb"
 
 # Official tipa. Same slim guest rule until Relay boots NixOS. Uninstall first
 # if a leftover 5.7 G zip is still on the guest. Helper 176 is disk-full.
-scripts/install-ios-modeb-tipa.sh --official result/Wawona-*-iOS-arm64.tipa
+agent-device packages tipa install result/Wawona-*-iOS-arm64.tipa --device "vphone wawona-jb"
 ```
 
 `vm` / `container` tokens fail closed on Relay (`No QEMU`). Do not prove

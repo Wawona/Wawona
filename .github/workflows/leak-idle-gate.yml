@@ -130,22 +130,13 @@ jobs:
           fi
           test -d result-ios/Wawona.app
 
-      - name: Ensure simulator device exists
-        run: |
-          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          if ! xcrun simctl list devices available | grep -q "$SIM_NAME ("; then
-            DEVTYPE=$(xcrun simctl list devicetypes | grep -F "$SIM_NAME (" | sed -E 's/.*\((com[^)]*)\).*/\1/' | head -1)
-            RUNTIME=$(xcrun simctl list runtimes | grep -E "^iOS" | tail -1 | sed -E 's/.*(com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9._-]+).*/\1/')
-            xcrun simctl create "$SIM_NAME" "$DEVTYPE" "$RUNTIME"
-          fi
-
       - name: Run iOS leak-idle gate
         env:
           WAWONA_IOS_APP: result-ios/Wawona.app
           WAWONA_LEAK_STRICT: "1"
         run: |
           # Platform tools only: simctl install/launch + vmmap (no agent-device).
-          ./scripts/leak-idle-gate.sh ios
+          cargo xtask lab leak ios
 
       - name: Upload iOS leak artifacts
         if: always()
@@ -173,6 +164,10 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: leak-idle-android
 
       - name: Download product-android-apk
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -202,7 +197,7 @@ jobs:
             adb shell settings put secure immersive_mode_confirmations confirmed
             && export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
             && export WAWONA_LEAK_STRICT=1
-            && ./scripts/leak-idle-gate.sh android
+            && cargo xtask lab leak android
 
       - name: Upload Android leak artifacts
         if: always()
@@ -223,6 +218,10 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: leak-idle-macos
 
       - name: Download product-macos-app
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -245,7 +244,7 @@ jobs:
       - name: Run macOS leak-idle gate
         env:
           WAWONA_LEAK_STRICT: "1"
-        run: ./scripts/leak-idle-gate.sh macos
+        run: cargo xtask lab leak macos
 
       - name: Upload macOS leak artifacts
         if: always()

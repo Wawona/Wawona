@@ -12,8 +12,8 @@ cargo xtask verify darwin-cli-mode-a
 Device acceptance is agent-device on the iOS Simulator:
 
 ```bash
-source scripts/lib/agent-device-ios-system-ui.sh && ios_prepare_system_ui
-scripts/agent-device-smoke.sh ios-darwin-cli
+cargo xtask lab ios-system-ui
+cargo xtask lab smoke ios-darwin-cli
 ```
 
 Replay: `.agent-device/wawona-ios-darwin-cli.ad`. Artifacts:

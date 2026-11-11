@@ -105,7 +105,7 @@ Prove on tip: `nm` shows `wawona_zsh_main`, `wwn_pty_session_start`,
 |---|---|
 | JVM argv banners | `cd android && ./gradlew :Wawona:testDebugUnitTest --tests '*MachineStartCommandTest'` |
 | Compose Start UI | `./gradlew :Wawona:connectedDebugAndroidTest --tests '*TerminalStartUiTest'` |
-| iOS/Android replay | `scripts/agent-device-smoke.sh terminal` (or `terminal-ios` / `terminal-android`) |
+| iOS/Android replay | `cargo xtask lab smoke terminal` (or `terminal-ios` / `terminal-android`) |
 
 Assert `id="wwn.terminal.root"` + `id="wwn.terminal.done"` after Start.
 Do not dogfood multi-sim with an AI agent for this gate.

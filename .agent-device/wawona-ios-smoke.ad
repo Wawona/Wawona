@@ -1,13 +1,13 @@
 # Deterministic iOS smoke — stable wwn.* accessibility identifiers.
-# Prefer agent-device batch / scripts/agent-device-smoke.sh ios (same selectors).
+# Prefer agent-device batch / cargo xtask lab smoke ios (same selectors).
 context platform=ios
 context session=wawona-ios-smoke
 context device=iPhone 17 Pro
 
 open com.aspauldingcode.Wawona --relaunch
 wait 2500
-# Prefer scripts/agent-device-smoke.sh (host Allow Paste + agent-device Continue).
-# Replay-only path: Continue via agent-device; Allow Paste needs host helper.
+# Prefer cargo xtask lab smoke ios (pasteboard sync off + agent-device Continue).
+# Replay-only path: run cargo xtask lab ios-system-ui first; Continue via agent-device.
 press label="Continue"
 press text="Continue"
 snapshot -i

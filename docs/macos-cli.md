@@ -110,8 +110,7 @@ export WAYLAND_DISPLAY=wayland-0
 ## Desktop Replacement (Mode B)
 
 Headless operator for macOS Desktop / LockScreen replacement. No Machines
-window. Logs to stdout plus `/tmp/wawona-modeb-cli.log` and
-`/tmp/wawona-modeb.log`.
+window. Reports go to stdout; the helper logs to `/tmp/wawona-modeb.log`.
 
 | Flag | Effect |
 |------|--------|
@@ -164,10 +163,10 @@ needed. It never Take Over. `--mode-b-prepare` is the same setup from the CLI.
 `--mode-b-engage` on reboot opens loginwindow Restart (`kAERestart`). On
 blocked it does not take over. On takeover-now it engages.
 
-Until this build of `Wawona` is installed, the same report is:
+Until this build of `Wawona` is installed, run the one `cargo xtask build macos` made:
 
 ```bash
-./scripts/wawona-modeb-cli.sh ready
+.build/xcode/macos/Build/Products/Debug/Wawona.app/Contents/MacOS/Wawona --mode-b-ready
 ```
 
 Default (no flags) still opens the Machines control panel after the compositor

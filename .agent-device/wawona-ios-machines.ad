@@ -5,7 +5,7 @@ context device=iPhone 17 Pro
 
 open com.aspauldingcode.Wawona --relaunch
 wait 2000
-# Allow Paste: run ios_dismiss_system_ui from smoke wrapper (host). Continue: agent-device.
+# Allow Paste: `cargo xtask lab ios-system-ui` before open keeps it away. Continue: agent-device.
 press label="Continue"
 press text="Continue"
 screenshot ./.agent-device/test-artifacts/ios-machines-root.png
