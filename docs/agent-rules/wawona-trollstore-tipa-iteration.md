@@ -16,8 +16,8 @@ Reinstalling the **same build** is a no-op / refuse. Bump **BUILD** every tipa
 you intend to replace on guest.
 
 ```bash
-./scripts/build-modeb-demo-tipa.sh
-# or: BUILD=12 ./scripts/build-modeb-demo-tipa.sh
+cargo xtask package demo
+# or: BUILD=12 cargo xtask package demo
 
 # Product Wawona Mode B (iteration, no guest rootfs):
 WAWONA_BUILD_NUMBER=10 nix build --impure .#wawona-ios-modeb-tipa-slim

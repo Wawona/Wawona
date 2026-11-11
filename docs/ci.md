@@ -12,7 +12,7 @@ Release secrets (tier 0): [`maintainers/secrets.md`](./maintainers/secrets.md).
 
 ## Versioning (CalVer)
 
-Marketing version is **`YY.M.D`** (year · month · day), Apple-style year major
+Marketing version is **`YY.M.D`** (year Â· month Â· day), Apple-style year major
 (`26` = 2026). Source of truth: [`VERSION`](../VERSION). Git tags are
 `vYY.M.D` (e.g. `v26.8.6`). Same-day re-ships keep the marketing version and
 bump **build number** (`WAWONA_BUILD_NUMBER` / `CURRENT_PROJECT_VERSION`) only.
@@ -38,7 +38,7 @@ then rerun the product gate. Do not bypass this check for a fresh release tip.
 
 Job names are plain English (`Build: iOS`, `Test: Android opens`). Each Gate: products call only lists jobs that actually run (no skip spam from other platforms).
 
-Before `development` → `master`, you need three greens on the **same tip**:
+Before `development` â `master`, you need three greens on the **same tip**:
 
 1. Workflow **Verification** (job **Verification report**)
 2. Workflow **Gate: packages**
@@ -46,10 +46,10 @@ Before `development` → `master`, you need three greens on the **same tip**:
 
 ## When to beta vs release
 
-| You do… | Runs… | Ships… |
+| You doâ¦ | Runsâ¦ | Shipsâ¦ |
 |---------|-------|--------|
 | Work / PR on **`development`** | **Verification** + **Gate: packages** + **Gate: products** (full product matrix + GUI smoke) | Nothing to stores or GitHub Releases |
-| Promote green tip → **`master`** (push) | **Gate: products** (full matrix); then **Ship: beta (stores)** + **Ship: beta AppImages** via `workflow_run` | TestFlight + Play **internal** (CI smoke via `fastlane android beta`). Open testing is `fastlane android beta_open` (Play `beta` track) after production access. Closed Alpha interim is `fastlane android beta_closed` (Play `alpha`). Linux AppImage artifacts reused from Gate: products |
+| Promote green tip â **`master`** (push) | **Gate: products** (full matrix); then **Ship: beta (stores)** + **Ship: beta AppImages** via `workflow_run` | TestFlight + Play **internal** (CI smoke via `fastlane android beta`). Open testing is `fastlane android beta_open` (Play `beta` track) after production access. Closed Alpha interim is `fastlane android beta_closed` (Play `alpha`). Linux AppImage artifacts reused from Gate: products |
 | Tag **`v*`** on a release commit | **Ship: GitHub assets**; store beta via **Ship: beta** `workflow_dispatch` if needed | GitHub Release assets (+ optional store dispatch) |
 
 **Play Draft-app note (2026-10-12):** Closed Alpha accepted a **draft** promote of internal `1791787807` (`PLAY_PROMOTE_INTERNAL=1 PLAY_RELEASE_STATUS=draft`). Open testing still needs Dashboard store listing + production access. Countries / tester emails for Alpha are Console UI after the draft lands.
@@ -65,7 +65,7 @@ iCloud capability because the Watch target carries the CloudKit entitlement.
 App Store profiles. CI installs those profiles read-only, so rerun signing
 bootstrap and sync the `release-beta` secrets after a profile change.
 
-**Promote rule (repo law):** `development` → `master` only when the tip is green on **Verification report**, **Gate: packages**, and **Gate: products**. Gate: products is green only when **every** product cell succeeds: iOS, iPadOS, tvOS, watchOS, visionOS, macOS, Android, Linux AppImages (plus wired GUI smoke). Do not promote on a partial matrix.
+**Promote rule (repo law):** `development` â `master` only when the tip is green on **Verification report**, **Gate: packages**, and **Gate: products**. Gate: products is green only when **every** product cell succeeds: iOS, iPadOS, tvOS, watchOS, visionOS, macOS, Android, Linux AppImages (plus wired GUI smoke). Do not promote on a partial matrix.
 
 The Watch product cell builds both the simulator app and the Watch device app. The device build runs the `Build Rust Backend via Nix` phase for the same Watch target embedded by the iOS archive. Simulator-only builds omit that device target, so they cannot qualify the ASC upload gate.
 
@@ -77,9 +77,9 @@ OSV exceptions belong in the root `osv-scanner.toml`, with a specific affected p
 
 **Soft supersede:** WIP workflows use `cancel-in-progress: false` and [`.github/scripts/ci-require-branch-tip.sh`](../.github/scripts/ci-require-branch-tip.sh). Obsolete SHAs exit success as `superseded` (not Cancelled). The live tip runs the full gates. Agents must never `gh run cancel` to clear the queue.
 
-Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). Filenames stay as before (`nix.yml`, `device-gate.yml`, …).
+Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). Filenames stay as before (`nix.yml`, `device-gate.yml`, â¦).
 
-## Branch × workflow
+## Branch Ã workflow
 
 | Workflow | `development` | `master` | Why |
 |----------|:-------------:|:--------:|-----|
@@ -88,11 +88,11 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | **Gate: wasm-wayland** (`wasm-wayland.yml`) | path filter push/PR | path filter push/PR | Wawona Runtime wiring + Weston headless SHM smoke against locked `wwn-wasm` (not a promote blocker) |
 | **Verification** (`verify-all.yml`) | push + PR | push + PR | Helpers / formal / vectors. Required ruleset check **Verification report**. Soft supersede on non-tip |
 | **Gate: products** (`device-gate.yml`) | path filter push | path filter push | Full matrix: iOS + **apple-family** (iPadOS/tvOS/watchOS/visionOS) + macOS + Android + AppImages + GUI smoke. Soft supersede on non-tip |
-| **Build: products** (`product-*.yml` / `product-build.yml`) | via Gate: products / Ship | via gate / Ship: GitHub assets | Thin per-platform producers (`product-ios-sim.yml`, …). `product-build.yml` dispatches slices for manual runs. Uses [setup-nix-flakehub](../.github/actions/setup-nix-flakehub/action.yml) |
+| **Build: products** (`product-*.yml` / `product-build.yml`) | via Gate: products / Ship | via gate / Ship: GitHub assets | Thin per-platform producers (`product-ios-sim.yml`, â¦). `product-build.yml` dispatches slices for manual runs. Uses [setup-nix-flakehub](../.github/actions/setup-nix-flakehub/action.yml) |
 | **Build: GUI smoke** (`device-e2e-*.yml`) | via Gate: products (`products_ready`) | via gate | Runtime smokes use **platform tools** on runners: iOS `simctl`, Android `adb`/`uiautomator`, macOS compositor-host script. **No agent-device CLI in Gate.** Agent-device stays for local/lab/vphone. |
 | **Watch: graphics nightly** (`nightly-full-matrix.yml`) | schedule / dispatch | - | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Gate: products) |
-| **Watch: TestFlight feedback** (`testflight-feedback.yml`) | schedule / dispatch | schedule / dispatch | Poll ASC TestFlight screenshot/crash feedback → GitHub issues (PII stripped). `release-beta` secrets. Not a promote gate |
-| **Watch: idle memory** (`leak-idle-gate.yml`) | schedule + dispatch | schedule + dispatch | Launch→60s footprint/PSS plateau on product iOS/Android/macOS via **platform tools** (`simctl` / `adb`+`uiautomator` / direct macOS exec). **No agent-device CLI on runners.** Fails with `LEAK_GATE_FAIL targets=…` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). Independent advisory diagnostic, not part of the blocking product gate |
+| **Watch: TestFlight feedback** (`testflight-feedback.yml`) | schedule / dispatch | schedule / dispatch | Poll ASC TestFlight screenshot/crash feedback â GitHub issues (PII stripped). `release-beta` secrets. Not a promote gate |
+| **Watch: idle memory** (`leak-idle-gate.yml`) | schedule + dispatch | schedule + dispatch | Launchâ60s footprint/PSS plateau on product iOS/Android/macOS via **platform tools** (`simctl` / `adb`+`uiautomator` / direct macOS exec). **No agent-device CLI on runners.** Fails with `LEAK_GATE_FAIL targets=â¦` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). Independent advisory diagnostic, not part of the blocking product gate |
 | **Watch: Appium UI matrix** (`ui-appium.yml`) | nightly + path filter `development` + dispatch | - | Appium 2 pytest matrix (`Tests/appium/`): native UI + Wayland keep-set + catalog clients as real Wayland guests (Colima on Darwin, nested on Linux via `launch-wayland-client.sh`). `macos-27` Apple jobs; `ubuntu-latest` KVM Android + Xvfb Linux. **No agent-device.** Not a promote blocker until native lane replaces Build: GUI smoke ([details](./testing/appium-ui-matrix.md)) |
 | **FlakeHub publish** (`flakehub-publish.yml`) | tags `vYY.M.D` + dispatch | - | Registry only ([`flakehub-registry.md`](./flakehub-registry.md)). **Not** every development push. Binary cache is separate ([`flakehub-cache.md`](./flakehub-cache.md)) |
 | **Ship: beta (stores)** (`release-beta.yml`) | - | after green master **Gate: products** (`workflow_run`) + dispatch | Fastlane TestFlight / Play. **Never** uploads without a green full Gate: products for that SHA (dispatch is the operator escape) |
@@ -101,22 +101,22 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 
 ### Binary filenames (three channels)
 
-Same token order everywhere: **app → calver → platform → arch → [build] → ext**.
+Same token order everywhere: **app â calver â platform â arch â [build] â ext**.
 Public developer doc: [wawona.io/docs/prebuilt-naming/](https://wawona.io/docs/prebuilt-naming/). Agent rule: [`docs/agent-rules/wawona-release-assets.md`](./agent-rules/wawona-release-assets.md).
 
 | Channel | Pattern | Example |
 |---------|---------|---------|
-| **GitHub Release** (`v*` tag) | `Wawona-{calver}-{platform}-{arch}.{ext}` | `Wawona-26.8.12-macOS-arm64.dmg`, `…-iOS-arm64.ipa`, `…-Android-arm64.apk`, `…-Linux-x86_64.AppImage`, `…-Linux-arm64.AppImage` |
-| **Store upload** (TestFlight / Play internal) | `Wawona-{calver}-{platform}-{arch}-{build}.{ext}` | `Wawona-26.8.12-iOS-arm64-142.ipa`, `…-tvOS-…`, `…-visionOS-…`, `…-Android-arm64-142.aab` |
+| **GitHub Release** (`v*` tag) | `Wawona-{calver}-{platform}-{arch}.{ext}` | `Wawona-26.8.12-macOS-arm64.dmg`, `â¦-iOS-arm64.ipa`, `â¦-Android-arm64.apk`, `â¦-Linux-x86_64.AppImage`, `â¦-Linux-arm64.AppImage` |
+| **Store upload** (TestFlight / Play internal) | `Wawona-{calver}-{platform}-{arch}-{build}.{ext}` | `Wawona-26.8.12-iOS-arm64-142.ipa`, `â¦-tvOS-â¦`, `â¦-visionOS-â¦`, `â¦-Android-arm64-142.aab` |
 | **product-build / Gate** | Short unversioned until a ship boundary | `Wawona.apk`, `Wawona.app`, `Wawona-x86_64.AppImage` / `Wawona-aarch64.AppImage` |
 
 - **No unversioned GitHub aliases** (`Wawona.apk`, `Wawona-macOS-arm64.dmg`, bare `Wawona-x86_64.AppImage` on the Release). Rename at the ship boundary.
-- Linux filename maps `aarch64` → `arm64`. Store Apple IPAs use platform tokens `iOS` \| `tvOS` \| `visionOS` (not scheme-first `Wawona-iOS-…`).
+- Linux filename maps `aarch64` â `arm64`. Store Apple IPAs use platform tokens `iOS` \| `tvOS` \| `visionOS` (not scheme-first `Wawona-iOS-â¦`).
 - Historical release assets keep old names until the next `v*` / next beta upload.
 
-**macOS DMG layout (pkg-only):** the GitHub Release DMG ships **`WawonaAgent.pkg` + `README.txt` only**. No loose `Wawona.app`, no `/Applications` symlink. The pkg ([`scripts/macos-launch-agent-pkg.sh`](../scripts/macos-launch-agent-pkg.sh)) is the sole install path: payload installs `/Applications/Wawona.app`, and `postinstall` loads compositor + menubar LaunchAgents, publishes `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR`, removes any stale `Wawona.prefPane` from PreferencePanes (Global Settings are in-app only), and syncs the Desktop Replacement helper + dylib (**no Take Over**). Default installs for the console user; `sudo WAWONA_INSTALL_USERS=a,b installer -pkg …` targets more accounts. `release.yml` signs the app under `sign-staging/` (not on the volume), rebuilds the sealed pkg into `dmg-staging/`, and hard-fails if the DMG root still contains `Wawona.app` or `Applications`.
+**macOS DMG layout (drag-install):** the GitHub Release DMG holds `Wawona.app`, an `Applications` symlink and `README.txt`, and no `WawonaAgent.pkg`. Launch Agents and the login item are in Wawona Settings, Permissions.
 
-**macOS notarization (Gatekeeper):** `release-macos` uses Environment `release-beta` secrets (`DEVELOPER_ID_*_P12_BASE64`, `MATCH_PASSWORD`, `APP_STORE_CONNECT_*`) and [`scripts/macos-sign-and-notarize-dmg.sh`](../scripts/macos-sign-and-notarize-dmg.sh): deep `codesign` with hardened runtime + [`Wawona-macOS-DeveloperID.entitlements`](../src/resources/app-bundle/Wawona-macOS-DeveloperID.entitlements), `productsign` the agent pkg, `hdiutil` UDZO DMG, `notarytool submit --wait`, `stapler staple`. Without this, downloaded apps show “damaged and can’t be opened” (quarantine + ad-hoc/nix signature). Re-ship an existing tag via Actions → **Ship: GitHub assets** → `workflow_dispatch` (`tag=vYY.M.D`, optional `build_ref=development` when the notarize script is not yet on the tagged commit).
+**macOS notarization (Gatekeeper):** `release-macos` uses Environment `release-beta` secrets (`DEVELOPER_ID_APPLICATION_P12_BASE64`, `MATCH_PASSWORD`, `APP_STORE_CONNECT_*`) and `cargo xtask package dmg --notarize`: inside-out `codesign` with the hardened runtime and [`Wawona-macOS-DeveloperID.entitlements`](../src/resources/app-bundle/Wawona-macOS-DeveloperID.entitlements), an `hdiutil` UDZO DMG, `notarytool submit --wait` and `stapler staple`. Without this, a downloaded app shows “damaged and can’t be opened” (quarantine and an ad hoc signature). Re-ship an existing tag from Actions, **Ship: GitHub assets**, `workflow_dispatch` (`tag=vYY.M.D`, optional `build_ref`).
 
 **watchOS store shipping:** bare `Wawona-watchOS` archives cannot export `app-store-connect` (seen on Xcode 26). The companion is **embedded into `Wawona-iOS`** under classic `Watch/` (the project's Embed Watch Content phase; App Store Connect expects this layout). Never add standalone watch to `APPLE_BETA_TARGETS`. Gate: products builds the device Watch app and its Rust backend before the simulator product to catch the archive build phase before ASC upload. See [the WatchOS device build preflight](testing/watchos-device-preflight.md) and [#136](https://github.com/Wawona/Wawona/issues/136).
 
@@ -128,11 +128,11 @@ Changes under `fastlane/**` or to `.github/workflows/release-beta.yml` also trig
 
 **Embedded Swift dylib signing, when actually needed (ITMS-90429/90427/90433):** any `Frameworks/lib*.dylib` we embed must be **re-signed with the app's own distribution identity** (`embed_swift_runtime_into_archive!` runs `codesign --preserve-metadata=identifier,entitlements,flags` after copying from the toolchain, with a normal secure timestamp. Not `--timestamp=none`, which left these as the only untimestamped signatures in an otherwise fully-timestamped archive). A straight copy keeps Apple's own toolchain signature and ASC rejects with `ITMS-90433` ("doesn't have the correct code signature"). `SwiftSupport/<platform>/` is the opposite: it must stay **Apple-signed**, so its bytes come fresh from the toolchain via `xcode_swift_lib_source`, never from the (now re-signed) `Frameworks/` copies.
 
-**The actual root cause (settled by the builds 60-120 `buildUploads` record): loose non-Swift dylibs in `Frameworks/`, not SwiftSupport content.** Every iOS upload from build 60 (July, **pre-watch**) through 120 failed with rotating `ITMS-90426`/`90429`/`90433`, while the tvOS/visionOS ipas of the same commits were always `COMPLETE`. Including build 119 (textbook ABI-stable iOS+Watch, no SwiftSupport → 90426) and build 120 (full legacy layout: `SwiftSupport/{iphoneos,watchos}` with set-parity and byte-identical Apple-signed copies, verified in the uploaded artifact → still 90429 listing dylibs that were physically present). The one constant, present **only** in the iOS ipa: ANGLE's loose `Payload/Wawona.app/Frameworks/libEGL.dylib` + `libGLESv2.dylib` (the flat `iland dlopen` convenience copies; tvOS never bundles ANGLE, visionOS's embed glob never matched). **App Store bundles must not contain loose (non-framework-wrapped) `.dylib` files under `Frameworks/` (TN2435)**. The only loose dylibs ASC sanctions there are pre-ABI Swift runtime dylibs (`libswift*`), so any other loose dylib flips its Swift Support validator into legacy expectations and produces these errors regardless of SwiftSupport content (same class as tdlib/Flutter's loose `libtdjson.dylib` → 90429 listing `libswift*` names). Fixes: `xcodegen.nix` makes the flat ANGLE copies **simulator-only** (device ships `libEGL.framework`/`libGLESv2.framework` only) and `iLand`'s EGL shim probes the framework-wrapped binaries first (flake input bumped to `d6cf97a`). The canonical accepted shape for every Apple-mobile ipa, watch or not, is ABI-stable: no `SwiftSupport/`, no `Frameworks/libswift*`. Only a genuine `SWIFT_BACKDEPLOY_LIB_NAMES` shim below its native-OS floor may ever be embedded (none at our targets). `WAWONA_WATCH_LEGACY_SWIFT_SUPPORT=1` remains as an escape hatch that ships and deeply validates the full legacy layout for watch-bearing ipas (`embed_swift_runtime_into_archive!` populates bundle `Frameworks/` + archive-root `SwiftSupport/` pre-export; exportArchive verifiably propagates it into the ipa). Leave OFF unless a canonical-shape upload is rejected again. Pre-upload, `assert_ipa_has_swift_support!` hard-gates the final ipa's actual zip contents: `assert_no_loose_dylibs!` (TN2435, the real regression guard), then canonical-shape or (hatch on) `assert_legacy_swift_support!` checks. No ipa reaches ASC without passing. After any real upload, poll the ASC `buildUploads` API for the `COMPLETE`/`FAILED` verdict instead of waiting on the rejection email (`altool --validate-app` passes on binaries ASC later rejects. Never trust it alone).
+**The actual root cause (settled by the builds 60-120 `buildUploads` record): loose non-Swift dylibs in `Frameworks/`, not SwiftSupport content.** Every iOS upload from build 60 (July, **pre-watch**) through 120 failed with rotating `ITMS-90426`/`90429`/`90433`, while the tvOS/visionOS ipas of the same commits were always `COMPLETE`. Including build 119 (textbook ABI-stable iOS+Watch, no SwiftSupport â 90426) and build 120 (full legacy layout: `SwiftSupport/{iphoneos,watchos}` with set-parity and byte-identical Apple-signed copies, verified in the uploaded artifact â still 90429 listing dylibs that were physically present). The one constant, present **only** in the iOS ipa: ANGLE's loose `Payload/Wawona.app/Frameworks/libEGL.dylib` + `libGLESv2.dylib` (the flat `iland dlopen` convenience copies; tvOS never bundles ANGLE, visionOS's embed glob never matched). **App Store bundles must not contain loose (non-framework-wrapped) `.dylib` files under `Frameworks/` (TN2435)**. The only loose dylibs ASC sanctions there are pre-ABI Swift runtime dylibs (`libswift*`), so any other loose dylib flips its Swift Support validator into legacy expectations and produces these errors regardless of SwiftSupport content (same class as tdlib/Flutter's loose `libtdjson.dylib` â 90429 listing `libswift*` names). Fixes: `xcodegen.nix` makes the flat ANGLE copies **simulator-only** (device ships `libEGL.framework`/`libGLESv2.framework` only) and `iLand`'s EGL shim probes the framework-wrapped binaries first (flake input bumped to `d6cf97a`). The canonical accepted shape for every Apple-mobile ipa, watch or not, is ABI-stable: no `SwiftSupport/`, no `Frameworks/libswift*`. Only a genuine `SWIFT_BACKDEPLOY_LIB_NAMES` shim below its native-OS floor may ever be embedded (none at our targets). `WAWONA_WATCH_LEGACY_SWIFT_SUPPORT=1` remains as an escape hatch that ships and deeply validates the full legacy layout for watch-bearing ipas (`embed_swift_runtime_into_archive!` populates bundle `Frameworks/` + archive-root `SwiftSupport/` pre-export; exportArchive verifiably propagates it into the ipa). Leave OFF unless a canonical-shape upload is rejected again. Pre-upload, `assert_ipa_has_swift_support!` hard-gates the final ipa's actual zip contents: `assert_no_loose_dylibs!` (TN2435, the real regression guard), then canonical-shape or (hatch on) `assert_legacy_swift_support!` checks. No ipa reaches ASC without passing. After any real upload, poll the ASC `buildUploads` API for the `COMPLETE`/`FAILED` verdict instead of waiting on the rejection email (`altool --validate-app` passes on binaries ASC later rejects. Never trust it alone).
 
-**Historical (builds 89-104): bundling the full overlay set everywhere was also wrong.** `embed_swift_runtime_into_archive!` used to treat *every* `/usr/lib/swift/lib*.dylib` reference in `otool -L` as needing embedding on **all** targets and dumped the whole toolchain `swift-5.0/<platform>` dir into `SwiftSupport/` as a fallback. Which manufactured content on the watchless tvOS/visionOS IPAs that must not have it, and combined it with signature/zip defects (`--timestamp=none`, append-zip) that kept the watch-bearing uploads failing too (90433 build 89, 90429 build 95, 90426 builds 93/104). The narrow back-deployment whitelist (`SWIFT_BACKDEPLOY_LIB_NAMES` + `swift_backdeploy_needed?`) remains the rule for watchless bundles; the error in 26.8.8's first iteration was extending "embed nothing" to watch-bearing IPAs (builds 110/119 → ITMS-90426). Validate with `fastlane ios debug_export` (`WAWONA_DEBUG_SCHEME=Wawona-iOS`/`Wawona-tvOS`/`Wawona-visionOS`) or the `Ship: beta (stores)` `workflow_dispatch` (`lane: ios debug_export`, `debug_scheme: <scheme>`). The dispatch uploads the built ipa as a `wawona-debug-export-ipa-<scheme>` workflow artifact for direct inspection; after a real upload, check the ASC `buildUploads` API for the synchronous `COMPLETE`/`FAILED` verdict instead of waiting on the rejection email (`xcrun altool --validate-app` passes on binaries ASC later rejects. Never trust it alone).
+**Historical (builds 89-104): bundling the full overlay set everywhere was also wrong.** `embed_swift_runtime_into_archive!` used to treat *every* `/usr/lib/swift/lib*.dylib` reference in `otool -L` as needing embedding on **all** targets and dumped the whole toolchain `swift-5.0/<platform>` dir into `SwiftSupport/` as a fallback. Which manufactured content on the watchless tvOS/visionOS IPAs that must not have it, and combined it with signature/zip defects (`--timestamp=none`, append-zip) that kept the watch-bearing uploads failing too (90433 build 89, 90429 build 95, 90426 builds 93/104). The narrow back-deployment whitelist (`SWIFT_BACKDEPLOY_LIB_NAMES` + `swift_backdeploy_needed?`) remains the rule for watchless bundles; the error in 26.8.8's first iteration was extending "embed nothing" to watch-bearing IPAs (builds 110/119 â ITMS-90426). Validate with `fastlane ios debug_export` (`WAWONA_DEBUG_SCHEME=Wawona-iOS`/`Wawona-tvOS`/`Wawona-visionOS`) or the `Ship: beta (stores)` `workflow_dispatch` (`lane: ios debug_export`, `debug_scheme: <scheme>`). The dispatch uploads the built ipa as a `wawona-debug-export-ipa-<scheme>` workflow artifact for direct inspection; after a real upload, check the ASC `buildUploads` API for the synchronous `COMPLETE`/`FAILED` verdict instead of waiting on the rejection email (`xcrun altool --validate-app` passes on binaries ASC later rejects. Never trust it alone).
 
-**tvOS/visionOS export "current platform" mismatch (#138):** exporting `Wawona-tvOS`'s (and `Wawona-visionOS`'s) `.xcarchive` failed with `xcodebuild`: `Provisioning profile "match AppStore com.aspauldingcode.Wawona tvos" has platform "tvOS", which does not match the current platform "iOS"`. Initial theory (stale `xcodebuild`/gym ENV leaking across sequential exports in one Ruby process, the class of bug fastlane ships `xcbuild-safe.sh` for) was **wrong**: it still reproduced in an isolated, single-scheme `fastlane ios debug_export` run. Root cause, found by inspecting a local archive's `Products/Applications/Wawona.app/Info.plist` directly: `src/resources/app-bundle/Info.plist` is shared verbatim (`GENERATE_INFOPLIST_FILE=NO`) across every Apple app target and hardcodes `CFBundleSupportedPlatforms=[iPhoneOS]` + `LSRequiresIPhoneOS=true`. `xcodebuild -exportArchive` reads `CFBundleSupportedPlatforms`. Not `DTPlatformName`/`DTSDKName`, both of which were correctly `appletvos`/`xros`. To decide the archive's "current platform", so a tvOS/visionOS archive whose Info.plist still says `iPhoneOS` gets its own (correctly platform-scoped) provisioning profile rejected. Fixed in `dependencies/generators/xcodegen.nix` (`stripIOSOnlyInfoPlistKeysPhase`, a postBuild script deleting those iOS-only keys on the tvOS/macOS/visionOS app targets. The same pattern already used for `Wawona-watchOS`'s "Strip iOS-only keys from Watch Info.plist"). Verified locally end-to-end (archive → embed Swift runtime → export → SwiftSupport inject) for both `Wawona-tvOS` and `Wawona-visionOS` via `fastlane ios debug_export` (`WAWONA_DEBUG_SCHEME=<scheme>`, archive+export only, no upload). The minimal-env `Open3.capture3` export change is kept as a reasonable defensive practice but was not this bug's actual cause.
+**tvOS/visionOS export "current platform" mismatch (#138):** exporting `Wawona-tvOS`'s (and `Wawona-visionOS`'s) `.xcarchive` failed with `xcodebuild`: `Provisioning profile "match AppStore com.aspauldingcode.Wawona tvos" has platform "tvOS", which does not match the current platform "iOS"`. Initial theory (stale `xcodebuild`/gym ENV leaking across sequential exports in one Ruby process, the class of bug fastlane ships `xcbuild-safe.sh` for) was **wrong**: it still reproduced in an isolated, single-scheme `fastlane ios debug_export` run. Root cause, found by inspecting a local archive's `Products/Applications/Wawona.app/Info.plist` directly: `src/resources/app-bundle/Info.plist` is shared verbatim (`GENERATE_INFOPLIST_FILE=NO`) across every Apple app target and hardcodes `CFBundleSupportedPlatforms=[iPhoneOS]` + `LSRequiresIPhoneOS=true`. `xcodebuild -exportArchive` reads `CFBundleSupportedPlatforms`. Not `DTPlatformName`/`DTSDKName`, both of which were correctly `appletvos`/`xros`. To decide the archive's "current platform", so a tvOS/visionOS archive whose Info.plist still says `iPhoneOS` gets its own (correctly platform-scoped) provisioning profile rejected. Fixed in `dependencies/generators/xcodegen.nix` (`stripIOSOnlyInfoPlistKeysPhase`, a postBuild script deleting those iOS-only keys on the tvOS/macOS/visionOS app targets. The same pattern already used for `Wawona-watchOS`'s "Strip iOS-only keys from Watch Info.plist"). Verified locally end-to-end (archive â embed Swift runtime â export â SwiftSupport inject) for both `Wawona-tvOS` and `Wawona-visionOS` via `fastlane ios debug_export` (`WAWONA_DEBUG_SCHEME=<scheme>`, archive+export only, no upload). The minimal-env `Open3.capture3` export change is kept as a reasonable defensive practice but was not this bug's actual cause.
 
 **`debug_export` must call `setup_ci` (do not skip it):** the first `debug_export` CI run hung for 2h+ at `Signing WawonaUIContracts.framework` with two orphaned `codesign` processes never reaped until the job was cancelled. Not a slow cold build. Root cause: the lane omitted `setup_ci if ENV["CI"]` (present in `beta`/`release`), so there was no dedicated non-interactive keychain with a `codesign:` partition list; `codesign` blocked on a private-key ACL prompt that a headless runner can never answer. Every lane that signs on CI must call `setup_ci if ENV["CI"]` before any `build_app`/`gym_ipa`. `apple-beta`/`android-beta` now also carry `timeout-minutes: 90` in `release-beta.yml` so a repeat of this class of hang fails in under 2 hours instead of consuming the full 6h GitHub Actions default and blocking the `release-beta-<ref>` concurrency group.
 
@@ -146,7 +146,7 @@ Gate: products / packages / Verification / Build: products share tip concurrency
 - **Obsolete SHA:** jobs skip; rollup exits success as `superseded` (not Cancelled).
 - **Ship / release** may still cancel-on-newer (rare tag races only).
 
-Promote only cares about a **success** tip Gate: products (full matrix), Gate: packages, and Verification report. Never `gh run cancel` to “make room” for Verification.
+Promote only cares about a **success** tip Gate: products (full matrix), Gate: packages, and Verification report. Never `gh run cancel` to âmake roomâ for Verification.
 
 ### Professional runner contract
 
@@ -160,7 +160,7 @@ Promote only cares about a **success** tip Gate: products (full matrix), Gate: p
 ### Skipped jobs (what is still OK)
 
 Gate: products calls **one thin workflow per platform** (`product-ios-sim.yml`,
-`device-e2e-android.yml`, …). Those files only contain jobs that run for that
+`device-e2e-android.yml`, â¦). Those files only contain jobs that run for that
 platform. You should **not** see dozens of `Build: Android / macOS .app` skips
 or raw `${{ matrix.label }}` names.
 
@@ -174,7 +174,7 @@ Expected skips that remain:
 
 **UI trap:** soft-fail leak cells (`continue-on-error`) can show **red children**
 while `Gate: products` is still **success**. The GitHub job conclusion (green after
-`continue-on-error`) is not the real leak verdict. Read `LEAK_GATE_FAIL targets=…`
+`continue-on-error`) is not the real leak verdict. Read `LEAK_GATE_FAIL targets=â¦`
 / `verdict.json`. Gate: products stays green regardless.
 
 **Cancelled** (distinct from Skipped) only comes from tip concurrency: a newer
@@ -238,7 +238,7 @@ Push/PR **Gate: packages** builds only [`.github/ci-package-matrix.json`](../.gi
 
 ## Host Xcode pin (impure Apple builds)
 
-Runners use [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.sh). **pinned**, not “newest”.
+Runners use [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.sh). **pinned**, not ânewestâ.
 
 | | |
 |--|--|
@@ -264,7 +264,7 @@ When the requested simulator SDK is already on the runner, the script sets `WAWO
 ## CI anti-patterns (do not reintroduce)
 
 1. Confusing FlakeHub store cache with Apple SDKs / `apple-sdks.nix`.
-2. Unpinned “newest Xcode” (`sort -V \| tail -1`) in workflows.
+2. Unpinned ânewest Xcodeâ (`sort -V \| tail -1`) in workflows.
 3. Warming device backend when product needs sim (or the reverse).
 4. Expecting FlakeHub to fix IFD / eval time. Hoist IFDs instead.
 5. Serializing iOS GUI smoke behind AppImages/macOS/Android product jobs.
@@ -291,15 +291,15 @@ advisory diagnostic and does not affect product promotion.
 WAWONA_IOS_APP=result-ios/Wawona.app ./scripts/leak-idle-gate.sh ios
 WAWONA_ANDROID_APK=dist/Wawona.apk ./scripts/leak-idle-gate.sh android
 WAWONA_MACOS_APP=result-macos/Wawona.app ./scripts/leak-idle-gate.sh macos
-./scripts/leak-idle-gate.sh summary   # prints LEAK_GATE_FAIL targets=…
+./scripts/leak-idle-gate.sh summary   # prints LEAK_GATE_FAIL targets=â¦
 ```
 
-CI: Actions → standalone **Watch: idle memory** (schedule/dispatch) → `Leak idle summary`
+CI: Actions â standalone **Watch: idle memory** (schedule/dispatch) â `Leak idle summary`
 lists failing targets.
 
 ## Watch: bundled clients
 
-Every Machines `kBundledClients` option × runnable platforms (nested `weston`/`niri` + demos).
+Every Machines `kBundledClients` option Ã runnable platforms (nested `weston`/`niri` + demos).
 
 ```bash
 ./scripts/bundled-clients-matrix-gate.sh                 # all platforms
@@ -308,14 +308,14 @@ WAWONA_MATRIX_CLIENTS="niri,weston" ./scripts/bundled-clients-matrix-gate.sh ios
 ```
 
 See [testing/bundled-clients-matrix-gate.md](./testing/bundled-clients-matrix-gate.md).
-Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,…`.
+Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,â¦`.
 
 ## Build: GUI smoke speed notes
 
 - Fail-fast: one smoke/fuzzel attempt (no suite retries).
 - Tip-only concurrency (see above): obsolete SHA gates cancel together; do not
   treat cancelled non-tip Gate: products runs as red for promote.
-- Gate: products fans out product-build by product (`only: ios-sim|…`) so **iOS smoke
+- Gate: products fans out product-build by product (`only: ios-sim|â¦`) so **iOS smoke
   starts when `product-ios-sim` is ready**. It does not wait for AppImages/macOS/Android.
 - iOS CI lane: `agent-device-smoke.sh ios-ci` (one prepare for smoke; fuzzel reuses
   warm XCTest derived data; skipped on `pull_request` via `WAWONA_SKIP_FUZZEL`).

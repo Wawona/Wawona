@@ -1,0 +1,56 @@
+name: Setup cargo xtask
+description: >-
+  Xcode on macOS, rustup (rust-toolchain.toml pins the toolchain), and a
+  cache of the Cargo registries, both target directories and the prebuilt
+  .deps slices that deps.lock names. No Nix.
+
+inputs:
+  key:
+    description: Cache key prefix for this job
+    required: true
+  android:
+    description: Also install JBR 21 and the NDK android/app/build.gradle.kts pins
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Select Xcode
+      if: runner.os == 'macOS'
+      shell: bash
+      run: ./.github/scripts/select-xcode.sh
+
+    - name: Cache Cargo and prebuilt dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+          xtask/target
+          .deps
+        key: xtask-${{ runner.os }}-${{ inputs.key }}-${{ hashFiles('Cargo.lock', 'xtask/Cargo.lock', 'deps.lock', 'rust-toolchain.toml') }}
+        restore-keys: xtask-${{ runner.os }}-${{ inputs.key }}-
+
+    - name: rustup
+      shell: bash
+      run: |
+        if ! command -v rustup >/dev/null; then
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
+        fi
+        echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+    # Gradle runs on JBR 21, as Android Studio does (wawona-android-jbr).
+    - if: inputs.android == 'true'
+      uses: actions/setup-java@v5
+      with:
+        distribution: jetbrains
+        java-version: "21"
+
+    - name: Install the pinned NDK
+      if: inputs.android == 'true'
+      shell: bash
+      run: |
+        NDK=$(sed -n 's/.*ndkVersion *= *"\([^"]*\)".*/\1/p' android/app/build.gradle.kts)
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK" >/dev/null

@@ -77,7 +77,10 @@ fn prebuild() -> Result<()> {
             .arg(root.join("src/platform/ios/WWNGetprognameStub.c"))
             .args(["-isysroot", &var("SDKROOT")?, "-arch", "arm64", "-fPIC", "-O2", "-o"])
             .arg(&o))?;
-        run(cmd("xcrun").args(["--sdk", &platform, "libtool", "-static", "-o"]).arg(derived.join("libwawona-getprogname.a")).arg(&o))?;
+        run(cmd("xcrun")
+            .args(["--sdk", &platform, "libtool", "-static", "-o"])
+            .arg(derived.join("libwawona-getprogname.a"))
+            .arg(&o))?;
     }
 
     // zsh and fastfetch collide with each other and with OpenSSH; ld-prime
@@ -93,8 +96,8 @@ fn prebuild() -> Result<()> {
 /// wwn-version.xcconfig includes.
 fn libghostty(root: &Path, derived: &Path) -> Result<()> {
     let lg = root.join(".deps/libghostty-macos");
-    let on = std::env::var("WAWONA_LINK_LIBGHOSTTY").as_deref() == Ok("1")
-        && lg.join("lib/libghostty-internal.a").exists();
+    let on =
+        std::env::var("WAWONA_LINK_LIBGHOSTTY").as_deref() == Ok("1") && lg.join("lib/libghostty-internal.a").exists();
     let (header, xcconfig) = if on {
         std::fs::copy(lg.join("include/ghostty.h"), derived.join("ghostty.h"))?;
         let fw = "Metal MetalKit QuartzCore CoreText CoreGraphics CoreVideo CoreImage IOKit Security \
@@ -132,7 +135,11 @@ fn privatize(platform: &str, src: &Path, dst: &Path, export: &str) -> Result<()>
     let tmp = root().join("target/wawona-privatize").join(platform).join(export);
     std::fs::create_dir_all(&tmp)?;
     let merged = tmp.join("merged.o");
-    run(cmd("ld").args(["-r", "-arch", "arm64", "-platform_version", &os, &min, &min, "-all_load"]).arg(src).arg("-o").arg(&merged))?;
+    run(cmd("ld")
+        .args(["-r", "-arch", "arm64", "-platform_version", &os, &min, &min, "-all_load"])
+        .arg(src)
+        .arg("-o")
+        .arg(&merged))?;
     write(tmp.join("exports"), format!("{export}\n"))?;
     run(cmd("nmedit").arg("-s").arg(tmp.join("exports")).arg(&merged))?;
     run(cmd("libtool").arg("-static").arg(&merged).arg("-o").arg(dst))

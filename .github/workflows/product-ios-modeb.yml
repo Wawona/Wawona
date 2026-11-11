@@ -30,10 +30,6 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
-
-env:
-  NIXPKGS_ALLOW_UNFREE: "1"
 
 jobs:
   ios-modeb:
@@ -45,21 +41,21 @@ jobs:
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
-      - name: Select Xcode
-        run: ./.github/scripts/select-xcode.sh
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: ios-modeb
 
-      - uses: ./.github/actions/setup-nix-flakehub
+      # ldid signs the Mode B binaries; dpkg checks the debs xtask writes.
+      - name: Install ldid and dpkg
+        run: brew install ldid dpkg
 
       - name: Build TrollStore iOS 14+ and Sileo iOS 13+ products
-        run: |
-          ./.github/scripts/nix-retry.sh nix build ".#wawona-ios-modeb-tipa-slim" --print-build-logs --out-link result-tipa
-          ./.github/scripts/nix-retry.sh nix build ".#wawona-ios-modeb-deb-rootless-slim" --print-build-logs --out-link result-sileo
+        run: cargo xtask package ios-mode-b
 
       - name: Verify channel floors and stage artifacts
         run: |
           mkdir -p dist/ios-modeb
-          cp -L result-tipa/*.tipa dist/ios-modeb/
-          cp -L result-sileo/*.deb dist/ios-modeb/
+          cp dist/*.tipa dist/*-rootless.deb dist/ios-modeb/
           bash ./.github/scripts/verify-ios-modeb-artifacts.sh --mode-b dist/ios-modeb/*.tipa
           dpkg-deb -f dist/ios-modeb/*.deb Depends | grep -Fx 'firmware (>= 13.0)'
           printf '{"tipa_min_ios":"14.0","sileo_min_ios":"13.0","sha":"%s"}\n' "${{ github.sha }}" \
@@ -72,4 +68,3 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
-

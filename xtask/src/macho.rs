@@ -16,7 +16,7 @@ pub fn resolve(deps: &Path, p: &Path) -> PathBuf {
     }
 }
 
-fn is_macho(p: &Path) -> bool {
+pub fn is_macho(p: &Path) -> bool {
     let mut b = [0u8; 4];
     use std::io::Read;
     std::fs::File::open(p).and_then(|mut f| f.read_exact(&mut b)).is_ok()
@@ -112,7 +112,11 @@ pub fn bundle_dylibs(deps: &Path, contents: &Path) -> Result<()> {
     let signing = std::env::var("CODE_SIGNING_ALLOWED").map(|v| v == "YES").unwrap_or(true);
     for m in machos() {
         for d in store_deps(&m)? {
-            run(cmd("install_name_tool").arg("-change").arg(&d).arg(format!("@rpath/{}", name(Path::new(&d)))).arg(&m))?;
+            run(cmd("install_name_tool")
+                .arg("-change")
+                .arg(&d)
+                .arg(format!("@rpath/{}", name(Path::new(&d))))
+                .arg(&m))?;
         }
         let have = rpaths(&m)?;
         for rp in have.iter().filter(|r| r.starts_with("/nix/store/")) {

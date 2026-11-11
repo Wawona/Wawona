@@ -42,31 +42,9 @@ jobs:
   android-apk:
     name: "Android: Wawona.apk"
     if: ${{ !inputs.products_ready }}
-    runs-on: macos-27
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
-
-      - uses: ./.github/actions/setup-nix-flakehub
-
-      - name: Build Wawona.apk
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
-
-      - name: Stage APK
-        run: |
-          mkdir -p dist
-          cp -L result-android/bin/Wawona.apk dist/Wawona.apk
-          ls -lh dist/Wawona.apk
-
-      - name: Upload product-android-apk
-        uses: actions/upload-artifact@v7
-        with:
-          name: product-android-apk
-          path: dist/Wawona.apk
-          if-no-files-found: error
-          compression-level: 0
+    uses: ./.github/workflows/product-android-apk.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref }}
 
   android-emu-e2e:
     name: "Android emulator: adb runtime smoke"

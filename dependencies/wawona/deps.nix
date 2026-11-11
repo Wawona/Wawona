@@ -175,6 +175,7 @@
     ln -s ../../MacOS/igetty ${r}/bin/igetty
     mkdir -p ${r}/libexec && ln -s ${x.igetty}/libexec/wwn-modeb-session ${r}/libexec/
     ln -s ${fonts}/share/fonts ${r}/share/fonts
+    mkdir -p ${r}/share/X11 && ln -s ${xkb}/share/X11/xkb ${r}/share/X11/xkb
     ln -s ${cursors}/share/icons/Adwaita/cursors/* ${r}/share/icons/Adwaita/cursors/
     ln -s ${cursors}/share/icons/Adwaita/index.theme ${r}/share/icons/Adwaita/
     ln -s ${cursors}/share/icons/default ${r}/share/icons/default

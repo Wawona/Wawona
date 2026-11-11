@@ -62,9 +62,17 @@ jobs:
       - name: Applications catalog smoke (headless)
         run: chmod +x ./scripts/applications-catalog-smoke.sh && ./scripts/applications-catalog-smoke.sh
 
+      - uses: ./.github/actions/setup-xtask
+        if: ${{ !inputs.products_ready }}
+        with:
+          key: macos
+
       - name: Build Wawona.app (macOS)
         if: ${{ !inputs.products_ready }}
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos" --print-build-logs --out-link result-macos
+        run: |
+          cargo xtask build macos --release
+          mkdir -p result-macos/Applications
+          ditto .build/xcode/macos/Build/Products/Release/Wawona.app result-macos/Applications/Wawona.app
 
       - name: Download product-macos-app
         if: ${{ inputs.products_ready }}

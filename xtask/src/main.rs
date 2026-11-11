@@ -3,6 +3,8 @@
 mod backend;
 mod deps;
 mod macho;
+mod package;
+mod product;
 mod slices;
 mod tools;
 mod util;
@@ -31,6 +33,15 @@ enum Cmd {
         #[command(flatten)]
         get: deps::GetArgs,
     },
+    /// Build an app (simulator unless --device) through its Xcode scheme or Gradle.
+    Build(product::Args),
+    /// Run tests: rust, ios (XCTest on a simulator) or android (unit tests).
+    Test(product::Args),
+    /// Archive an app for release; --export signs and exports it.
+    Archive(product::ArchiveArgs),
+    /// Mode B wrappers and the macOS DMG.
+    #[command(subcommand)]
+    Package(package::Cmd),
     /// Repository gates.
     #[command(subcommand)]
     Verify(verify::Cmd),
@@ -46,6 +57,10 @@ fn main() -> Result<()> {
     match Cli::parse().cmd {
         Cmd::Backend(a) => backend::main(a),
         Cmd::Deps { cmd, get } => deps::main(cmd.unwrap_or(deps::Cmd::Get(get))),
+        Cmd::Build(a) => product::build(a),
+        Cmd::Test(a) => product::test(a),
+        Cmd::Archive(a) => product::archive(a),
+        Cmd::Package(c) => package::main(c),
         Cmd::Verify(c) => verify::main(c),
         Cmd::Xcode(c) => xcode::main(c),
     }

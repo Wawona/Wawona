@@ -2,8 +2,8 @@
 """Mode A Darwin CLI sources must stay on public APIs.
 
 Scans the in-process shell command files that ship in the App Store app.
-Mode B packaging (Procursus, private LaunchServices) lives under
-packaging/mode-b-darwin and must not appear here.
+Mode B tools (Procursus, private LaunchServices) are repo.wawona.io catalog
+debs and must not appear here.
 """
 
 from __future__ import annotations

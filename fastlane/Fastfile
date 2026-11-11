@@ -1016,28 +1016,15 @@ def ensure_all_asc_versions!(api_key)
   end
 end
 
-# Fastlane's FastFile#sh only forwards log/step_name/error_callback from a
-# trailing options hash — `env:` is silently dropped. Pass env as Open3's
-# leading Hash (merged with ENV so PATH/HOME/NIX_* survive).
-def nix_sh(command, extra_env)
-  sh(ENV.to_h.merge(extra_env.transform_keys(&:to_s)), command, log: true)
-end
-
-def nix_impure_build_cmd(attr)
-  "nix build .##{attr} --impure --option sandbox false " \
-    "--option build-users-group \"\" " \
-    "--print-out-paths --print-build-logs"
-end
-
+# The prebuilt slices deps.lock names. The iOS app embeds the watch app.
 def ensure_deps!(target)
-  sdk = target[:app_platform] == "ios" ? "iphoneos" : target[:app_platform]
-  UI.message("Linking .deps/#{sdk} (nix run .#deps -- #{sdk})...")
-  sh("nix", "run", ".#deps", "--", sdk)
+  sdks = target[:app_platform] == "ios" ? %w[iphoneos watchos] : [target[:app_platform]]
+  sh("cargo", "xtask", "deps", "get", *sdks)
 end
 
-# nix develop exports CC/CXX/LD/NIX_LDFLAGS and clang-wrapper on PATH;
-# xcodebuild then fails Ld with "unknown options: -Xlinker -dynamiclib".
-# Prefer Apple tools and clear nix compiler env before gym.
+# A local `nix develop` shell exports CC/CXX/LD/NIX_LDFLAGS and
+# clang-wrapper on PATH; xcodebuild then fails Ld with "unknown options:
+# -Xlinker -dynamiclib". Prefer Apple tools before gym.
 def prefer_xcode_toolchain!
   developer_dir = ENV["DEVELOPER_DIR"].to_s
   developer_dir = `xcode-select -p`.strip if developer_dir.empty?
@@ -1062,7 +1049,7 @@ def prefer_xcode_toolchain!
 
   ENV["DEVELOPER_DIR"] = developer_dir unless developer_dir.empty?
   ENV["TOOLCHAINS"] ||= "com.apple.dt.toolchain.XcodeDefault"
-  UI.message("Xcode toolchain preferred (#{developer_dir}); cleared nix CC/LD env")
+  UI.message("Xcode toolchain preferred (#{developer_dir})")
   delete_metal_toolchain_component!
 end
 
@@ -1106,8 +1093,8 @@ def gym_output_dir
   end
 end
 
-# Nix owns the dependency slices and Rust backend (.deps, linked by ensure_deps!).
-# Fastlane owns match keychain, gym archive/export, and TestFlight upload.
+# cargo xtask owns the dependency slices and the Rust backend (ensure_deps!,
+# then the Xcode build phases). Fastlane owns match keychain, gym archive/export, and TestFlight upload.
 #
 # Do NOT pass PROVISIONING_PROFILE_SPECIFIER via global xcargs — it applies to
 # every target (WawonaModel / WawonaUIContracts frameworks cannot take profiles).
@@ -1290,20 +1277,21 @@ def gym_ipa(target)
   final_ipa
 end
 
-def nix_aab_path
+# Gradle signs bundleRelease with ANDROID_KEYSTORE_PATH (android/app/build.gradle.kts).
+def build_aab_path
+  keystore = File.join(Dir.tmpdir, "wawona-upload-#{Process.pid}.jks")
+  File.binwrite(keystore, ENV.fetch("ANDROID_KEYSTORE_BASE64").unpack1("m"))
   env = {
-    # BASE64 is required for sandboxed/daemon builds; path alone is unreadable.
-    "ANDROID_KEYSTORE_BASE64" => ENV.fetch("ANDROID_KEYSTORE_BASE64"),
-    "ANDROID_KEYSTORE_PASSWORD" => ENV.fetch("ANDROID_KEYSTORE_PASSWORD"),
-    "ANDROID_KEY_ALIAS" => ENV.fetch("ANDROID_KEY_ALIAS"),
-    "ANDROID_KEY_PASSWORD" => ENV.fetch("ANDROID_KEY_PASSWORD"),
+    "ANDROID_KEYSTORE_PATH" => keystore,
     "WAWONA_VERSION" => wawona_version,
     "WAWONA_BUILD_NUMBER" => wawona_build_number
   }
-  out = nix_sh(nix_impure_build_cmd("wawona-android-aab"), env).strip.split("\n").last
-  aab = Dir.glob(File.join(out, "**", "*.aab")).first
-  UI.user_error!("No AAB found in #{out}") unless aab
+  sh(ENV.to_h.merge(env), "cargo", "xtask", "archive", "android", log: true)
+  aab = File.expand_path("../android/app/build/outputs/bundle/release/app-release.aab", __dir__)
+  UI.user_error!("No AAB at #{aab}") unless File.file?(aab)
   aab
+ensure
+  FileUtils.rm_f(keystore) if keystore
 end
 
 platform :ios do
@@ -1446,12 +1434,12 @@ end
 
 platform :android do
   def android_stage_aab!
-    # Optional: WAWONA_AAB_PATH=/path/to.aab skips nix rebuild (promote same
-    # internal AAB to Closed Alpha / Open without a second product build).
+    # Optional: WAWONA_AAB_PATH=/path/to.aab skips the rebuild (promote the
+    # same internal AAB to Closed Alpha / Open without a second product build).
     src = if ENV["WAWONA_AAB_PATH"].to_s.strip != ""
       File.expand_path(ENV.fetch("WAWONA_AAB_PATH"))
     else
-      nix_aab_path
+      build_aab_path
     end
     UI.user_error!("AAB missing: #{src}") unless File.file?(src)
     out = File.expand_path("../dist/#{store_aab_basename}.aab", __dir__)

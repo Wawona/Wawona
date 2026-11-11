@@ -54,7 +54,11 @@ fn push_token() -> Result<String> {
 }
 
 fn absolute(location: &str) -> String {
-    if location.starts_with("http") { location.to_string() } else { format!("https://{REGISTRY}{location}") }
+    if location.starts_with("http") {
+        location.to_string()
+    } else {
+        format!("https://{REGISTRY}{location}")
+    }
 }
 
 fn upload(t: &str, digest: &str, mut data: impl Read) -> Result<()> {

@@ -14,6 +14,7 @@ path = "src/main.rs"
 anyhow = "1"
 bindgen = "0.72"
 clap = { version = "4", features = ["derive"] }
+flate2 = "1"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -25,6 +26,7 @@ uniffi = { version = "=0.30.0", features = ["cli"] }
 ureq = "3"
 walkdir = "2"
 zstd = "0.13"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [profile.dev]
 opt-level = 1

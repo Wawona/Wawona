@@ -471,7 +471,11 @@ jobs:
         run: |
           nix build .#zsh-android .#fastfetch-android .#phoon-android \
             .#weston-ios --no-link
-      - name: Gradle project assembleDebug
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: android-gate
+          android: true
+      - name: Gradle assembleDebug over a slice built from source
         run: |
-          nix run .#deps -- android
-          ./gradlew :Wawona:assembleDebug --no-daemon
+          cargo xtask deps get --nix android
+          cargo xtask build android

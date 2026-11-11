@@ -1,18 +1,6 @@
 {
-  "description": "Curated Gate: packages package matrix. Product binaries (wawona-macos, wawona-appimage, wawona-ios, wawona-android) are owned by product-build.yml. See docs/ci.md.",
+  "description": "Curated Gate: packages package matrix. Products are cargo xtask builds in the product-*.yml workflows, and deps.yml builds the prebuilt slices. See docs/ci.md.",
   "include": [
-    {
-      "system": "aarch64-darwin",
-      "os": "macos-27",
-      "target": "wawona-ios-sim-backend",
-      "why": "iOS sim Rust/native backend (product-build .#wawona-ios path); app install covered by product-build + device-e2e"
-    },
-    {
-      "system": "aarch64-darwin",
-      "os": "macos-27",
-      "target": "wawona-android-backend",
-      "why": "Android native backend on Darwin host (NDK path)"
-    },
     {
       "system": "aarch64-darwin",
       "os": "macos-27",
@@ -30,12 +18,6 @@
       "os": "ubuntu-latest",
       "target": "wawona-linux-ui-bin",
       "why": "Linux GTK host UI binary (AppImage input; AppImage itself is product-build)"
-    },
-    {
-      "system": "x86_64-linux",
-      "os": "ubuntu-latest",
-      "target": "wawona-android-backend",
-      "why": "Android backend also builds on Linux CI hosts"
     },
     {
       "system": "aarch64-linux",

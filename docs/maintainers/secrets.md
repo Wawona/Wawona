@@ -91,7 +91,6 @@ Public Wawona                    Private aspauldingcode/.password-store
 | `APPLE_SIGNING_PAT` | Fine-grained PAT (Contents:Read on `apple-signing`) |
 | `ASC_KEY_ID` / `ASC_ISSUER_ID` / `ASC_P8` | App Store Connect API (TestFlight + notarytool) |
 | `DEVELOPER_ID_APPLICATION_P12_BASE64` | codesign app / nested binaries for Gatekeeper DMG |
-| `DEVELOPER_ID_INSTALLER_P12_BASE64` | `productsign` for `.pkg` helpers |
 
 ## Android pass keys (`release-android`)
 
@@ -118,25 +117,18 @@ CI path: **Watch: TestFlight feedback** (`testflight-feedback.yml`) reuses the
 same `APP_STORE_CONNECT_*` secrets on Environment `release-beta` to poll
 screenshot and crash feedback and open GitHub issues. No extra keys.
 
-CI path: **Ship: GitHub assets** → `release-macos` →
-[`scripts/macos-sign-and-notarize-dmg.sh`](../../scripts/macos-sign-and-notarize-dmg.sh)
+CI path: **Ship: GitHub assets** → `release-macos` → `cargo xtask package dmg --notarize`
 (entitlements:
 [`Wawona-macOS-DeveloperID.entitlements`](../../src/resources/app-bundle/Wawona-macOS-DeveloperID.entitlements)).
 
-Local (after staging an app + agent pkg):
+Local, with the Developer ID identity in the login keychain:
 
 ```bash
-nix develop .#release
-./scripts/release-env.sh bash -lc '
-  ./scripts/macos-sign-and-notarize-dmg.sh \
-    --app dmg-staging/Wawona.app \
-    --pkg dmg-staging/WawonaAgent.pkg \
-    --staging dmg-staging \
-    --dmg "Wawona-$(cat VERSION).dmg"
-'
+./scripts/release-env.sh cargo xtask package dmg --notarize
 ```
 
-`WAWONA_SKIP_NOTARIZE=1` signs and builds the DMG without contacting Apple.
+Without `--notarize` it signs and builds the DMG without contacting Apple;
+without a Developer ID identity it signs ad hoc (a local test DMG only).
 
 ## Day-2 operations
 

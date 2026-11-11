@@ -71,8 +71,7 @@ pub fn symlink(target: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<()> {
     if let Some(d) = link.parent() {
         std::fs::create_dir_all(d)?;
     }
-    std::os::unix::fs::symlink(target.as_ref(), link)
-        .with_context(|| format!("symlink {}", link.display()))
+    std::os::unix::fs::symlink(target.as_ref(), link).with_context(|| format!("symlink {}", link.display()))
 }
 
 pub fn env_or(k: &str, default: &str) -> String {

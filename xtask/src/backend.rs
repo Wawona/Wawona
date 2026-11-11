@@ -111,9 +111,7 @@ pub fn main(a: Args) -> Result<()> {
         let cc = output(cmd("xcrun").args(["--sdk", apple.sdk, "-f", "clang"]))?;
         let target = format!("{}{min}{}", apple.clang, if apple.simulator { "-simulator" } else { "" });
         cflags += &format!(" -isysroot {sdkroot}");
-        rustflags += &format!(
-            " -C link-arg=-target -C link-arg={target} -C link-arg=-isysroot -C link-arg={sdkroot}"
-        );
+        rustflags += &format!(" -C link-arg=-target -C link-arg={target} -C link-arg=-isysroot -C link-arg={sdkroot}");
         c.env(apple.deploy_var, min)
             .env(format!("CC_{u}"), &cc)
             .env(format!("CARGO_TARGET_{upper}_LINKER"), &cc)

@@ -30,17 +30,12 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
-
-env:
-  NIXPKGS_ALLOW_UNFREE: "1"
 
 jobs:
   android-apk:
     name: "Android debug APK"
-    # macOS (not ubuntu): Android cross deps (e.g. zsh-android) fail configure on
-    # linux; runner OS version is irrelevant (Nix supplies NDK). Aligned to
-    # macos-27 with the Apple product jobs.
+    # The backend links with the NDK's darwin-x86_64 LLVM, which the
+    # prebuilt android slice was built against.
     runs-on: macos-27
     timeout-minutes: 120
     steps:
@@ -48,25 +43,20 @@ jobs:
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
-      - uses: ./.github/actions/setup-nix-flakehub
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: android
+          android: true
 
-      - name: Build wawona-android
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
+      - name: Build the debug APK
+        run: cargo xtask build android
 
       - name: Stage APK
         run: |
           mkdir -p dist
-          cp -L result-android/bin/Wawona.apk dist/Wawona.apk
-          OUT="$(readlink -f result-android)"
-          {
-            echo "{"
-            echo "  \"attr\": \"wawona-android\","
-            echo "  \"sha\": \"${{ github.sha }}\","
-            echo "  \"outPath\": \"$OUT\","
-            echo "  \"artifact\": \"product-android-apk\""
-            echo "}"
-          } > dist/product-manifest.json
-          ls -lh dist/Wawona.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Wawona.apk
+          printf '{"target":"android","sha":"%s","artifact":"product-android-apk"}\n' "${{ github.sha }}" \
+            > dist/product-manifest.json
 
       - name: Verify Play-safe Android graphics bundle
         run: |

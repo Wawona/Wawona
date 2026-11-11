@@ -117,7 +117,7 @@ Never: `xcrun simctl boot`, visionOS schemes, or `vnc://` for this loop.
 
 ```bash
 # 1) Build (auto-bumps CFBundleVersion)
-./scripts/build-modeb-demo-tipa.sh
+cargo xtask package demo
 
 # 2) Install via TrollStore only (agent-device)
 node agent-device/bin/agent-device.mjs packages tipa install ./….tipa \
@@ -153,7 +153,7 @@ Success criteria for the Mode B tipa demo:
 
 ## Demo tipa (single Mode B proof app)
 
-Builder: `Wawona/scripts/build-modeb-demo-tipa.sh`
+Builder: `cargo xtask package demo` (`xtask/src/package.rs`)
 Bundle: `com.aspauldingcode.wawona.modeb.demo`
 Artifact: `.agent-device/test-artifacts/dmabuf/vphone-jb/WawonaModeBDemo-{calver}-iOS-arm64.tipa`
 URL scheme: `wawona-modeb-demo://`
@@ -166,13 +166,12 @@ Paint source: `Wawona/scripts/modeb-fb-jit-paint.s`
 3. **JIT showcase.** W^X emit (prefer `vm_allocate` then RX; else MAP_JIT): probe + `fib(n)` every tick; HUD `LIVE … fib(n)=…`.
 
 ```bash
-./scripts/build-modeb-demo-tipa.sh
+cargo xtask package demo
 packages tipa install ./….tipa --device "vphone wawona-jb"
 packages tipa open-jit com.aspauldingcode.wawona.modeb.demo --device "vphone wawona-jb"
 # sock screenshot: plasma + orbs + Hello + LIVE fib HUD
 ```
 
-Legacy `build-modeb-fb-jit-tipa.sh` is obsolete; use the demo tipa above.
 
 ## Related
 

@@ -60,77 +60,28 @@ jobs:
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
-      - name: Select Xcode
-        run: ./.github/scripts/select-xcode.sh
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: macos
 
-      - uses: ./.github/actions/setup-nix-flakehub
+      - name: Build Wawona-macOS
+        run: cargo xtask build macos --release
 
-      - name: Build wawona-macos
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos" --print-build-logs --out-link result-macos
-
-      - name: Build wawona-macos-desktop-host
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-macos-desktop-host" --print-build-logs --out-link result-macos-desktop-host
-
-      - name: Stage app
+      # One macOS product: Mode A presents in-window and the same bundle
+      # carries the SIP-gated Mode B dylib (macOS is not store constrained).
+      - name: Stage and verify
         run: |
-          mkdir -p dist/macos-app
-          # Nix .app trees keep store symlinks (niri/fuzzel under Resources/bin).
-          # GHA artifacts must be self-contained. Dereference before upload.
-          ditto result-macos/Applications/Wawona.app dist/macos-app/Wawona.app
-          # Artifact zip can drop +x; restore exec bits on launcher + tools.
-          APP=dist/macos-app/Wawona.app
-          chmod -R u+w "$APP"
-          find "$APP/Contents/MacOS" -type f -exec chmod +x {} + 2>/dev/null || true
-          find "$APP/Contents/Resources/bin" -type f -exec chmod +x {} + 2>/dev/null || true
-          find "$APP" \( -name '*.dylib' -o -name '*.so' \) -type f -exec chmod +x {} + 2>/dev/null || true
-          # Keep-set only (optional-software: niri/fuzzel install later via
-          # repo.wawona.io). Assert the host binary and at least one shell tool.
-          MAIN="$APP/Contents/MacOS/Wawona"
-          BIN="$APP/Contents/Resources/bin"
-          test -f "$MAIN" || { echo "FAIL: staged MacOS/Wawona missing"; exit 1; }
-          chmod +x "$MAIN"
-          test -x "$MAIN"
-          ls -la "$BIN" 2>/dev/null || true
-          # Prefer zsh/fastfetch when present; do not require unbundled clients.
-          for keep in wawona-shell zsh fastfetch; do
-            if [ -f "$BIN/$keep" ]; then
-              chmod +x "$BIN/$keep"
-            fi
-          done
-          # Bundle XKB data for Wayland clients after artifact download (no nix store).
-          XKB_OUT="$(nix build --no-link --print-out-paths nixpkgs#xkeyboard_config)"
-          mkdir -p "$APP/Contents/Resources/share/X11"
-          ditto "$XKB_OUT/share/X11/xkb" "$APP/Contents/Resources/share/X11/xkb"
+          APP=.build/xcode/macos/Build/Products/Release/Wawona.app
+          test -x "$APP/Contents/MacOS/Wawona"
           test -d "$APP/Contents/Resources/share/X11/xkb/rules"
-          OUT="$(readlink -f result-macos)"
-          {
-            echo "{"
-            echo "  \"attr\": \"wawona-macos\","
-            echo "  \"sha\": \"${{ github.sha }}\","
-            echo "  \"outPath\": \"$OUT\","
-            echo "  \"artifact\": \"product-macos-app\""
-            echo "}"
-          } > dist/macos-app/product-manifest.json
-          ls -la dist/macos-app/
-          ls -la dist/macos-app/Wawona.app/Contents/Resources/bin/ | head -40
-
-      - name: Verify macOS Mode B bundles
-        run: |
-          ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos dist/macos-app/Wawona.app
-          mkdir -p dist/macos-desktop-host
-          ditto result-macos-desktop-host/Applications/Wawona.app \
-            dist/macos-desktop-host/Wawona.app
-          ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos-desktop \
-            dist/macos-desktop-host/Wawona.app
-          OUT="$(readlink -f result-macos-desktop-host)"
-          {
-            echo "{"
-            echo "  \"attr\": \"wawona-macos-desktop-host\","
-            echo "  \"sha\": \"${{ github.sha }}\","
-            echo "  \"outPath\": \"$OUT\","
-            echo "  \"artifact\": \"product-macos-desktop-host\""
-            echo "}"
-          } > dist/macos-desktop-host/product-manifest.json
+          ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos "$APP"
+          ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos-desktop "$APP"
+          for a in macos-app macos-desktop-host; do
+            mkdir -p "dist/$a"
+            ditto "$APP" "dist/$a/Wawona.app"
+            printf '{"target":"macos","sha":"%s","artifact":"product-%s"}\n' "${{ github.sha }}" "$a" \
+              > "dist/$a/product-manifest.json"
+          done
 
       - uses: actions/upload-artifact@v7
         with:

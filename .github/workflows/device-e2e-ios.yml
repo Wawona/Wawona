@@ -48,28 +48,17 @@ jobs:
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
-      - name: Select Xcode
-        id: xcode
-        run: ./.github/scripts/select-xcode.sh
-
-      - name: Install Nix
-        if: ${{ !inputs.products_ready }}
-        uses: DeterminateSystems/nix-installer-action@v22
+      - uses: ./.github/actions/setup-xtask
         with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
-        if: ${{ !inputs.products_ready }}
+          key: ios-sim
 
-      - name: Ensure iOS Simulator SDK before nix build
+      - name: Build Wawona.app (iOS simulator)
         if: ${{ !inputs.products_ready }}
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh ios
-
-      - name: Build Wawona.app (iOS simulator slice)
-        if: ${{ !inputs.products_ready }}
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-ios" --print-build-logs --out-link result-ios
+        run: |
+          ./.github/scripts/warm-ios-simulator-sdk.sh ios watchos
+          cargo xtask build ios --release
+          mkdir -p result-ios
+          ditto .build/xcode/ios/Build/Products/Release-iphonesimulator/Wawona.app result-ios/Wawona.app
 
       - name: Download product-ios-sim
         if: ${{ inputs.products_ready }}

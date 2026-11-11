@@ -60,7 +60,12 @@ pub enum Cmd {
     /// Make a Nix-built slice relocatable and archive it (CI).
     Pack { sdk: String, from: PathBuf, out: PathBuf },
     /// Publish an archive to GHCR and record it in deps.lock (CI).
-    Push { sdk: String, archive: PathBuf, #[arg(long)] nar: String },
+    Push {
+        sdk: String,
+        archive: PathBuf,
+        #[arg(long)]
+        nar: String,
+    },
     /// Print the narHash deps.lock records for a slice.
     Nar { sdk: String },
     /// Fold the entries of other deps.lock files into this one (CI: one
@@ -121,7 +126,7 @@ fn expand(sdks: &[String]) -> Vec<String> {
     v
 }
 
-fn get(a: GetArgs) -> Result<()> {
+pub fn get(a: GetArgs) -> Result<()> {
     if a.sdks.is_empty() {
         bail!("usage: cargo xtask deps get <sdk>... (macosx iphonesimulator iphoneos appletvsimulator xrsimulator android ...)");
     }
@@ -136,9 +141,13 @@ fn get(a: GetArgs) -> Result<()> {
             run(cmd("nix").current_dir(&root).args(["build", &format!(".#deps-{sdk}"), "--out-link"]).arg(&dst))?;
             continue;
         }
-        let e = lock.slices.get(&sdk).with_context(|| {
-            format!("deps.lock has no {sdk} slice yet. Build it with: cargo xtask deps get --nix {sdk}")
-        })?;
+        let Some(e) = lock.slices.get(&sdk) else {
+            if dst.exists() {
+                eprintln!("{sdk}: not in deps.lock; using the local {}", dst.display());
+                continue;
+            }
+            bail!("deps.lock has no {sdk} slice yet. Build it with: cargo xtask deps get --nix {sdk}");
+        };
         if read(dst.join(".sha256")).ok().as_deref() == Some(e.sha256.as_str()) {
             eprintln!("{sdk}: up to date");
             continue;

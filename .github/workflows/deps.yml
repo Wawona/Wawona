@@ -3,7 +3,7 @@ name: "Deps: prebuilt slices"
 # Nix builds each dependency slice, `cargo xtask deps pack` makes it
 # relocatable, and `deps push` publishes it to ghcr.io/wawona/deps. A slice
 # whose Nix output did not change is skipped. The last job opens a pull
-# request that updates deps.lock, which is what `cargo xtask deps <sdk>`
+# request that updates deps.lock, which is what `cargo xtask deps get <sdk>`
 # downloads from.
 
 on:
