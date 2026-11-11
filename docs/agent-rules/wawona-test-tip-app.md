@@ -9,7 +9,7 @@ app must use a **tip build** and a **clean launch**. Never a stale install.
    `/tmp/wawona-macos-tip/DerivedData/Build/Products/Debug/Wawona.app` via
    `scripts/appium/ensure-tip-wawona-macos.sh`). Rebuild when `git HEAD` no
    longer matches the tip stamp, or when `WAWONA_TEST_REBUILD=1`.
-   **macOS dogfood (hard):** always `nix run .#xcodegen-macos` (or the
+   **macOS dogfood (hard):** always `nix run .#deps -- macosx` (or the
    ensure-tip path that runs it) then `xcodebuild -scheme Wawona-macOS`.
    Never claim macOS Terminal/Present green from `run-standalone-macos.sh`
    alone. Standalone is atlas smoke only.

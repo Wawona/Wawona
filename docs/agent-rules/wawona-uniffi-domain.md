@@ -41,9 +41,9 @@ watchOS, visionOS) plus Android and Linux.
 
 A bindgen + Apple-triples helper in Wawona or `wwn-toolchain` is fine. A JFFI
 clone is not. Host bindgen is `dependencies/generators/uniffi-bindgen.nix`.
-Generated Swift/Kotlin live in the Nix store (`wawona-nix-generated`). Stage
-locally with `scripts/stage-uniffi-swift.sh` into `.nix-deps/uniffi` (xcodegen
-`SWIFT_INCLUDE_PATHS`). Prefer `import wawona` when staged; else
+Generated Swift/Kotlin live in the Nix store (`wawona-nix-generated`). `nix run
+.#deps -- <sdk>` links them at `.deps/<sdk>/uniffi` (`SWIFT_INCLUDE_PATHS`).
+Prefer `import wawona` when linked; else
 `WawonaDomainBridge` C trampolines.
 
 ## Where code lives

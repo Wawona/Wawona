@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ISSUE-017: XcodeGen declares WawonaModel/UIContracts as platform=iOS, so Embed
+# ISSUE-017: The project declares WawonaModel/UIContracts as platform=iOS, so Embed
 # Frameworks may copy Debug-iphonesimulator products into the watch app even when
 # Debug-watchsimulator slices exist. Replace embedded frameworks with the
 # matching watch(OS) SDK products after Embed.

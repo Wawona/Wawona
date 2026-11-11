@@ -15,11 +15,11 @@ Cross-links: `wawona-apple-swift-glue`, `wawona-ios-min-os`,
 | Target | Entry | Notes |
 |---|---|---|
 | **macOS** | `Darwin/Sources/Main.swift` `@main` → SwiftUI `App` | LaunchAgent roles before UI |
-| **iOS / iPadOS / tvOS / visionOS** | Same `Main.swift` `@main` → `UIApplicationMain` → `AppMainDelegate` + `WWNSceneDelegate` | iOS **13.0** floor: SwiftUI `App` / `Scene` / `UIApplicationDelegateAdaptor` are **iOS 14+** |
+| **iOS / iPadOS / tvOS / visionOS** | Same `Main.swift` `@main` → `UIApplicationMain` → `AppMainDelegate` + `WWNSceneDelegate` | iOS **15.0** floor; the UIKit scene delegates own CarPlay and external display |
 | **watchOS** | `Sources/WawonaWatch` `@main` | Separate; do not share phone Main |
 
-`xcodegen.nix` must list `{ path = "Darwin/Sources/Main.swift"; type = "file"; }`
-on **every** Apple phone/TV/vision app target, not only macOS.
+`Wawona.xcodeproj/project.xcproj` keeps the `Darwin/Sources` folder
+in **every** Apple phone/TV/vision app target, not only macOS.
 
 Info.plist names `WWNSceneDelegate` / CarPlay / external display. Scene hosts
 `UIHostingController(rootView: WawonaRootView())`. Do **not** insert a
@@ -54,13 +54,10 @@ Default Rust fallback `/tmp/wawona-<uid>` **fails to bind** on iOS Simulator
 (`Failed to bind primary socket at /tmp/wawona-503/wayland-0`). Then
 Machines Start reports `Host compositor failed to start.`
 
-## iOS 13 SwiftUI floor (reminders)
+## iOS 15 SwiftUI floor (reminders)
 
-Do not use these without a backport / alternate path when `IPHONEOS_DEPLOYMENT_TARGET=13.0`:
-
-- `Label { } icon:` (iOS 14+)
-- SwiftUI `App`, `Scene`, `scenePhase`, `UIApplicationDelegateAdaptor` (iOS 14+)
-- Other APIs covered by `wawona-swiftui-backports` / `WawonaBackport`
+APIs newer than iOS 15 need a guard or a `WawonaBackport` path
+(`wawona-swiftui-backports`).
 
 ## Hard rejects
 
@@ -69,7 +66,7 @@ Do not use these without a backport / alternate path when `IPHONEOS_DEPLOYMENT_T
 ❌ `-Dmain=gbm_es2_demo_main` when that symbol already exists as extern C  
 ❌ Start the host compositor without setting mobile `XDG_RUNTIME_DIR`  
 ❌ Nest UIKit subviews under `UIHostingController.view`  
-❌ Use SwiftUI `App` as the iOS 13 process entry without a UIKit path  
+❌ Replace the UIKit entry with SwiftUI `App` (scene delegates own CarPlay and external display)  
 
 ## Verify
 

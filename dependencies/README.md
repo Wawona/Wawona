@@ -51,11 +51,10 @@ Then run `nix flake lock --update-input wwn-toolchain` (and peers) after upstrea
 
 ## Xcode Prebuild
 
-Xcode targets run `scripts/xcode-prebuild.sh` before linking. It realizes only the backend for the active target **and SDK** (device vs simulator). After warming the store:
-
-```bash
-export WAWONA_SKIP_NIX_PREBUILD=1   # Swift/UI iteration
-```
+Xcode targets run `scripts/xcode-prebuild.sh` before linking. It compiles
+nothing: it copies `libwawona.a` from `.build/backend/<sdk>` (what
+`scripts/build-backend.sh <sdk>` last built from the working tree) or else
+`.deps/<sdk>/backend`, and privatizes zsh and fastfetch on Apple mobile.
 
 See [docs/compilation.md](../docs/compilation.md) for the full contributor workflow.
 

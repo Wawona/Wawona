@@ -20,7 +20,7 @@ physical phone.
 
 ## Build isolation
 
-xcodegen compiles every file under `src/platform/ios/` into the store targets.
+The project compiles every file under `src/platform/ios/` into the store targets.
 Mode B sources must not be placed there. A static check rejects jailbreak
 filenames and private symbols in the Mode A command files.
 

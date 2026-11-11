@@ -93,7 +93,7 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | **Watch: graphics nightly** (`nightly-full-matrix.yml`) | schedule / dispatch | - | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Gate: products) |
 | **Watch: TestFlight feedback** (`testflight-feedback.yml`) | schedule / dispatch | schedule / dispatch | Poll ASC TestFlight screenshot/crash feedback → GitHub issues (PII stripped). `release-beta` secrets. Not a promote gate |
 | **Watch: idle memory** (`leak-idle-gate.yml`) | schedule + dispatch | schedule + dispatch | Launch→60s footprint/PSS plateau on product iOS/Android/macOS via **platform tools** (`simctl` / `adb`+`uiautomator` / direct macOS exec). **No agent-device CLI on runners.** Fails with `LEAK_GATE_FAIL targets=…` ([docs/testing/leak-idle-gate.md](./testing/leak-idle-gate.md)). Independent advisory diagnostic, not part of the blocking product gate |
-| **Watch: Appium UI matrix** (`ui-appium.yml`) | nightly + path filter `development` + dispatch | - | Appium 2 pytest matrix (`Tests/appium/`): native UI + Wayland keep-set + catalog clients as real Wayland guests (Colima on Darwin, nested on Linux via `launch-wayland-client.sh`). `macos-26` Apple jobs; `ubuntu-latest` KVM Android + Xvfb Linux. **No agent-device.** Not a promote blocker until native lane replaces Build: GUI smoke ([details](./testing/appium-ui-matrix.md)) |
+| **Watch: Appium UI matrix** (`ui-appium.yml`) | nightly + path filter `development` + dispatch | - | Appium 2 pytest matrix (`Tests/appium/`): native UI + Wayland keep-set + catalog clients as real Wayland guests (Colima on Darwin, nested on Linux via `launch-wayland-client.sh`). `macos-27` Apple jobs; `ubuntu-latest` KVM Android + Xvfb Linux. **No agent-device.** Not a promote blocker until native lane replaces Build: GUI smoke ([details](./testing/appium-ui-matrix.md)) |
 | **FlakeHub publish** (`flakehub-publish.yml`) | tags `vYY.M.D` + dispatch | - | Registry only ([`flakehub-registry.md`](./flakehub-registry.md)). **Not** every development push. Binary cache is separate ([`flakehub-cache.md`](./flakehub-cache.md)) |
 | **Ship: beta (stores)** (`release-beta.yml`) | - | after green master **Gate: products** (`workflow_run`) + dispatch | Fastlane TestFlight / Play. **Never** uploads without a green full Gate: products for that SHA (dispatch is the operator escape) |
 | **Ship: beta AppImages** (`ship-beta-appimage.yml`) | - | after a green master **Gate: products** (`workflow_run`) | Re-publishes that run's same-SHA `product-appimage-*` as 30-day `wawona-beta-appimage-*` via cross-run `download-artifact`. **no rebuild, no fallback** |
@@ -118,7 +118,7 @@ Public developer doc: [wawona.io/docs/prebuilt-naming/](https://wawona.io/docs/p
 
 **macOS notarization (Gatekeeper):** `release-macos` uses Environment `release-beta` secrets (`DEVELOPER_ID_*_P12_BASE64`, `MATCH_PASSWORD`, `APP_STORE_CONNECT_*`) and [`scripts/macos-sign-and-notarize-dmg.sh`](../scripts/macos-sign-and-notarize-dmg.sh): deep `codesign` with hardened runtime + [`Wawona-macOS-DeveloperID.entitlements`](../src/resources/app-bundle/Wawona-macOS-DeveloperID.entitlements), `productsign` the agent pkg, `hdiutil` UDZO DMG, `notarytool submit --wait`, `stapler staple`. Without this, downloaded apps show “damaged and can’t be opened” (quarantine + ad-hoc/nix signature). Re-ship an existing tag via Actions → **Ship: GitHub assets** → `workflow_dispatch` (`tag=vYY.M.D`, optional `build_ref=development` when the notarize script is not yet on the tagged commit).
 
-**watchOS store shipping:** bare `Wawona-watchOS` archives cannot export `app-store-connect` on Xcode 26. The companion is **embedded into `Wawona-iOS`** under classic `Watch/` (XcodeGen default; App Store Connect expects this layout). Never add standalone watch to `APPLE_BETA_TARGETS`. Gate: products builds the device Watch app and its Rust backend before the simulator product to catch the archive build phase before ASC upload. See [the WatchOS device build preflight](testing/watchos-device-preflight.md) and [#136](https://github.com/Wawona/Wawona/issues/136).
+**watchOS store shipping:** bare `Wawona-watchOS` archives cannot export `app-store-connect` (seen on Xcode 26). The companion is **embedded into `Wawona-iOS`** under classic `Watch/` (the project's Embed Watch Content phase; App Store Connect expects this layout). Never add standalone watch to `APPLE_BETA_TARGETS`. Gate: products builds the device Watch app and its Rust backend before the simulator product to catch the archive build phase before ASC upload. See [the WatchOS device build preflight](testing/watchos-device-preflight.md) and [#136](https://github.com/Wawona/Wawona/issues/136).
 
 **Apple beta archive and ASC processing gate:** simulator product builds do not prove that the signed device archive compiles its embedded Watch app. The `ios beta` lane must archive, export, and validate every selected Apple beta IPA before it uploads the first one. Keep the exact prepared IPAs and upload those same files. This makes a Watch Swift compile error, signing/export failure, or local IPA invariant fail the store workflow before any TestFlight submission. A Watch ABI declaration must have one Swift declaration per native symbol in the target module; calling a second `@_silgen_name` declaration that collides with a static ABI wrapper can fail the device archive. The arm64_32 Watch compatibility slice intentionally omits Nix Rust, PTY, and terminal libraries, so its Swift-referenced C symbols need weak fail-closed Watch stubs. The arm64 slice must continue linking the real libraries. Reproduce with `CI=true WAWONA_DEBUG_SCHEME=Wawona-iOS fastlane ios debug_export`, which archives and exports without uploading. After transport, Fastlane polls Apple's `buildUploads` API using the exact version, build number, and platform and requires a new record to reach `COMPLETE`; `FAILED`, missing records, and timeout fail the lane. Unit tests for baseline matching, pending processing, rejection, and missing records run in both the release workflow and the native fast-path gate. Transport success and `altool --validate-app` are not ASC acceptance.
 
@@ -231,7 +231,6 @@ Push/PR **Gate: packages** builds only [`.github/ci-package-matrix.json`](../.gi
 | `prepare-matrix` | L0 | Verify scripts + flake check; emit curated matrix (always) |
 | `cargo-test-*` / `swift-test-*` | L1 | Language tests (Darwin jobs skip when `native=false`) |
 | `build` (matrix) | L2 | Curated attrs + FlakeHub (Darwin cells skip when `native=false`) |
-| `frontend-syntax-check` | L2-lite | Xcode syntax without full Nix backend (skipped when docs-only) |
 | `android-gradle-gate` | L2 (path filter) | Gradle `assembleDebug` + meson/shell |
 | `verification` / workflow **Verification** | L1 | `verify-all.yml` on push/PR. Required check name **Verification report**. Surfaces: formal, heavy fuzz, cproof, Swift/Kotlin differentials, nix parse. Navigate: `docs/verification-matrix.md`. Pinned tools fail closed; unpinned research provers warn. |
 
@@ -243,13 +242,13 @@ Runners use [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.
 
 | | |
 |--|--|
-| Default pin | `/Applications/Xcode_26.6.0.app` (macos-26 image) |
+| Default pin | `/Applications/Xcode_27.2.app` (macos-27 image); any other major fails |
 | Override | `WAWONA_XCODE_APP` or `WAWONA_XCODE_VERSION` |
 | Missing pin | Fail closed (lists installed `Xcode*.app`) |
 
 **Bump procedure:** update `DEFAULT_XCODE_APP` in `select-xcode.sh` in a reviewed PR after confirming the GHA image ships that app. Expect impure weston/backend/product hash churn + XCTest cache misses. That is intentional.
 
-**Runner OS:** all macOS jobs (Apple products, Android APK/AAB, Android Gradle gate, macOS e2e) run on **`macos-26`**. Android needs a macOS host (Linux fails `zsh-android` configure) but not a specific macOS version. Nix supplies the NDK. So it is aligned to `macos-26` rather than pinned to `macos-15`.
+**Runner OS:** all macOS jobs (Apple products, Android APK/AAB, Android Gradle gate, macOS e2e) run on **`macos-27`**, org-wide. Wawona requires the SDK 27 toolchain, and Android, which needs a macOS host (Linux fails `zsh-android` configure) but no particular version, shares the image.
 
 FlakeHub caches **Nix store paths** only. It does **not** ship Apple platform SDKs (`iphoneos` / `iphonesimulator` / `appletvsimulator` / `watchsimulator` / `xrsimulator`). Keep `warm-ios-simulator-sdk.sh` + host Xcode.
 
@@ -259,7 +258,6 @@ FlakeHub caches **Nix store paths** only. It does **not** ship Apple platform SD
 |--|--|
 | `product-build` ios-sim / `device-e2e` (in-job build) | `warm-ios-simulator-sdk.sh ios` |
 | `product-build` apple-family | `warm-ios-simulator-sdk.sh <target>` (`ipados` / `tvos` / `watchos` / `visionos`) |
-| Gate: packages `frontend-syntax-check` | `warm-ios-simulator-sdk.sh all` |
 
 When the requested simulator SDK is already on the runner, the script sets `WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1`. That skip is also required for **non-iOS** sim products: `wwn-toolchain` `build-app.nix` currently runs `-downloadPlatform iOS` for any SDK whose name ends in `simulator` (the watchOS flake noted in `release.yml`). Wiring is guarded by `.github/scripts/verify-apple-sdk-warm.py`.
 
@@ -268,7 +266,7 @@ When the requested simulator SDK is already on the runner, the script sets `WAWO
 1. Confusing FlakeHub store cache with Apple SDKs / `apple-sdks.nix`.
 2. Unpinned “newest Xcode” (`sort -V \| tail -1`) in workflows.
 3. Warming device backend when product needs sim (or the reverse).
-4. Expecting FlakeHub to fix crate2nix IFD / eval time. Hoist IFDs instead.
+4. Expecting FlakeHub to fix IFD / eval time. Hoist IFDs instead.
 5. Serializing iOS GUI smoke behind AppImages/macOS/Android product jobs.
 6. Rebuilding products outside `product-build.yml`.
 7. Calling `product-build` from Watch: idle memory (or Watch: bundled clients) on the same tip_key as Gate: products. Tip concurrency cancels one caller before binaries exist. Push-path idle memory must use `products_ready` from Gate: products; schedule/dispatch use tip_key `leak-idle-*`, and Watch: bundled clients uses `bundled-clients-*` (both isolated from Gate's `product-build-<tip>` group).
@@ -276,7 +274,7 @@ When the requested simulator SDK is already on the runner, the script sets `WAWO
 9. Re-planning completed curated-matrix / gate fan-out work.
 10. Reintroducing Magic Nix Cache / Attic / Cachix / `cache.wawona.io`.
 11. nixpkgs lineage drift across `wwn-*` without `follows` / `verify-nixpkgs-lineage.py`.
-12. Leaving `WAWONA_SKIP_NIX_PREBUILD=1` after `Cargo.lock` changes.
+12. Linking a stale `.build/backend/<sdk>` after `Cargo.lock` changes (re-run `scripts/build-backend.sh <sdk>` or delete it).
 
 ## Watch: idle memory
 
@@ -324,8 +322,8 @@ Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,…`.
 - iOS Mode B: Gate: packages runs
   `.github/scripts/verify-ios-modeb-ci.sh` (scanner + vphone `.ad` contract).
   Gate: products' `ios-modeb` job builds both channel artifacts on macOS:
-  TrollStore `.tipa` is checked at Mach-O iOS **14.0**, and Sileo `.deb` is
-  checked at iOS **13.0** (including its `firmware (>= 13.0)` package gate).
+  TrollStore `.tipa` and Sileo `.deb` are both checked at Mach-O iOS
+  **15.0** (the `.deb` also declares `firmware (>= 15.0)`).
   This is a product build, not merely an archive repack.
   Gate: products runs `--mode-a` on the iOS and iPadOS simulator apps. Lab
   replay is `scripts/agent-device-smoke.sh vphone` against
@@ -337,5 +335,5 @@ Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,…`.
   or via Watch: graphics nightly. Catalog smoke remains hard on the macOS lane.
 - Same-session `prepare ios-runner` + `open` (do not kill prepare daemon before open).
 - XCTest runner cache key includes Xcode version (via `select-xcode.sh` outputs); hit/miss is logged.
-- Product iOS sim uses `xcodegenIosSimOutputs` (`simulatorOnly`, ios-only) so project
-  gen does not force device/macOS native closures.
+- Product iOS sim builds only the simulator slices, so it does not force
+  device or macOS native closures.

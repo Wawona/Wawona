@@ -48,7 +48,7 @@ require_ios_minimum() {
     fail "expected iOS minimum $expected, got ${actual:-missing}"
 }
 
-# Info.plist can advertise 13.0 while an embedded Mach-O requires a newer OS.
+# Info.plist can advertise a lower floor while an embedded Mach-O requires a newer OS.
 # Check every iOS slice; watchOS companion slices retain their own floor.
 require_ios_dependency_minima() {
   local app="$1" expected_platform="$2" maximum="$3" binary platform minimum
@@ -114,12 +114,9 @@ if [[ "$mode" == "--mode-a" || "$mode" == "--mode-a-simulator" ]]; then
       fail "Mode A contains Mode B entitlements"
   fi
   expected_platform=2
-  expected_minimum=13.0
+  expected_minimum=15.0
   if [[ "$mode" == "--mode-a-simulator" ]]; then
-    # SDK 26.5's arm64 Simulator linker stamps 14.0 even for a 13.0
-    # deployment target. A minimal clang link reproduces this platform floor.
     expected_platform=7
-    expected_minimum=14.0
     [[ "$(/usr/bin/lipo -archs "$executable")" == "arm64" ]] ||
       fail "Simulator floor check requires the native arm64 artifact"
   fi

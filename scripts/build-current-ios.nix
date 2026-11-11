@@ -12,7 +12,7 @@ let
       let name = baseNameOf path;
       in type != "unknown"
         && !(builtins.elem name [ ".git" ".cache" ".DS_Store" ])
-        && !(builtins.any (entry: toString path == "${toString root}/${entry}") [ "build" "target" ".build" ".direnv" ".nix-deps" ".artifacts" ".agent-device" ])
+        && !(builtins.any (entry: toString path == "${toString root}/${entry}") [ "build" "target" ".build" ".direnv" ".deps" ".artifacts" ".agent-device" ])
         && builtins.match "\\.derivedData.*" name == null
         && builtins.match "relay-vm-state.*" name == null
         && builtins.match "result(-.*)?" name == null;

@@ -141,7 +141,6 @@ All are Apache-2.0; compatible with MIT. Include the Apache-2.0 license and any 
 | rust-overlay | MIT | |
 | crate2nix | LGPL-3.0 | Build tool only; no runtime in Wawona |
 | HIAHKernel (input) | (check repo) | |
-| Xcodegen, Gradle generators | (check each) | |
 
 These generally don’t ship inside Wawona binaries; if you redistribute Nix expressions or scripts that include them, follow their license terms.
 

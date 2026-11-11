@@ -41,7 +41,7 @@ All four host platforms must complete smoke gates before merge:
 Required smoke outputs:
 
 - Android backend (`wawona-android-backend`)
-- Darwin Android path (`wawona-android` and `gradlegen`)
+- Darwin Android path (`wawona-android` and the root Gradle project)
 
 ## Blocker Signatures
 

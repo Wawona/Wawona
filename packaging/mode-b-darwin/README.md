@@ -1,7 +1,7 @@
 # Mode B Darwin CLI Debian packages
 
-These packages are not part of the App Store app. xcodegen does not compile
-this directory. Install only on a disposable `vphone wawona-jb` guest.
+These packages are not part of the App Store app. `Wawona.xcodeproj` does not
+compile this directory. Install only on a disposable `vphone wawona-jb` guest.
 
 ## Groups
 

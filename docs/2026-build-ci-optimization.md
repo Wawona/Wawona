@@ -66,12 +66,12 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 - **Host simulator SDK warm.** [`.github/scripts/warm-ios-simulator-sdk.sh`](../.github/scripts/warm-ios-simulator-sdk.sh)
   is the Apple platform-SDK cache (`ios` / `ipados` / `tvos` / `watchos` /
   `visionos` / `all`). Product ios-sim, apple-family, device-e2e in-job builds,
-  and Gate: packages frontend-syntax all run it before `xcodebuild`.
-- **Inner vs outer loop.** Fast iteration is `nix develop` / backend static libs
-  (FlakeHub-friendly). Outer `xcodegen` + `xcodebuild` / `.#wawona-ios` only when
+  run it before `xcodebuild`.
+- **Inner vs outer loop.** Fast iteration is the committed Xcode project over
+  `.deps/<sdk>` plus `scripts/build-backend.sh`. `.#wawona-ios` only when
   app packaging inputs change. See [`compilation.md`](./compilation.md).
 - **Product xcodebuild must not nested-compile Rust.** `nix build .#wawona-ios`
-  passes `WAWONA_BACKEND_OUT*` so `xcode-prebuild.sh` copies `libwawona.a`.
+  links the Nix backend into `.deps`, and `xcode-prebuild.sh` copies `libwawona.a`.
   Simulator Swift is `ARCHS=arm64` only (no x86_64 slice). Sim Rust backends
   use `release = false` (skip thin LTO). These are the compile-time wins; host
   SDK warm / apple-sdks.nix are not.

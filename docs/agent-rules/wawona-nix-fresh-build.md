@@ -21,7 +21,9 @@ Apple simulator are wrong. Authority: `docs/compilation.md`,
 | Wawona Terminal standalone | `nix run .#terminal` |
 | Local Terminal tree | `nix run .#terminal --override-input terminal path:../Terminal` |
 | Tip macOS for Appium / agent-device | `eval "$(WAWONA_TEST_REBUILD=1 scripts/appium/ensure-tip-wawona-macos.sh)"` after product sources change |
-| iOS sim product | `nix run .#wawona-ios` / `nix build .#wawona-ios-sim` |
+| iOS sim product | `nix run .#wawona-ios` / `nix build .#wawona-ios-app-sim` |
+| Xcode / Android Studio | `nix run .#deps -- <sdk>` (or `android`), then open the root project |
+| Rust from the working tree | `scripts/build-backend.sh <sdk>` (uses the slice's Nix environment) |
 | Android | `nix run .#wawona-android` |
 | Linux | `nix run .#wawona-linux` |
 
@@ -33,7 +35,7 @@ attr after input / source change. Tip rebuild: `WAWONA_TEST_REBUILD=1`.
 - **Product proof / dogfood of Nix packaging:** prefer `nix run .#wawona-macos`
   or the `result` from `nix build .#wawona-macos`.
 - **Appium / agent-device macOS UI:** tip tree via `ensure-tip-wawona-macos.sh`
-  (xcodegen from Nix, then Debug under `/tmp/wawona-macos-tip`). Still refuse
+  (`nix run .#deps -- macosx`, then Debug under `/tmp/wawona-macos-tip`). Still refuse
   `/Applications` and foreign DerivedData (`wawona-test-tip-app`).
 - Changing Rust/Swift/flake inputs requires rebuild. A matching `git-HEAD`
   stamp on an old binary after you only patched `/tmp` libs is **stale**.
@@ -46,7 +48,7 @@ Boot **only** the platform under test.
 |------|--------------------|
 | Wawona Terminal / Ghostty / macOS host UI | macOS tip or `nix run .#wawona-macos` / `.#terminal` |
 | iOS phone Terminal | iPhone Simulator / device (`wawona-ios`) |
-| visionOS feature work | visionOS sim **only then** (`.#wawona-visionos-sim`) |
+| visionOS feature work | visionOS sim **only then** (`.#wawona-visionos-app-sim`) |
 
 **Forbidden while resolving Wawona Terminal (or any non-visionOS task):**
 

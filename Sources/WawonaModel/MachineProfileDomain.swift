@@ -6,8 +6,8 @@ import WawonaUIContracts
 
 /// Thin Apple wrap around the rust product domain (`src/domain`).
 ///
-/// Prefer Nix-staged UniFFI (`import wawona`, `scripts/stage-uniffi-swift.sh`,
-/// `SWIFT_INCLUDE_PATHS` → `.nix-deps/uniffi`). When that module is absent,
+/// Prefer Nix UniFFI (`import wawona`, `SWIFT_INCLUDE_PATHS` →
+/// `.deps/<sdk>/uniffi`). When that module is absent,
 /// look up C trampolines (`wawona_profiles_v1_*`) via `WawonaDomainBridge`.
 /// SPM tests without rust fall back to the frozen Swift Codable path.
 ///

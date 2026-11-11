@@ -110,9 +110,9 @@ shell on visionOS (system close would quit the only app window).
 - Shipping Terminal UI that cannot show a prompt after Start on a linked tip
   that already exports `wawona_zsh_main` / `wwn_pty_session_start` / `wwn_term_new`
 - Putting new shell session types only in brand-new Swift files under
-  `Sources/` without proving xcodegen membership (prefer extend an already
+  `Sources/` without building the target that compiles it (prefer extend an already
   compiled Shell / GuestConsole file). Link contract: `wawona-ios-link-contract`
-- iOS 13 API slips in that UI (`Font.TextStyle.caption2` is iOS 14+)
+- iOS 16+ API slips in that UI without a guard or backport
 
 ## Incident (2026-10-11)
 

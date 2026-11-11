@@ -32,14 +32,13 @@ The compatibility namespace owns every `#available` check and its fallback.
 Do not scatter availability branches through feature views. Add a named shim to
 `WawonaBackport` when adopting a newer SwiftUI API, preserve the nearest older
 system behavior as the fallback, and test both paths. The product floor is
-iOS 13, so SwiftUI is the UI. There is no iOS 11 or 12 UIKit-only product.
+iOS 15, so SwiftUI is the UI. There is no iOS 11 or 12 UIKit-only product.
 Business and graphics policy stay in Rust; this rule covers presentation APIs only.
 
-`ScrollViewReader` is iOS 14+. Wawona Terminal uses
-`WawonaBackport<Any>.scrollViewReader` plus `WawonaScrollViewProxy` in
-`Compatibility/WawonaBackport.swift`. Never bare `ScrollViewReader` in
-phone/iPad/tv/vision feature views. iOS 13 fallback: plain `ScrollView`
-(`scrollTo` no-op). Watch (watchOS 10) may use native `ScrollViewReader`.
+Wawona Terminal uses `WawonaBackport<Any>.scrollViewReader` plus
+`WawonaScrollViewProxy` in `Compatibility/WawonaBackport.swift`. Under the
+iOS 15 floor `ScrollViewReader` is always available, so that shim is due to
+be removed (#248).
 
 Upgrade path (DeLong): when dropping an old OS floor, delete the shim and
 search `backport.` call sites, then remove the `.backport` segment.
@@ -74,7 +73,7 @@ iPhone Machines bottom search: see skill `wawona-swiftui-backports` and
 
 Before claiming one Mode A IPA is proven across its supported OS range, migrate
 every post-13 SwiftUI API into named shims and run both forced compatibility
-paths. Physical proof starts at iOS 13 devices.
+paths. Physical proof starts at iOS 15 devices.
 
 Machine Add/Edit on iOS / visionOS uses `backport.machineEditorSheet(item:)`
 from `WWNMachinesGridView`: half sheet on phone (`.medium` → `.large`), page

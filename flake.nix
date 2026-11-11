@@ -1537,7 +1537,7 @@
               Description: Wawona Mode B (${suffix}). JIT + IOMFB Desktop. Not App Store.
               Section: Applications
               Priority: optional
-              Depends: firmware (>= 13.0)
+              Depends: firmware (>= 15.0)
               Homepage: https://wawona.io
               EOF
                             cat > "$stage/DEBIAN/postinst" <<'EOF'

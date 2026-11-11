@@ -7,10 +7,8 @@ Wawona Android Gradle and Android Studio must run on **JetBrains Runtime
 
 Pin Project + Gradle JVM to the IDE JDK named `21` (Studio embedded JBR).
 
-- `android/studio/misc.xml`: `project-jdk-name="21"`
-- `android/studio/gradle.xml`: `gradleJvm=21`
-- `gradlegen` writes `org.gradle.java.home` to the generated project when
-  Studio JBR is on disk (`Contents/jbr/Contents/Home`)
+- `.idea/misc.xml`: `project-jdk-name="21"`
+- `.idea/gradle.xml`: `gradleJvm=21`
 - Local `./gradlew`: `source scripts/lib/android-jbr.sh && wawona_android_export_jbr`
 
 Do not export Nix `JAVA_HOME` into Android Studio. That is `#GRADLE_LOCAL_JAVA_HOME`
