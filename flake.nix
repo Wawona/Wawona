@@ -2132,17 +2132,10 @@
           program = "${systemPackages.libghostty-macos-draw-proof}/bin/libghostty-macos-draw-proof";
         };
       })
-      // (pkgs.lib.optionalAttrs (systemPackages ? wawona-android) {
-        # Android apps are host-cross packages; only expose when the package set
-        # actually provides them (avoids flake check forcing angle-android on
-        # unsupported hostPlatform meta).
+      // (pkgs.lib.optionalAttrs (systemPackages ? wawona-android-provision) {
         wawona-android-provision = {
           type = "app";
           program = "${systemPackages.wawona-android-provision}/bin/provision-android";
-        };
-        wawona-android = {
-          type = "app";
-          program = "${systemPackages.wawona-android}/bin/wawona-android-run";
         };
       })
       // (pkgs.lib.optionalAttrs (hasAndroidCts && systemPackages ? vulkan-cts-android) {
