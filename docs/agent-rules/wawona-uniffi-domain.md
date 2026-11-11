@@ -35,7 +35,7 @@ watchOS, visionOS) plus Android and Linux.
 - New feature SwiftUI under `src/platform/macos/ui/*`.
 - Per-OS forks of domain types (`WWN*` copies of `WawonaModel`).
 - Policy or validation in Swift trampolines, ObjC leftovers, or generated bindings.
-- New Apple `.m` / `.mm` product glue. CI `scripts/verify-no-objc-glue.py` must
+- New Apple `.m` / `.mm` product glue. CI `cargo xtask verify no-objc-glue` must
   pass with an empty allowlist and **zero scanned `.m`**. Do not claim UniFFI
   cutover done while product `.m` remain.
 

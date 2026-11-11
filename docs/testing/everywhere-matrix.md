@@ -33,7 +33,7 @@ iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
 | SDL2_gfx demo (planned) | `.#testgfx-ios` / `-macos` / `-android` | in-process `testgfx_main`; software/`wl_shm` first. [#107](https://github.com/Wawona/Wawona/issues/107) |
 | Linux reference | `pkgs.weston` (nixpkgs) | baseline |
 
-CI runs `.github/scripts/verify-wayland-profile-smoke.py` (host-scoped `nix eval`). Use `--build` for compile verification on the matching host.
+CI runs `cargo xtask verify wayland-profile-smoke` (host-scoped `nix eval`). Use `--build` for compile verification on the matching host.
 
 ## Developer refresh workflow (Phase 5C)
 
@@ -58,8 +58,8 @@ nix build .#weston-compositor-android
 
 | Check | Status | Command / notes |
 |-------|--------|-----------------|
-| Profile smoke (eval) | pass | `python3 .github/scripts/verify-wayland-profile-smoke.py` |
-| Runtime ownership strict | pass | `python3 .github/scripts/verify-wayland-runtime-ownership.py --strict` |
+| Profile smoke (eval) | pass | `cargo xtask verify wayland-profile-smoke` |
+| Runtime ownership strict | pass | `cargo xtask verify wayland-runtime-ownership --strict` |
 | `weston-compositor-ios` build | pass | `nix build .#weston-compositor-ios --no-link` |
 | `weston-compositor-ios-drm` build | pass | `nix build .#weston-compositor-ios-drm --no-link` |
 | Weston iOS patch anchors | pass | `python3 .github/scripts/verify-weston-ios-patches.py` |
@@ -153,7 +153,7 @@ lands, the manual item is retired in favor of the ID. IDs are Rust test fns
 | macOS present-frame per bundled client | `scripts/ci-macos-compat-smoke.sh` | script | done |
 | Nested Weston child socket + demo client | (capability lane) | script | pending (`ci-capability-lane`) |
 | waypipe session | (capability lane) | script | pending |
-| UI parity vs golden baselines | `ui_parity_diff.py` + agent-device batch | ci | pending (`ci-l3-parity-agentdevice`) |
+| UI parity vs golden baselines | `cargo xtask ci ui-parity` + agent-device batch | ci | pending (`ci-l3-parity-agentdevice`) |
 | Graphics conformance (GL/Vulkan) | `dependencies/tests/graphics-validate.nix` | nix | pending (`ci-graphics-cts`) |
 | Apple UI flows | Appium XCUITest / Mac2 (`Tests/appium`) | appium | in progress (`ui-appium.yml`) |
 | Android UI flows | Appium UiAutomator2 (`Tests/appium`) | appium | in progress (`ui-appium.yml`) |

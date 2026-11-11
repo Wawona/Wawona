@@ -7,17 +7,16 @@ cd "$ROOT"
 OUT="${1:-$ROOT/verification-out/heavy.ndjson}"
 mkdir -p "$(dirname "$OUT")"
 : > "$OUT"
-REPORT="$ROOT/scripts/verification-report.py"
 fail=0
 
 emit() {
-  python3 "$REPORT" emit --out "$OUT" --tool "$1" --file "$2" --line 1 \
+  cargo xtask report emit --out "$OUT" --tool "$1" --file "$2" --line 1 \
     --rule "missing-or-failed" --failure "$3" --fix "$4"
   fail=1
 }
 
 emit_warn() {
-  python3 "$REPORT" emit --out "$OUT" --tool "$1" --file "$2" --line 1 \
+  cargo xtask report emit --out "$OUT" --tool "$1" --file "$2" --line 1 \
     --rule "missing-or-failed" --severity warning --failure "$3" --fix "$4"
 }
 
@@ -100,5 +99,5 @@ attempt_install haybale \
   "Haybale on helper bitcode; blocker: $(tail -n 2 /tmp/haybale-install.err 2>/dev/null | tr '\n' ' ')" \
   warning
 
-python3 "$REPORT" summarize "$OUT" --markdown "$(dirname "$OUT")/heavy.md" || fail=1
+cargo xtask report summarize "$OUT" --markdown "$(dirname "$OUT")/heavy.md" || fail=1
 exit "$fail"

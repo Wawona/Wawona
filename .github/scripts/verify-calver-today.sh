@@ -14,23 +14,8 @@ if [[ "${WAWONA_ALLOW_STALE_CALVER:-}" == "1" ]]; then
   exit 0
 fi
 
-# Prefer America/Los_Angeles for this project's day boundary; else local TZ.
-if command -v python3 >/dev/null 2>&1; then
-  TODAY="$(
-    python3 - <<'PY'
-from datetime import datetime
-try:
-    from zoneinfo import ZoneInfo
-    now = datetime.now(ZoneInfo("America/Los_Angeles"))
-except Exception:
-    now = datetime.now().astimezone()
-print(f"{now.year % 100}.{now.month}.{now.day}")
-PY
-  )"
-else
-  export TZ="${TZ:-America/Los_Angeles}"
-  TODAY="$(date '+%y.%-m.%-d' 2>/dev/null || date '+%y.%-m.%-d')"
-fi
+# The project's day boundary is America/Los_Angeles.
+TODAY="$(TZ=America/Los_Angeles date '+%y.%-m.%-d')"
 
 VERSION_FILE="$(tr -d '[:space:]' <VERSION 2>/dev/null || true)"
 CARGO_VER="$(

@@ -27,7 +27,7 @@ Capture the following screenshots into one folder (example: `artifacts/ui-parity
 Run:
 
 ```bash
-python3 scripts/ui_parity_diff.py --screenshots-dir artifacts/ui-parity --threshold 0.12
+cargo xtask ci ui-parity --screenshots-dir artifacts/ui-parity --threshold 0.12
 ```
 
 - Lower threshold means stricter parity.

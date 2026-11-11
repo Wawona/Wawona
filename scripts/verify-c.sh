@@ -6,18 +6,17 @@ cd "$ROOT"
 OUT="${1:-$ROOT/verification-out/c.ndjson}"
 mkdir -p "$(dirname "$OUT")/c"
 : > "$OUT"
-REPORT="$ROOT/scripts/verification-report.py"
 fail=0
 INC="-I src/platform/cproof -I src/platform/macos -I src/platform/android"
 
 emit() {
-  python3 "$REPORT" emit --out "$OUT" --tool "$1" --file "$2" --line "${3:-1}" \
+  cargo xtask report emit --out "$OUT" --tool "$1" --file "$2" --line "${3:-1}" \
     --rule "$4" --failure "$5" --fix "$6" --severity error
   fail=1
 }
 
 emit_warn() {
-  python3 "$REPORT" emit --out "$OUT" --tool "$1" --file "$2" --line "${3:-1}" \
+  cargo xtask report emit --out "$OUT" --tool "$1" --file "$2" --line "${3:-1}" \
     --rule "$4" --failure "$5" --fix "$6" --severity warning
 }
 
@@ -100,7 +99,7 @@ if command -v frama-c >/dev/null 2>&1; then
       "frama-c -wp -eva src/platform/cproof/wawona_cproof.c"
 else
   # Not in Ubuntu 24.04 apt. Record warning; do not fail the floor.
-  python3 "$REPORT" emit --out "$OUT" --tool frama-c --file src/platform/cproof/wawona_cproof.h \
+  cargo xtask report emit --out "$OUT" --tool frama-c --file src/platform/cproof/wawona_cproof.h \
     --line 1 --rule missing-tool --severity warning \
     --failure "frama-c is not installed on this runner" \
     --fix "install frama-c (not in Ubuntu 24.04 apt) and run WP+EVA on wawona_cproof.c"
@@ -108,7 +107,7 @@ fi
 
 for tool in klee cpa.sh; do
   if ! command -v "$tool" >/dev/null 2>&1; then
-    python3 "$REPORT" emit --out "$OUT" --tool "$tool" --file src/platform/cproof/wawona_cproof.h \
+    cargo xtask report emit --out "$OUT" --tool "$tool" --file src/platform/cproof/wawona_cproof.h \
       --line 1 --rule missing-tool --severity warning \
       --failure "$tool is not installed on this runner" \
       --fix "install $tool and point it at wawona_cproof helpers"
@@ -174,5 +173,5 @@ if [[ -f src/platform/android/iland_presenter_android.c ]]; then
   fi
 fi
 
-python3 "$REPORT" summarize "$OUT" --markdown "$(dirname "$OUT")/c.md" || fail=1
+cargo xtask report summarize "$OUT" --markdown "$(dirname "$OUT")/c.md" || fail=1
 exit "$fail"

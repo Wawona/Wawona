@@ -1,0 +1,4 @@
+self-hosted-runner:
+  # GitHub-hosted macOS 27 (Xcode 27 SDK), required org-wide.
+  labels:
+    - macos-27

@@ -77,9 +77,3 @@ pub fn symlink(target: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<()> {
 pub fn env_or(k: &str, default: &str) -> String {
     std::env::var(k).ok().filter(|v| !v.is_empty()).unwrap_or_else(|| default.to_string())
 }
-
-/// Lines of `git ls-files` for the patterns, relative to the checkout.
-pub fn git_files(patterns: &[&str]) -> Result<Vec<PathBuf>> {
-    let s = output(cmd("git").current_dir(root()).arg("ls-files").arg("-z").arg("--").args(patterns))?;
-    Ok(s.split('\0').filter(|l| !l.is_empty()).map(PathBuf::from).collect())
-}

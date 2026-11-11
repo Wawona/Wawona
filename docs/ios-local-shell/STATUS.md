@@ -54,7 +54,7 @@ OpenSSH in-process archives.
 
 ## Anti-bitrot
 
-- `.github/scripts/verify-ios-shell-tools.py`. Requires `ssh-cli` / `libwwn-ssh-cli.a`;
+- `cargo xtask verify ios-shell-tools`. Requires `ssh-cli` / `libwwn-ssh-cli.a`;
   forbids `openssh-ios` / `libssh-inprocess.a` / stub `ssh_*` in `*Stubs*.c`.
 - Headless CLI matrix lives in `wwn-ssh/tests/cli-matrix.json` (Gate: packages).
 - Sparse agent-device: `.agent-device/wawona-ios-shell-cli.ad` (`ssh -V`, keygen).

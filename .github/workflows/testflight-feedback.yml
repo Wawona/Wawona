@@ -32,15 +32,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/setup-xtask
         with:
-          python-version: "3.12"
-
-      - name: Install importer deps
-        run: python3 -m pip install --quiet "pyjwt[crypto]" pillow
+          key: testflight-feedback
 
       - name: Self-test redaction
-        run: python3 .github/scripts/import-testflight-feedback.py --self-test
+        run: cargo test --manifest-path xtask/Cargo.toml testflight
 
       - name: Import TestFlight feedback
         env:
@@ -54,7 +51,7 @@ jobs:
           if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
             extra+=(--dry-run)
           fi
-          python3 .github/scripts/import-testflight-feedback.py "${extra[@]}"
+          cargo xtask ci testflight "${extra[@]}"
 
       - name: Upload sanitized inbox
         if: always()

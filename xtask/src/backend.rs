@@ -210,7 +210,7 @@ fn stage(s: &Slice, root: &Path, triple: &str, profile: &str, out: &Path, tools:
         std::fs::copy(&lib, abi.join("libwawona_core.so"))?;
     } else if s.apple.is_some() {
         // WawonaModel imports the bindings from .deps/uniffi.
-        symlink(&out.join("uniffi/swift"), &root.join(".deps/uniffi"))?;
+        symlink(out.join("uniffi/swift"), root.join(".deps/uniffi"))?;
     }
     eprintln!("Built {}", out.display());
     Ok(())

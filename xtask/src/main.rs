@@ -1,14 +1,19 @@
 //! Wawona's build and repository tasks: `cargo xtask <command>`.
 
 mod backend;
+mod ci;
 mod deps;
 mod macho;
 mod package;
+mod parity;
 mod product;
 mod slices;
+mod testflight;
 mod tools;
 mod util;
 mod verify;
+mod wlcs;
+mod workspace;
 mod xcode;
 
 use anyhow::Result;
@@ -42,9 +47,17 @@ enum Cmd {
     /// Mode B wrappers and the macOS DMG.
     #[command(subcommand)]
     Package(package::Cmd),
-    /// Repository gates.
+    /// Repository gates (`--list` names them).
+    Verify(verify::Args),
+    /// Verification findings: emit one, or summarize them.
     #[command(subcommand)]
-    Verify(verify::Cmd),
+    Report(verify::report::Cmd),
+    /// GitHub Actions bookkeeping.
+    #[command(subcommand)]
+    Ci(ci::Cmd),
+    /// Prepare the path crates of a Wawona workspace (coreutils, waypipe, libghostty).
+    #[command(subcommand)]
+    Workspace(workspace::Cmd),
     /// Wawona.xcodeproj build phases.
     #[command(subcommand)]
     Xcode(xcode::Cmd),
@@ -61,7 +74,10 @@ fn main() -> Result<()> {
         Cmd::Test(a) => product::test(a),
         Cmd::Archive(a) => product::archive(a),
         Cmd::Package(c) => package::main(c),
-        Cmd::Verify(c) => verify::main(c),
+        Cmd::Verify(a) => verify::main(a),
+        Cmd::Report(c) => verify::report::main(c),
+        Cmd::Ci(c) => ci::main(c),
+        Cmd::Workspace(c) => workspace::main(c),
         Cmd::Xcode(c) => xcode::main(c),
     }
 }

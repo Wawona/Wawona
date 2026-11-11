@@ -48,7 +48,6 @@ jobs:
             [[ -f "$path" ]] || continue
             case "$path" in
               *.json) jq empty "$path" ;;
-              *.py) python3 -m py_compile "$path" ;;
               *.sh)
                 if head -n 1 "$path" | grep -q 'bash'; then
                   bash -n "$path"
@@ -102,30 +101,20 @@ jobs:
           # when they are optional; stub Cargo.toml (with the feature names
           # Cargo.toml requests) so metadata load succeeds without a real
           # source checkout.
-          python3 - <<'PY'
-          from pathlib import Path
-          stubs = {
-              "coreutils": [
-                  "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "ln", "touch", "echo",
-                  "pwd", "head", "tail", "wc", "sort", "cut", "tr", "seq", "basename",
-                  "dirname", "stat", "du", "df", "date", "env", "printenv", "uname",
-                  "whoami", "yes", "tee", "nl", "tac", "fold", "expand", "unexpand",
-                  "truncate", "chmod",
-              ],
-              "waypipe": ["lz4", "zstd", "video"],
+          stub() {
+            local name=$1; shift
+            [[ -f $name/Cargo.toml ]] && return
+            mkdir -p "$name/src"
+            echo "// stub" > "$name/src/lib.rs"
+            {
+              printf '[package]\nname = "%s"\nversion = "0.0.1"\nedition = "2021"\n\n[features]\ndefault = []\n' "$name"
+              for f in "$@"; do echo "$f = []"; done
+            } > "$name/Cargo.toml"
           }
-          for name, feats in stubs.items():
-              root = Path(name)
-              if (root / "Cargo.toml").exists():
-                  continue
-              (root / "src").mkdir(parents=True, exist_ok=True)
-              feat_lines = "\n".join(f"{f} = []" for f in feats)
-              (root / "Cargo.toml").write_text(
-                  f"[package]\nname = \"{name}\"\nversion = \"0.0.1\"\nedition = \"2021\"\n\n"
-                  f"[features]\ndefault = []\n{feat_lines}\n"
-              )
-              (root / "src" / "lib.rs").write_text("// stub\n")
-          PY
+          stub coreutils ls cat cp mv rm mkdir rmdir ln touch echo pwd head tail wc sort cut tr seq \
+            basename dirname stat du df date env printenv uname whoami yes tee nl tac fold expand \
+            unexpand truncate chmod
+          stub waypipe lz4 zstd video
       - name: Stub dangling Terminal symlinks for fmt
         shell: bash
         run: |
@@ -217,7 +206,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Verify Linux package wiring (wawonaLinuxUiBin / #164 / autostart)
-        run: python3 ./.github/scripts/verify-linux-package-wiring.py
-      - name: Verify Linux shell-tool wiring
-        run: python3 ./.github/scripts/verify-linux-shell-tools.py
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: linux-wiring
+      - name: Verify Linux package and shell-tool wiring (wawonaLinuxUiBin, #164, autostart)
+        run: cargo xtask verify linux-package-wiring linux-shell-tools

@@ -10,11 +10,10 @@ else
 fi
 mkdir -p "$(dirname "$OUT")"
 : > "$OUT"
-REPORT="$ROOT/scripts/verification-report.py"
 fail=0
 
 emit() {
-  python3 "$REPORT" emit --out "$OUT" --tool "$1" --file "$2" --line 1 \
+  cargo xtask report emit --out "$OUT" --tool "$1" --file "$2" --line 1 \
     --rule "$3" --failure "$4" --fix "$5"
   fail=1
 }
@@ -35,7 +34,7 @@ if ! ./gradlew "${GRADLE_TASKS[@]}" --offline; then
   fi
 fi
 
-python3 "$REPORT" emit --out "$OUT" --tool spotbugs --file android/app/build.gradle.kts \
+cargo xtask report emit --out "$OUT" --tool spotbugs --file android/app/build.gradle.kts \
   --line 1 --rule missing-tool --severity warning \
   --failure "SpotBugs is not wired on AGP 9 (BaseExtension removed)." \
   --fix "restore SpotBugs when AGP-compatible plugin supports ApplicationExtension"
@@ -54,7 +53,7 @@ else
         "jbmc --classpath verification-out/kotlin SanitizeHarness --unwind 8"
     fi
   else
-    python3 "$REPORT" emit --out "$OUT" --tool jbmc \
+    cargo xtask report emit --out "$OUT" --tool jbmc \
       --file verification/kotlin/SanitizeHarness.java --line 1 \
       --rule missing-tool --severity warning \
       --failure "JBMC is not installed on this runner." \
@@ -70,7 +69,7 @@ else
         "jpf +cg.max_depth=20 SanitizeHarness"
     fi
   else
-    python3 "$REPORT" emit --out "$OUT" --tool jpf \
+    cargo xtask report emit --out "$OUT" --tool jpf \
       --file verification/kotlin/SanitizeHarness.java --line 1 \
       --rule missing-tool --severity warning \
       --failure "Java PathFinder is not installed on this runner." \
@@ -78,5 +77,5 @@ else
   fi
 fi
 
-python3 "$REPORT" summarize "$OUT" --markdown "$(dirname "$OUT")/kotlin.md" || fail=1
+cargo xtask report summarize "$OUT" --markdown "$(dirname "$OUT")/kotlin.md" || fail=1
 exit "$fail"

@@ -101,7 +101,7 @@ fn deb(control: &str, prefix: &str, app: &Path, out: &Path) -> Result<()> {
     f.write_all(b"!<arch>\n")?;
     for (name, body) in [("debian-binary", &b"2.0\n"[..]), ("control.tar.gz", &control_tar), ("data.tar.gz", &data_tar)]
     {
-        write!(f, "{name:<16}{:<12}{:<6}{:<6}{:<8}{:<10}`\n", 0, 0, 0, "100644", body.len())?;
+        writeln!(f, "{name:<16}{:<12}{:<6}{:<6}{:<8}{:<10}`", 0, 0, 0, "100644", body.len())?;
         f.write_all(body)?;
         if body.len() % 2 == 1 {
             f.write_all(b"\n")?;

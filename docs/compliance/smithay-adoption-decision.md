@@ -66,7 +66,7 @@ The "All-55 closure rule" in the feasibility ledger requires every
 Smithay owner, or ecosystem-specific) or `architecture-blocked` (Smithay-shaped
 target exists but runtime ownership is still custom and stays profile-gated
 until cutover). Because that classification is enforced by
-`verify-wayland-runtime-ownership.py --strict` and
-`verify-wayland-no-equivalent-closure.py`, the remaining migration work is a
+`cargo xtask verify wayland-runtime-ownership --strict` and
+`cargo xtask verify wayland-no-equivalent-closure`, the remaining migration work is a
 tracked, guarded queue rather than an open question. Which is why RFC #35 is
 closed with this decision rather than left open pending full cutover.

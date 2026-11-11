@@ -107,126 +107,25 @@ jobs:
 
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: prepare-matrix
+
       - name: Load curated package matrix
         id: matrix
         env:
           # workflow_dispatch always full; push/PR honor ci-scope.native.
           WAWONA_CI_NATIVE: ${{ github.event_name == 'workflow_dispatch' && 'true' || needs.ci-scope.outputs.native }}
-        run: |
-          python3 - <<'PYEOF'
-          import json, os, subprocess, sys
+        run: cargo xtask ci matrix
 
-          path = ".github/ci-package-matrix.json"
-          with open(path) as f:
-              data = json.load(f)
-          include = data["include"]
-          if not include:
-              print("::error::ci-package-matrix.json include[] is empty", file=sys.stderr)
-              sys.exit(1)
-
-          # Fail closed if an attr disappeared. One attrNames probe per system
-          # (avoids N Darwin IFD graphs from per-target `.name` evals on Linux).
-          by_system = {}
-          for row in include:
-              by_system.setdefault(row["system"], set()).add(row["target"])
-          for system, targets in by_system.items():
-              probe = subprocess.run(
-                  [
-                      "nix", "eval", "--json",
-                      f".#packages.{system}",
-                      "--apply", "builtins.attrNames",
-                  ],
-                  capture_output=True,
-                  text=True,
-              )
-              if probe.returncode != 0:
-                  print(
-                      f"::error::failed to list packages.{system}\n{probe.stderr}",
-                      file=sys.stderr,
-                  )
-                  sys.exit(1)
-              names = set(json.loads(probe.stdout))
-              missing = sorted(targets - names)
-              if missing:
-                  print(
-                      f"::error::matrix targets missing under packages.{system}: {missing}",
-                      file=sys.stderr,
-                  )
-                  sys.exit(1)
-
-          # Path-filter Darwin cells here (job-level `if` cannot use matrix context).
-          native = os.environ.get("WAWONA_CI_NATIVE", "true").lower() == "true"
-          if not native:
-              before = len(include)
-              include = [
-                  r for r in include if not str(r.get("os", "")).startswith("macos")
-              ]
-              print(
-                  f"ci-scope native=false: dropped {before - len(include)} Darwin matrix rows"
-              )
-              if not include:
-                  print(
-                      "::error::path filter removed every matrix row; keep at least one Linux cell",
-                      file=sys.stderr,
-                  )
-                  sys.exit(1)
-
-          # GHA matrix only needs system/os/target.
-          slim = [
-              {"system": r["system"], "os": r["os"], "target": r["target"]}
-              for r in include
-          ]
-          matrix_json = json.dumps({"include": slim})
-          print(f"Curated matrix entries: {len(slim)} (native={native})")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"matrix={matrix_json}\n")
-          PYEOF
-
-      - name: Verify Android config consistency
-        run: python3 ./.github/scripts/verify-android-config.py
-
-      - name: Verify Android upgrade guardrails
-        run: python3 ./.github/scripts/verify-android-upgrade-guardrails.py
-
-      - name: Verify Android __noChroot policy
-        run: python3 ./.github/scripts/verify-android-nochroot.py
-
-      - name: Verify Android maintainability checkpoint
-        run: python3 ./.github/scripts/verify-android-maintainability.py
-      - name: Verify no 'tar --wildcards' in nix recipes (bsdtar no-op guard)
-        run: python3 ./.github/scripts/verify-no-tar-wildcards.py
-      - name: Verify iOS shell-tool wiring
-        run: python3 ./.github/scripts/verify-ios-shell-tools.py
-      - name: Verify Wawona Runtime (wwn-wasm) wiring
-        run: python3 ./.github/scripts/verify-wawona-wasm.py
-      - name: Verify Android shell-tool wiring
-        run: python3 ./.github/scripts/verify-android-shell-tools.py
-      - name: Verify SSH backends (Apple libssh2-cli / Android OpenSSH)
-        run: python3 ./.github/scripts/verify-ssh-backends.py
-      - name: Verify Wayland protocol manifest
-        run: python3 ./.github/scripts/verify-wayland-protocol-manifest.py
-      - name: Verify Global Settings exclusivity (in-app only)
-        run: python3 ./scripts/verify-settings-bundle-keys.py
-      - name: Verify Smithay coverage contract
-        run: python3 ./.github/scripts/verify-smithay-coverage-contract.py
-      - name: Verify Wayland runtime ownership inventory
-        run: python3 ./.github/scripts/verify-wayland-runtime-ownership.py --strict --json-out ./docs/compliance/generated/wayland-runtime-ownership.json
-      - name: Verify no-equivalent closure inventory
-        run: python3 ./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json
-      - name: Verify Wayland profile smoke
-        run: python3 ./.github/scripts/verify-wayland-profile-smoke.py
-      - name: Verify Linux machine-profile parity
-        run: python3 ./.github/scripts/verify-linux-machines-parity.py
-      - name: Verify Linux bundled client parity
-        run: python3 ./.github/scripts/verify-linux-bundled-clients.py
-      - name: Verify Linux shell-tool wiring
-        run: python3 ./.github/scripts/verify-linux-shell-tools.py
-      - name: Verify waypipe remote-sway env fallback (issue #54 guard)
-        run: python3 ./.github/scripts/verify-waypipe-remote-sway-env.py
-      - name: Verify nixpkgs lineage (issue #47 guard)
-        run: python3 ./.github/scripts/verify-nixpkgs-lineage.py
-      - name: Verify Apple SDK warm + Xcode pin wiring
-        run: python3 ./.github/scripts/verify-apple-sdk-warm.py
+      - name: Repository gates
+        run: >-
+          cargo xtask verify --strict --json-out docs/compliance/generated
+          android-config android-upgrade-guardrails android-nochroot android-maintainability
+          no-tar-wildcards ios-shell-tools wawona-wasm android-shell-tools ssh-backends
+          wayland-protocol-manifest settings-in-app smithay-coverage wayland-runtime-ownership
+          wayland-no-equivalent-closure wayland-profile-smoke linux-machines-parity
+          linux-bundled-clients linux-shell-tools waypipe-remote-sway-env nixpkgs-lineage apple-sdk-warm
       - name: Verify iOS Mode B scanner and vphone replay contract
         run: bash ./.github/scripts/verify-ios-modeb-ci.sh
       - name: Upload Wayland ownership inventory artifact
@@ -261,8 +160,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Ensure Cargo path dependencies
         run: |
-          chmod +x ./scripts/ensure-waypipe.sh ./scripts/ensure-coreutils.sh \
-            ./scripts/ensure-terminal.sh ./scripts/prepare-cargo-path-deps.sh
+          chmod +x ./scripts/ensure-waypipe.sh ./scripts/ensure-coreutils.sh ./scripts/ensure-terminal.sh
           ./scripts/ensure-waypipe.sh
           ./scripts/ensure-coreutils.sh
           ./scripts/ensure-terminal.sh
@@ -313,8 +211,7 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@v3
       - name: Ensure Cargo path dependencies
         run: |
-          chmod +x ./scripts/ensure-waypipe.sh ./scripts/ensure-coreutils.sh \
-            ./scripts/ensure-terminal.sh ./scripts/prepare-cargo-path-deps.sh
+          chmod +x ./scripts/ensure-waypipe.sh ./scripts/ensure-coreutils.sh ./scripts/ensure-terminal.sh
           ./scripts/ensure-waypipe.sh
           ./scripts/ensure-coreutils.sh
           ./scripts/ensure-terminal.sh
@@ -437,8 +334,7 @@ jobs:
               - 'src/platform/android/**'
               - 'flake.nix'
               - 'flake.lock'
-              - '.github/scripts/verify-android-shell-tools.py'
-              - '.github/scripts/verify-android-meson-sandbox.py'
+              - 'xtask/src/verify/**'
               - '.github/scripts/nix-build-shell-tools.sh'
               - '.github/scripts/nix-build-android-meson-sandbox-gate.sh'
               - '.github/workflows/nix.yml'
@@ -458,23 +354,23 @@ jobs:
             sandbox = relaxed
             allow-import-from-derivation = true
       - uses: DeterminateSystems/flakehub-cache-action@v3
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: android-gate
+          android: true
 
       - name: Verify Android shell-tool wiring
-        run: python3 ./.github/scripts/verify-android-shell-tools.py
+        run: cargo xtask verify android-shell-tools
       - name: Checkout flake inputs for meson verify
         run: ./.github/scripts/checkout-flake-inputs.sh
       - name: Verify Android meson sandbox hooks
-        run: python3 ./.github/scripts/verify-android-meson-sandbox.py
+        run: cargo xtask verify android-meson-sandbox
       - name: Build weston + compositor + bundled shell tools
         run: ./.github/scripts/nix-build-android-meson-sandbox-gate.sh
       - name: Build bundled shell tools + weston-ios
         run: |
           nix build .#zsh-android .#fastfetch-android .#phoon-android \
             .#weston-ios --no-link
-      - uses: ./.github/actions/setup-xtask
-        with:
-          key: android-gate
-          android: true
       - name: Gradle assembleDebug over a slice built from source
         run: |
           cargo xtask deps get --nix android

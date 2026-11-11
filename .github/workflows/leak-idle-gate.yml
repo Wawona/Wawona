@@ -304,8 +304,8 @@ jobs:
                 continue
               fi
             else
-              status="$(python3 -c "import json; print(json.load(open('$v'))['status'])")"
-              reason="$(python3 -c "import json; print(json.load(open('$v')).get('reason',''))")"
+              status="$(jq -r .status "$v")"
+              reason="$(jq -r '.reason // ""' "$v")"
               echo "$target: $status ($reason) ← $v"
             fi
             case "${status:-}" in

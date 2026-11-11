@@ -17,5 +17,5 @@ if [[ ! -f "$ROOT/coreutils/Cargo.toml" ]] || ! grep -q wawona_coreutils_main "$
   cp -rL "$SRC" "$ROOT/coreutils"
   chmod -R u+w "$ROOT/coreutils"
 fi
-# Strip nested [workspace*] + merge workspace.dependencies into root.
-"$ROOT/scripts/prepare-cargo-path-deps.sh"
+# Expand the path crates' workspace pins against Wawona's Cargo.lock.
+(cd "$ROOT" && cargo xtask workspace prepare .)

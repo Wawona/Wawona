@@ -22,7 +22,7 @@ Wawona is organized around a strict ownership split:
 - Do not reintroduce duplicate top-level folders that mirror `src/core` concepts.
 - Do not add new SwiftUI feature work under `src/platform/macos/ui/*`. New cross-platform UI goes under `Sources/WawonaUI`.
 - Do not add new `.swift` under `src/platform/{macos,ios,watchos}`. New Apple glue goes under `Sources/WawonaApple`.
-- Do not add Objective-C `.m` / `.mm` product glue. CI `scripts/verify-no-objc-glue.py` ratchets the allowlist downward.
+- Do not add Objective-C `.m` / `.mm` product glue. CI `cargo xtask verify no-objc-glue` ratchets the allowlist downward.
 - `Sources/WawonaApple` files stay under 400 lines.
 
 ## Current Ownership Map

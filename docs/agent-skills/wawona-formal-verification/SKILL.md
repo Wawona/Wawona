@@ -15,7 +15,7 @@ Matrix (what runs / severity)     → docs/verification-matrix.md
 Relay Tier-3 obligations          → Relay/verification/PROOF_OBLIGATIONS.md
 CI check name                     → Verification report (verify-all.yml)
 Local surface                     → bash scripts/verify-<name>.sh out.ndjson
-Findings                          → NDJSON via scripts/verification-report.py
+Findings                          → NDJSON via cargo xtask report
 ```
 
 | Change | Helper / vector | Script |
@@ -60,7 +60,7 @@ bash scripts/verify-c.sh verification-out/c.ndjson
 bash scripts/verify-swift.sh verification-out/swift.ndjson
 bash scripts/verify-kotlin.sh verification-out/kotlin.ndjson
 bash scripts/verify-nix.sh verification-out/nix.ndjson
-python3 scripts/verification-report.py summarize verification-out --markdown verification-out/report.md
+cargo xtask report summarize verification-out --markdown verification-out/report.md
 ```
 
 Fuzz targets live under `fuzz/` and depend on `verification/helpers-check`

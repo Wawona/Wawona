@@ -7,7 +7,6 @@ cd "$ROOT"
 OUT="${1:-$ROOT/verification-out/formal.ndjson}"
 mkdir -p "$(dirname "$OUT")"
 : > "$OUT"
-REPORT="$ROOT/scripts/verification-report.py"
 fail=0
 # Never `nix develop` here. The default flake shell builds libsecret; its DBus
 # tests abort on GHA and can hang Formal scripts for tens of minutes. Use plain
@@ -15,7 +14,7 @@ fail=0
 
 emit() {
   local severity="${7:-error}"
-  python3 "$REPORT" emit --out "$OUT" --tool "$1" --file "$2" --line "${3:-1}" \
+  cargo xtask report emit --out "$OUT" --tool "$1" --file "$2" --line "${3:-1}" \
     --rule "$4" --failure "$5" --fix "$6" --severity "$severity"
   if [[ "$severity" == "error" ]]; then
     fail=1
@@ -115,5 +114,5 @@ else
     "pin Verus 0.2026.09.27.3cf1832"
 fi
 
-python3 "$REPORT" summarize "$OUT" --markdown "$(dirname "$OUT")/formal.md" || fail=1
+cargo xtask report summarize "$OUT" --markdown "$(dirname "$OUT")/formal.md" || fail=1
 exit "$fail"

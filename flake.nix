@@ -663,7 +663,6 @@
       commonPackages =
         rec {
           nom = pkgs.nix-output-monitor;
-          local-runner = pkgs.callPackage ./scripts/local-runner.nix {};
           wawona-shell = pkgs.callPackage ./dependencies/clients/wawona-shell {};
           wawona-tools = pkgs.callPackage ./dependencies/clients/wawona-tools {};
           # DejaVu (UI/CSD) + DejaVuSansM Nerd Font Mono (terminals).
@@ -1796,7 +1795,7 @@
               vfkitRunner = microvmGuest.config.microvm.runner.vfkit;
               wawona-microvm = pkgs.writeShellApplication {
                 name = "wawona-microvm";
-                runtimeInputs = [pkgs.coreutils pkgs.python3];
+                runtimeInputs = [pkgs.coreutils];
                 text = ''
                   # vfkit creates the overlay disk + restful socket in CWD; anchor
                   # them in a stable per-user state dir. The guest vsock lands on the
@@ -1811,9 +1810,9 @@
                   # `--device virtio-serial,stdio`, which fails with "operation not
                   # supported on socket" whenever stdio is not a real TTY. Exactly
                   # the case when Wawona launches this via NSTask (no controlling
-                  # terminal). Allocate a pty with Python's pty.spawn (works even
-                  # with no parent TTY) so the stdio console has a terminal.
-                  exec python3 -c 'import pty,sys; sys.exit(pty.spawn(sys.argv[1:]) or 0)' \
+                  # terminal). BSD script(1) allocates a pty even with no parent TTY and
+                  # exits with the command's status.
+                  exec /usr/bin/script -q /dev/null \
                     ${vfkitRunner}/bin/microvm-run "$@"
                 '';
               };
@@ -2107,10 +2106,6 @@
         nom = {
           type = "app";
           program = "${pkgs.nix-output-monitor}/bin/nom";
-        };
-        local-runner = {
-          type = "app";
-          program = "${systemPackages.local-runner}/bin/local-runner";
         };
       }
       // (pkgs.lib.optionalAttrs (systemPackages ? terminal) {

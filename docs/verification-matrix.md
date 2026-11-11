@@ -79,7 +79,7 @@ Do not leave enforcement disabled after bootstrap.
 | JBMC / JPF missing on runner | `warning` | No |
 | flake.nix statix/deadnix style debt (repeated follows keys) | `warning` | No |
 
-`scripts/verification-report.py summarize` fails only on `severity: error`.
+`cargo xtask report summarize` fails only on `severity: error`.
 Silent skip of a **pinned** tool is still forbidden.
 
 ## Running today (wired)
@@ -185,7 +185,7 @@ skip is a red report entry.
 
 ## Failure report
 
-Aggregator: `scripts/verification-report.py`. NDJSON fields:
+Aggregator: `cargo xtask report`. NDJSON fields:
 `tool`, `file`, `line`, `rule`, `failure`, `fix`, `severity`.
 
 ## Hard rejects

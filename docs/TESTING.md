@@ -6,7 +6,7 @@ Rust:
 
 ```bash
 cargo test --lib darwin_cli
-python3 .github/scripts/verify-darwin-cli-mode-a.py
+cargo xtask verify darwin-cli-mode-a
 ```
 
 Device acceptance is agent-device on the iOS Simulator:

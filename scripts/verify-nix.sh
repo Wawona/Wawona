@@ -8,11 +8,10 @@ cd "$ROOT"
 OUT="${1:-$ROOT/verification-out/nix.ndjson}"
 mkdir -p "$(dirname "$OUT")"
 : > "$OUT"
-REPORT="$ROOT/scripts/verification-report.py"
 fail=0
 
 emit() {
-  python3 "$REPORT" emit --out "$OUT" --tool "$1" --file "$2" --line "${3:-1}" \
+  cargo xtask report emit --out "$OUT" --tool "$1" --file "$2" --line "${3:-1}" \
     --rule "$4" --failure "$5" --fix "$6"
   fail=1
 }
@@ -67,13 +66,13 @@ if [[ -f flake.nix ]]; then
 
   if command -v nix >/dev/null 2>&1; then
     if ! nix shell nixpkgs#statix -c statix check flake.nix >/tmp/statix.out 2>&1; then
-      python3 "$REPORT" emit --out "$OUT" --tool statix --file flake.nix --line 1 \
+      cargo xtask report emit --out "$OUT" --tool statix --file flake.nix --line 1 \
         --rule statix --severity warning \
         --failure "$(tr '\n' ' ' </tmp/statix.out | head -c 400)" \
         --fix "nix shell nixpkgs#statix -c statix check flake.nix"
     fi
     if ! nix shell nixpkgs#deadnix -c deadnix -f flake.nix >/tmp/deadnix.out 2>&1; then
-      python3 "$REPORT" emit --out "$OUT" --tool deadnix --file flake.nix --line 1 \
+      cargo xtask report emit --out "$OUT" --tool deadnix --file flake.nix --line 1 \
         --rule deadnix --severity warning \
         --failure "$(tr '\n' ' ' </tmp/deadnix.out | head -c 400)" \
         --fix "nix shell nixpkgs#deadnix -c deadnix -f flake.nix"
@@ -87,5 +86,5 @@ if [[ -f flake.nix ]]; then
   fi
 fi
 
-python3 "$REPORT" summarize "$OUT" --markdown "$(dirname "$OUT")/nix.md" || fail=1
+cargo xtask report summarize "$OUT" --markdown "$(dirname "$OUT")/nix.md" || fail=1
 exit "$fail"

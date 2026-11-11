@@ -83,9 +83,9 @@ Examples currently treated as no practical Smithay runtime owner in this repo:
 
 ## Verification Source of Truth
 
-- `./.github/scripts/verify-wayland-runtime-ownership.py --strict`
+- `cargo xtask verify wayland-runtime-ownership --strict`
 - `./docs/compliance/generated/wayland-runtime-ownership.json`
-- `./.github/scripts/verify-wayland-no-equivalent-closure.py --json-out ./docs/compliance/generated/wayland-no-equivalent-closure.json`
+- `cargo xtask verify wayland-no-equivalent-closure --json-out docs/compliance/generated`
 - `./docs/compliance/generated/wayland-no-equivalent-closure.json`
 
 ## All-57 Closure Rule

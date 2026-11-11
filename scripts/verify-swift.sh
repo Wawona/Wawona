@@ -7,12 +7,11 @@ cd "$ROOT"
 OUT="${1:-$ROOT/verification-out/swift.ndjson}"
 mkdir -p "$(dirname "$OUT")"
 : > "$OUT"
-REPORT="$ROOT/scripts/verification-report.py"
 fail=0
 VECTOR_PKG="$ROOT/verification/swift-ssh-vector"
 
 emit() {
-  python3 "$REPORT" emit --out "$OUT" --tool "$1" --file "$2" --line 1 \
+  cargo xtask report emit --out "$OUT" --tool "$1" --file "$2" --line 1 \
     --rule "$3" --failure "$4" --fix "$5"
   fail=1
 }
@@ -38,5 +37,5 @@ for san in address undefined thread; do
   fi
 done
 
-python3 "$REPORT" summarize "$OUT" --markdown "$(dirname "$OUT")/swift.md" || fail=1
+cargo xtask report summarize "$OUT" --markdown "$(dirname "$OUT")/swift.md" || fail=1
 exit "$fail"

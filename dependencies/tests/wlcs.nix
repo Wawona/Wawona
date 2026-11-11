@@ -4,13 +4,15 @@
 , wlcs
 , pkg-config
 , wayland
-, python3
 , coreutils
+, callPackage
 , wawonaBackend
 , writeShellApplication
 }:
 
 let
+  xtask = callPackage ../wawona/xtask.nix { };
+
   # wlcs <= 1.8.1 truncates the bad SHM pool inside assert(), which release
   # builds compile out, so BadBufferTest.test_truncated_shm_file never
   # truncates anything (Mir: WLCS_BAD_BUFFER_TEST_BAD). Keep the truncation
@@ -84,7 +86,7 @@ let
 in
 writeShellApplication {
   name = "wawona-wlcs-run";
-  runtimeInputs = [ python3 coreutils ];
+  runtimeInputs = [ coreutils ];
   text = ''
     set -euo pipefail
 
@@ -133,7 +135,7 @@ HELP
     wlcs_status="''${PIPESTATUS[0]}"
     set -e
 
-    python3 ${../../scripts/wlcs-grade.py} \
+    ${xtask}/bin/xtask ci wlcs-grade \
       --xml "$xml" \
       --log "$output_dir/wlcs.log" \
       --json "$output_dir/summary.json" \

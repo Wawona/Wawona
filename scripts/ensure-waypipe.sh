@@ -10,5 +10,5 @@ if [[ ! -f "$ROOT/waypipe/Cargo.toml" ]]; then
   cp -rL "$SRC" "$ROOT/waypipe"
   chmod -R u+w "$ROOT/waypipe"
 fi
-# Strip nested [workspace*] (and merge coreutils deps if present).
-"$ROOT/scripts/prepare-cargo-path-deps.sh"
+# Expand the path crates' workspace pins against Wawona's Cargo.lock.
+(cd "$ROOT" && cargo xtask workspace prepare .)

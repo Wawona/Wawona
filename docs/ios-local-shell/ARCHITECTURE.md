@@ -78,7 +78,7 @@ signed zsh (`source`). They are not `execve`'d. A panic is caught so the host ap
 survives. The safe subset is owned by **`wwn-coreutils/.../safe-subset.txt`**.
 Consumers stay in sync: `Cargo.toml` `coreutils` features,
 `wwn_safe_subset[]` in `wawona-dispatch.c`, and rootfs `WAWONA_INPROC_TOOLS`
-(`chmod` is in the subset). `verify-ios-shell-tools.py` checks Cargo vs that
+(`chmod` is in the subset). `cargo xtask verify ios-shell-tools` checks Cargo vs that
 file. Wawona does not re-pin uutils (`wwn-coreutils.lib.coreutilsSrc` /
 `mkPatchedSrc`). See `docs/agent-rules/wawona-apple-mobile-mode-a-backends.md`.
 `watchOS` keeps the same in-process uutils safe subset as iOS (arm64). Only the

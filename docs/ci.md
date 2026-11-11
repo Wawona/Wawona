@@ -259,7 +259,7 @@ FlakeHub caches **Nix store paths** only. It does **not** ship Apple platform SD
 | `product-build` ios-sim / `device-e2e` (in-job build) | `warm-ios-simulator-sdk.sh ios` |
 | `product-build` apple-family | `warm-ios-simulator-sdk.sh <target>` (`ipados` / `tvos` / `watchos` / `visionos`) |
 
-When the requested simulator SDK is already on the runner, the script sets `WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1`. That skip is also required for **non-iOS** sim products: `wwn-toolchain` `build-app.nix` currently runs `-downloadPlatform iOS` for any SDK whose name ends in `simulator` (the watchOS flake noted in `release.yml`). Wiring is guarded by `.github/scripts/verify-apple-sdk-warm.py`.
+When the requested simulator SDK is already on the runner, the script sets `WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1`. That skip is also required for **non-iOS** sim products: `wwn-toolchain` `build-app.nix` currently runs `-downloadPlatform iOS` for any SDK whose name ends in `simulator` (the watchOS flake noted in `release.yml`). Wiring is guarded by `cargo xtask verify apple-sdk-warm`.
 
 ## CI anti-patterns (do not reintroduce)
 
@@ -273,7 +273,7 @@ When the requested simulator SDK is already on the runner, the script sets `WAWO
 8. Killing agent-device prepare daemon between `prepare` and `open`.
 9. Re-planning completed curated-matrix / gate fan-out work.
 10. Reintroducing Magic Nix Cache / Attic / Cachix / `cache.wawona.io`.
-11. nixpkgs lineage drift across `wwn-*` without `follows` / `verify-nixpkgs-lineage.py`.
+11. nixpkgs lineage drift across `wwn-*` without `follows` / `cargo xtask verify nixpkgs-lineage`.
 12. Linking a stale `.build/backend/<sdk>` after `Cargo.lock` changes (re-run `scripts/build-backend.sh <sdk>` or delete it).
 
 ## Watch: idle memory

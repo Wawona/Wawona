@@ -37,7 +37,7 @@ uutils or implement a second SSH/zsh stack.
 
 ## Verify
 
-`python3 .github/scripts/verify-ios-shell-tools.py` checks libssh2 wiring,
+`cargo xtask verify ios-shell-tools` checks libssh2 wiring,
 `wwn-coreutils` safe-subset vs `Cargo.toml`, and forbids NIOSSH / ios_system
 imports under Apple Swift sources.
 

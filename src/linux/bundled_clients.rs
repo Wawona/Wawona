@@ -4,7 +4,7 @@
 //! `src/platform/macos/ui/Machines/WWNMachinesViewModel.swift` and
 //! `android/app/.../BundledClients.kt`. Keep the ids, display names, and
 //! descriptions in sync across all platforms; the Linux CI gate
-//! `verify-linux-bundled-clients.py` enforces this parity.
+//! `cargo xtask verify linux-bundled-clients` enforces this parity.
 
 /// Picker section for native Wayland software (mirrors Apple
 /// `BundledWaylandSoftwareKind`).

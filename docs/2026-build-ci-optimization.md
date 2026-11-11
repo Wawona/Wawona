@@ -30,7 +30,7 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 - Cross-repo sharing (Wawona ↔ `wwn-*`): the repo that **owns** the derivation
   builds it in CI (e.g. `wwn-toolchain` substrate, `wwn-weston` archives). Wawona
   substitutes when store hashes match (single nixpkgs lineage via `follows` +
-  `verify-nixpkgs-lineage.py`).
+  `cargo xtask verify nixpkgs-lineage`).
 - Local: `determinate-nixd login` (or `fh login`). Fork PRs and anonymous
   contributors rebuild cold.
 
@@ -86,7 +86,7 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
   - *PR:* fuzzel lanes skipped; smoke still runs when device-e2e is invoked.
   - *Nightly:* graphics + protocol drift + capability only (no Gate: products).
 - **Reproducibility.** `repro-rebuild` `--rebuild`s backend + workspace-src and
-  byte-compares; `verify-no-tar-wildcards.py` bans nondeterministic archives.
+  byte-compares; `cargo xtask verify no-tar-wildcards` bans nondeterministic archives.
   Deterministic outputs are what make FlakeHub Cache safe to trust.
 
 ## Sizing rules of thumb

@@ -30,7 +30,7 @@ Status source of truth: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
   Android testTags.
 - **Plan**: extract one canonical machine-config schema (already partially
   shared via `WawonaModel`), generate platform bindings, add a11y ids to every
-  interactive control, wire `ui_parity_diff.py` golden pairs.
+  interactive control, wire `cargo xtask ci ui-parity` golden pairs.
 - **Gate**: nightly UI parity job (`nightly-full-matrix.yml`).
 
 ## p25-macos-containers. Containerization.framework + vsock waypipe (macOS 26+)
