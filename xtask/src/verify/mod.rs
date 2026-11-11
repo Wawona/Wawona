@@ -6,6 +6,7 @@
 mod android;
 mod apple;
 mod linux;
+mod policy;
 pub mod report;
 mod wayland;
 
@@ -140,6 +141,7 @@ const CHECKS: &[(&str, &str, CheckFn)] = &[
     ("linux-shell-tools", "the Linux wrapper carries the shell and client runtimes", linux::shell_tools),
     ("nixpkgs-lineage", "build-critical inputs follow the root nixpkgs (issue #47)", linux::nixpkgs_lineage),
     ("no-tar-wildcards", "no Nix recipe uses tar --wildcards (a bsdtar no-op)", linux::no_tar_wildcards),
+    ("no-python", "no Python file, shebang or command where the build, CI or tools run", policy::no_python),
     ("smithay-coverage", "the protocol manifest agrees with the Smithay runtime", wayland::smithay_coverage),
     ("wayland-no-equivalent-closure", "every no-equivalent protocol has a disposition", wayland::no_equivalent_closure),
     ("wayland-profile-smoke", "protocol profiles stay consistent; the flake outputs evaluate", wayland::profile_smoke),

@@ -169,7 +169,19 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install zizmor 1.30.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/zizmor"
+          mkdir -p "$dir"
+          gh release download v1.30.1 --repo zizmorcore/zizmor \
+            --pattern zizmor-x86_64-unknown-linux-gnu.tar.gz --dir "$dir"
+          echo "e65324f4430c2717591937edcec90ccbefaf14c174f8ec9415e03ca875b46e1a  $dir/zizmor-x86_64-unknown-linux-gnu.tar.gz" \
+            | sha256sum --check -
+          tar -xzf "$dir/zizmor-x86_64-unknown-linux-gnu.tar.gz" -C "$dir"
+          echo "$dir" >> "$GITHUB_PATH"
       - name: Reject high-severity GitHub Actions findings
         env:
           GH_TOKEN: ${{ github.token }}
@@ -195,7 +207,7 @@ jobs:
           if (( ${#workflows[@]} == 0 )); then
             exit 0
           fi
-          uvx "zizmor==1.30.1" --min-severity high "${workflows[@]}"
+          zizmor --min-severity high "${workflows[@]}"
 
   linux-package-wiring:
     name: Linux package wiring
@@ -209,3 +221,5 @@ jobs:
           key: linux-wiring
       - name: Verify Linux package and shell-tool wiring (wawonaLinuxUiBin, #164, autostart)
         run: cargo xtask verify linux-package-wiring linux-shell-tools
+      - name: No Python where the build, CI or tools run
+        run: cargo xtask verify no-python
