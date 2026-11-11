@@ -253,7 +253,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
 ## Nix fresh builds (hard)
 
 Products and Terminal are **Nix**. `nix run .#wawona-macos`, `nix run .#terminal`,
-or tip via `WAWONA_TEST_REBUILD=1` + `ensure-tip-wawona-macos.sh`. Never
+or tip via `WAWONA_TEST_REBUILD=1` + `cargo xtask tip macos`. Never
 `/Applications/Wawona.app`. Never host-cargo `/tmp` overlays as the ship path.
 Never boot Vision Pro when the task is Wawona Terminal on macOS. Rule/skill:
 `wawona-nix-fresh-build`. Guide: `docs/compilation.md`. Query wwn-mcp first.
@@ -293,8 +293,8 @@ driver children. **If a runner UI / Appium / GUI job fails, reproduce and
 fix with Appium skills.** Do not greenwash with agent-device, osascript,
 or skip stubs. agent-device stays local dogfood and vphone Mode B.
 Darwin catalog Wayland guests are **Colima + waypipe only**
-(`ensure-colima.sh`). Host app is **tip build + clean launch** every
-time (`ensure-tip-wawona-macos.sh`; never `/Applications`). Rule
+(`cargo xtask appium colima`). Host app is **tip build + clean launch** every
+time (`cargo xtask tip macos`; never `/Applications`). Rule
 `wawona-test-tip-app`. Catalog green = Present `wwn.compositor.surface`
 PNG after Terminal close/Focus (not Machines/Settings). Docs:
 `docs/testing/appium-ui-matrix.md`, `docs/agent-rules/wawona-appium-ui-gh.md`.

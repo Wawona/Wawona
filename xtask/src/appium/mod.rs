@@ -4,6 +4,7 @@
 
 mod cases;
 mod evidence;
+mod host;
 mod pages;
 mod session;
 mod webdriver;
@@ -20,7 +21,7 @@ use crate::util::*;
 #[derive(clap::Subcommand)]
 pub enum Cmd {
     /// Offline checks: selectors.json ids in Swift, Kotlin and Linux; the
-    /// matrix shape; every catalog client mapped by launch-wayland-client.sh.
+    /// matrix shape; every catalog client mapped by cargo xtask appium launch.
     Verify,
     /// Fail unless every catalog client has a non-blank gallery screenshot.
     Gallery {
@@ -31,6 +32,22 @@ pub enum Cmd {
     /// Run the suite against an Appium server. Writes junit.xml to the
     /// artifacts directory.
     Run(cases::Args),
+    /// Capture every catalog client (or these) into the gallery, then check
+    /// it: Colima, the Appium server, the tip app and WebDriverAgentMac first.
+    Catalog { clients: Vec<String> },
+    /// Launch one catalog client into the running compositor (Colima guest
+    /// over waypipe on macOS, nested on Linux).
+    Launch { client: String },
+    /// Colima guests over waypipe SSH, by hand.
+    Waypipe(host::LabArgs),
+    /// Fail closed unless Colima runs and its guest answers SSH.
+    Colima,
+    /// Start the Appium server on :4723 unless it answers.
+    Server,
+    /// Start WebDriverAgentMac on :10100 unless it answers.
+    Wda,
+    /// Print the artifact root export (non-hidden on GitHub Actions).
+    Prepare,
 }
 
 pub fn main(cmd: Cmd) -> Result<()> {
@@ -38,6 +55,13 @@ pub fn main(cmd: Cmd) -> Result<()> {
         Cmd::Verify => verify(),
         Cmd::Gallery { only } => evidence::verify_gallery(&artifacts(), &only),
         Cmd::Run(a) => cases::run(a),
+        Cmd::Catalog { clients } => host::catalog(&clients),
+        Cmd::Launch { client } => host::launch(&client),
+        Cmd::Waypipe(a) => host::lab(a),
+        Cmd::Colima => host::ensure_colima().map(drop),
+        Cmd::Server => host::ensure_server(),
+        Cmd::Wda => host::ensure_wda(),
+        Cmd::Prepare => host::prepare_artifacts(),
     }
 }
 
@@ -160,11 +184,7 @@ fn verify() -> Result<()> {
     }
 
     // Matrix rows are Colima; nested is only a Linux CI override by env.
-    let launcher = root().join("scripts/appium/launch-wayland-client.sh");
-    let mapped: BTreeSet<String> = Regex::new(r#"(?m)^\s*([a-z0-9_|-]+)\)\s*echo\s+"(?:colima|nested):"#)?
-        .captures_iter(&read(&launcher)?)
-        .flat_map(|c| c[1].split('|').map(|s| s.trim().to_string()).collect::<Vec<_>>())
-        .collect();
+    let mapped: BTreeSet<String> = host::GUESTS.iter().map(|(c, _)| c.to_string()).collect();
     let mut clients = 0;
     for kind in KINDS {
         for (name, entry) in m.catalog(kind) {
@@ -174,7 +194,7 @@ fn verify() -> Result<()> {
             } else if field(&entry, "guest") != "colima" {
                 "guest must be colima"
             } else if !mapped.contains(&name) {
-                "missing from launch-wayland-client.sh recipe_for"
+                "missing from host::GUESTS"
             } else {
                 continue;
             };
@@ -184,28 +204,6 @@ fn verify() -> Result<()> {
     }
     if clients == 0 {
         bail!("empty catalog in matrix.toml");
-    }
-    let runtime = std::env::temp_dir().join(format!("wwn-guest-map-{}", std::process::id()));
-    std::fs::create_dir_all(&runtime)?;
-    let socket = runtime.join("wayland-0");
-    let _ = std::fs::remove_file(&socket);
-    let listener = std::os::unix::net::UnixListener::bind(&socket)?;
-    let code = cmd("bash")
-        .arg(&launcher)
-        .arg("__no_such_client__")
-        .env("WAWONA_RUNTIME", &runtime)
-        .env("XDG_RUNTIME_DIR", &runtime)
-        .env("WAYLAND_DISPLAY", "wayland-0")
-        .output()?
-        .status
-        .code();
-    drop(listener);
-    let _ = std::fs::remove_dir_all(&runtime);
-    if code == Some(3) {
-        println!("OK launcher rejects an unknown client (exit 3)");
-    } else {
-        failed = true;
-        println!("FAIL launcher should exit 3 on an unknown client, got {code:?}");
     }
     if failed {
         bail!("appium verify failed");
@@ -280,29 +278,5 @@ mod tests {
             assert!(ids.contains(id), "{id}");
         }
         assert!(ids.len() >= 40);
-    }
-
-    fn colima_host(config: &str, override_host: Option<&str>) -> String {
-        let dir = std::env::temp_dir().join(format!("wwn-colima-{}-{}", std::process::id(), config.len()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("ssh_config");
-        std::fs::write(&file, config).unwrap();
-        let mut c = cmd(root().join("scripts/appium/colima-ssh-host.sh"));
-        c.arg(&file).env_remove("COLIMA_SSH_HOST");
-        if let Some(h) = override_host {
-            c.env("COLIMA_SSH_HOST", h);
-        }
-        output(&mut c).unwrap().trim().to_string()
-    }
-
-    #[test]
-    fn colima_ssh_host_reads_the_profile_alias() {
-        assert_eq!(
-            colima_host("Host colima-wawona-123-1-macos\n  HostName 127.0.0.1\n", None),
-            "colima-wawona-123-1-macos"
-        );
-        let wildcard = "Host *\n  ServerAliveInterval 60\nHost colima-runner\n";
-        assert_eq!(colima_host(wildcard, None), "colima-runner");
-        assert_eq!(colima_host(wildcard, Some("explicit-host")), "explicit-host");
     }
 }

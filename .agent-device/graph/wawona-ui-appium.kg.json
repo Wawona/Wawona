@@ -65,7 +65,7 @@
       "android": {
         "driver": "UiAutomator2",
         "env": "WAWONA_APPIUM_PLATFORM=android WAWONA_APP_PATH=\u2026.apk",
-        "cmd": "bash scripts/appium/ci-android-suite.sh",
+        "cmd": "cargo xtask appium run --group native,wayland",
         "skill": "appium-setup-uiautomator2"
       },
       "linux": {
@@ -408,7 +408,7 @@
   },
   "next_action": {
     "tick": 7,
-    "cmd": "capture remaining catalog clients (N4) via capture-catalog-gallery.sh",
+    "cmd": "capture remaining catalog clients (N4) via cargo xtask appium catalog",
     "goal": "catalog-gallery full matrix PNGs",
     "blocked_by": null
   },
@@ -463,7 +463,7 @@
       "type": "DriverFix",
       "trigger": "WDA SIGABRT missing lib_TestingInterop/_Testing_Foundation on Xcode 26",
       "args": {
-        "fix": "scripts/appium/ensure-wda-mac.sh DYLD_* + webDriverAgentMacUrl",
+        "fix": "cargo xtask appium wda DYLD_* + webDriverAgentMacUrl",
         "also": "ensure-appium strips DYLD from Node; start_new_session survives agent shells"
       },
       "time": "2026-10-14T21:45:46Z",

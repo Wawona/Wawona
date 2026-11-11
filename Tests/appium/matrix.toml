@@ -4,7 +4,7 @@
 # CI verifies this file with `cargo xtask appium verify`.
 #
 # Catalog clients are REAL Wayland guests. They launch via
-# scripts/appium/launch-wayland-client.sh into the host Wawona socket:
+# cargo xtask appium launch into the host Wawona socket:
 #   guest=colima     → Colima Linux + waypipe SSH (required on Darwin)
 #   guest=nested     → same-host nested client (Linux CI only)
 # guest=container / local-bundle are forbidden for catalog proof.

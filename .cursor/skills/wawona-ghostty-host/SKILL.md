@@ -29,7 +29,7 @@ Shell backend is separate (`wawona-terminal-shell-backend`).
 cd /Users/8amps/Wawona/Wawona
 nix run .#terminal --override-input terminal path:/Users/8amps/Wawona/Terminal
 # In-app tip:
-WAWONA_TEST_REBUILD=1 eval "$(scripts/appium/ensure-tip-wawona-macos.sh)"
+WAWONA_TEST_REBUILD=1 eval "$(cargo xtask tip macos)"
 ```
 
 **Never** Vision Pro / visionOS for Terminal unless the task is visionOS.

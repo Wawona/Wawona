@@ -23,10 +23,10 @@ description: >-
 | `xtask/src/appium/` | `cargo xtask appium`: WebDriver client, pages, cases |
 | `Tests/appium/matrix.toml` | Platform + catalog guest gates |
 | `Tests/appium/selectors.json` | Canonical `wwn.*` ids |
-| `scripts/appium/launch-wayland-client.sh` | Colima (Darwin) / nested (Linux) guests |
-| `scripts/appium/ensure-colima.sh` | Fail closed unless Colima SSH works |
+| `cargo xtask appium launch` | Colima (Darwin) / nested (Linux) guests |
+| `cargo xtask appium colima` | Fail closed unless Colima SSH works |
 | `cargo xtask appium verify` | Fail closed on id, matrix or guest-map drift |
-| `scripts/appium/capture-catalog-gallery.sh` | Gallery PNGs + verify |
+| `cargo xtask appium catalog` | Gallery PNGs + verify |
 | `.github/workflows/ui-appium.yml` | Nightly / path-filtered runners |
 | `docs/testing/appium-ui-matrix.md` | Human prose |
 
@@ -36,9 +36,9 @@ Darwin / macOS catalog testing is **Colima + waypipe only**.
 
 ```text
 colima start
-./scripts/appium/ensure-colima.sh
+cargo xtask appium colima
 # Wawona owns wayland-0, then:
-./scripts/appium/capture-catalog-gallery.sh foot
+cargo xtask appium catalog foot
 ```
 
 | Guest | When |
@@ -48,7 +48,7 @@ colima start
 
 CI sets a unique `COLIMA_PROFILE`, so Colima's generated SSH `Host` alias can
 include that profile name. Resolve the alias from `COLIMA_SSH_CONFIG` with
-`scripts/appium/colima-ssh-host.sh`; use it for every SSH probe, guest package
+`cargo xtask appium colima`; use it for every SSH probe, guest package
 check, binary lookup, and waypipe SSH launch. Never assume the alias is
 `colima`. `COLIMA_SSH_HOST` remains an explicit override for unusual configs.
 
@@ -85,16 +85,16 @@ osascript admin dialog. Also keep Accessibility for
 Rule `wawona-test-tip-app`. Every Appium / test host launch:
 
 ```bash
-eval "$(scripts/appium/ensure-tip-wawona-macos.sh)"
+eval "$(cargo xtask tip macos)"
 # rebuilds when git HEAD drifts; quits leftovers; starts tip binary
 ```
 
 Never `/Applications/Wawona.app` or old `DerivedData-macos*`.
-`capture-catalog-gallery.sh` calls ensure-tip first.
+`cargo xtask appium catalog` calls ensure-tip first.
 `WAWONA_TEST_REBUILD=1` forces xcodebuild. `WAWONA_ALLOW_STALE_TEST_APP=1`
 is forbidden for catalog.
 
-`ensure-colima.sh` resolves `nixpkgs#colima` when brew is missing. Use Colima's
+`cargo xtask appium colima` fails closed when `colima` is not on PATH (`brew install colima`). Use Colima's
 freshly generated SSH config (`colima ssh-config`, stored under
 `${COLIMA_HOME:-$HOME/.colima}/ssh_config`) for guest commands. Do not assume
 the private key lives at `~/.colima/_lima/_config/user`: Colima can use another
@@ -118,7 +118,7 @@ Local runs keep Colima's normal VM type.
 Ubuntu 24.04 apt covers weston/sway/foot/plasma/gnome/phosh/konsole/…
 Non-apt catalog rows (niri, hyprland, mango, cosmic-comp, ghostty) install
 via **guest nix-profile** (`nix profile install nixpkgs#…` after single-user
-nix in the Colima VM). `launch-wayland-client.sh` sources that profile and
+nix in the Colima VM). `cargo xtask appium launch` sources that profile and
 resolves absolute paths. Mango needs `WLR_BACKENDS=wayland` + a config under
 `~/.config/mango/`. Phosh binary is `/usr/libexec/phosh`.
 
@@ -159,7 +159,7 @@ Never greenwash with skip stubs or agent-device/osascript.
 
 ## CI artifacts
 
-CI uses `scripts/appium/ci-prepare-artifacts.sh` → `test-artifacts/appium/`
+CI uses `cargo xtask appium prepare` → `test-artifacts/appium/`
 (non-hidden). Local dogfood stays `.agent-device/test-artifacts/appium`.
 macOS catalog: tip + Colima smoke (`weston_simple_shm foot`); **fail closed**
 if no PNG. Never `exit 0` + `SKIPPED.txt` (false green on tip `a58384fc`).
@@ -207,7 +207,7 @@ required screenshot check enabled.
 - Invent non-`wwn.*` accessibility ids
 - Catalog card skips instead of Wayland guests
 - Darwin catalog without Colima
-- Appium CI artifacts under `.agent-device/` (use `ci-prepare-artifacts.sh`)
+- Appium CI artifacts under `.agent-device/` (use `cargo xtask appium prepare`)
 - `exit 0` + `SKIPPED.txt` for catalog (false green)
 - Job success without `catalog-gallery/*.png` after a catalog step ran
 Rule: `wawona-appium-ui-gh`. Host install: `/etc/nix-darwin/.dotfiles/docs/appium-agents.md`.

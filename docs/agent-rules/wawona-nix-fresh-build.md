@@ -20,7 +20,7 @@ Apple simulator are wrong. Authority: `docs/compilation.md`,
 | Low RAM | `./scripts/nix-build-low-mem.sh .#wawona-macos` |
 | Wawona Terminal standalone | `nix run .#terminal` |
 | Local Terminal tree | `nix run .#terminal --override-input terminal path:../Terminal` |
-| Tip macOS for Appium / agent-device | `eval "$(WAWONA_TEST_REBUILD=1 scripts/appium/ensure-tip-wawona-macos.sh)"` after product sources change |
+| Tip macOS for Appium / agent-device | `eval "$(WAWONA_TEST_REBUILD=1 cargo xtask tip macos)"` after product sources change |
 | iOS sim product | `nix run .#wawona-ios` / `nix build .#wawona-ios-app-sim` |
 | Xcode / Android Studio | `nix run .#deps -- <sdk>` (or `android`), then open the root project |
 | Rust from the working tree | `scripts/build-backend.sh <sdk>` (uses the slice's Nix environment) |
@@ -34,7 +34,7 @@ attr after input / source change. Tip rebuild: `WAWONA_TEST_REBUILD=1`.
 
 - **Product proof / dogfood of Nix packaging:** prefer `nix run .#wawona-macos`
   or the `result` from `nix build .#wawona-macos`.
-- **Appium / agent-device macOS UI:** tip tree via `ensure-tip-wawona-macos.sh`
+- **Appium / agent-device macOS UI:** tip tree via `cargo xtask tip macos`
   (`nix run .#deps -- macosx`, then Debug under `/tmp/wawona-macos-tip`). Still refuse
   `/Applications` and foreign DerivedData (`wawona-test-tip-app`).
 - Changing Rust/Swift/flake inputs requires rebuild. A matching `git-HEAD`

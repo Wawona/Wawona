@@ -2,9 +2,9 @@
 //! Wawona.xcodeproj schemes and Gradle project the IDEs open.
 
 use crate::deps;
-use crate::util::{cmd, root, run, write};
+use crate::util::{cmd, env_or, root, run, write};
 use anyhow::{bail, Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct Target {
     pub name: &'static str,
@@ -135,8 +135,25 @@ fn fetch(t: &Target, device: bool) -> Result<()> {
     deps::get(deps::GetArgs { sdks, nix: false })
 }
 
+/// Gradle runs on JetBrains Runtime 21 (rule wawona-android-jbr): an exported
+/// `JAVA_HOME` wins (CI sets JBR), else `ANDROID_STUDIO_JBR`, else Android
+/// Studio's embedded runtime.
 fn gradle(task: &str) -> Result<()> {
-    run(cmd(root().join("gradlew")).current_dir(root()).arg(task))
+    let mut c = cmd(root().join("gradlew"));
+    c.current_dir(root()).arg(task);
+    if std::env::var_os("JAVA_HOME").is_none() {
+        let home = env_or("HOME", "");
+        let studio = [
+            std::env::var("ANDROID_STUDIO_JBR").unwrap_or_default(),
+            "/Applications/Android Studio.app/Contents/jbr/Contents/Home".into(),
+            format!("{home}/Applications/Android Studio.app/Contents/jbr/Contents/Home"),
+            "/opt/android-studio/jbr".into(),
+        ];
+        let jbr = studio.into_iter().filter(|p| !p.is_empty()).find(|p| Path::new(p).join("bin/java").is_file());
+        let jbr = jbr.context("no JetBrains Runtime 21: install Android Studio or set ANDROID_STUDIO_JBR")?;
+        c.env("JAVA_HOME", jbr);
+    }
+    run(&mut c)
 }
 
 /// The one file with extension `ext` Gradle wrote under android/app/build/outputs/`dir`.

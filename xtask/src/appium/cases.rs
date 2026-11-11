@@ -359,9 +359,8 @@ fn catalog_client(c: &Ctx, kind: &str, client: &str) -> Result<Outcome> {
     }
 
     let guest = if cfg!(target_os = "macos") { "colima".to_string() } else { env_or("WAWONA_WAYLAND_GUEST", "nested") };
-    let out = cmd("bash")
-        .arg(root().join("scripts/appium/launch-wayland-client.sh"))
-        .arg(client)
+    let out = cmd(std::env::current_exe()?)
+        .args(["appium", "launch", client])
         .env("WAWONA_RUNTIME", runtime())
         .env("WAYLAND_DISPLAY", env_or("WAYLAND_DISPLAY", "wayland-0"))
         .env("WAWONA_WAYLAND_GUEST", guest)

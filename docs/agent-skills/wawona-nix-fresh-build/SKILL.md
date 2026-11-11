@@ -21,7 +21,7 @@ nix run .#terminal
 nix run .#terminal --override-input terminal path:../Terminal
 
 # Tip for agent-device / Appium (macOS only, after product edits)
-WAWONA_TEST_REBUILD=1 eval "$(scripts/appium/ensure-tip-wawona-macos.sh)"
+WAWONA_TEST_REBUILD=1 eval "$(cargo xtask tip macos)"
 # exports WAWONA_APP_PATH under /tmp/wawona-macos-tip
 ```
 

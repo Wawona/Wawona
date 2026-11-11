@@ -11,6 +11,7 @@ mod parity;
 mod product;
 mod slices;
 mod testflight;
+mod tip;
 mod tools;
 mod util;
 mod verify;
@@ -66,6 +67,8 @@ enum Cmd {
     /// Prepare the path crates of a Wawona workspace (coreutils, waypipe, libghostty).
     #[command(subcommand)]
     Workspace(workspace::Cmd),
+    /// Build (when stale), check and clean-launch the tip app every UI proof uses.
+    Tip(tip::Args),
     /// Wawona.xcodeproj build phases.
     #[command(subcommand)]
     Xcode(xcode::Cmd),
@@ -88,6 +91,7 @@ fn main() -> Result<()> {
         Cmd::Artifact(c) => artifact::main(c),
         Cmd::Ci(c) => ci::main(c),
         Cmd::Workspace(c) => workspace::main(c),
+        Cmd::Tip(a) => tip::main(a),
         Cmd::Xcode(c) => xcode::main(c),
     }
 }

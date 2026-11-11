@@ -9,7 +9,7 @@ Pin Project + Gradle JVM to the IDE JDK named `21` (Studio embedded JBR).
 
 - `.idea/misc.xml`: `project-jdk-name="21"`
 - `.idea/gradle.xml`: `gradleJvm=21`
-- Local `./gradlew`: `source scripts/lib/android-jbr.sh && wawona_android_export_jbr`
+- Local builds: `cargo xtask build android` resolves Studio JBR 21 when `JAVA_HOME` is unset
 
 Do not export Nix `JAVA_HOME` into Android Studio. That is `#GRADLE_LOCAL_JAVA_HOME`
 or a stale OpenJDK path. Symptom: **Invalid Gradle JDK configuration**.

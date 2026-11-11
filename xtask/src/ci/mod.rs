@@ -167,18 +167,12 @@ fn detach(
     unset: Vec<String>,
     argv: &[String],
 ) -> Result<()> {
-    use std::os::unix::process::CommandExt;
-    let out = std::fs::OpenOptions::new().create(true).append(true).open(log)?;
     let mut c = cmd(&argv[0]);
-    c.args(&argv[1..]).envs(env).stdin(std::process::Stdio::null()).stdout(out.try_clone()?).stderr(out);
+    c.args(&argv[1..]).envs(env);
     for k in unset {
         c.env_remove(k);
     }
-    // SAFETY: setsid is async-signal-safe and touches no parent state.
-    unsafe {
-        c.pre_exec(|| if libc::setsid() < 0 { Err(std::io::Error::last_os_error()) } else { Ok(()) });
-    }
-    let pid = c.spawn().with_context(|| format!("spawn {}", argv[0]))?.id();
+    let pid = detached(c, log)?;
     if let Some(p) = pid_file {
         write(p, pid.to_string())?;
     }

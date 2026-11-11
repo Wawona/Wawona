@@ -46,12 +46,12 @@ lane under `ui-appium.yml`):
 - Gates: `matrix.toml` (PlatformCapabilities)
 - Selectors: `wwn.*` only
 - **Tip host app (hard):** Darwin Mac2 always runs
-  `scripts/appium/ensure-tip-wawona-macos.sh` first (rebuild when HEAD
+  `cargo xtask tip macos` first (rebuild when HEAD
   drifts, clean launch tip binary, refuse `/Applications`). See
   `wawona-test-tip-app`.
 - Catalog Wayland clients: real guests via
-  `scripts/appium/launch-wayland-client.sh` (**Colima on Darwin**; nested on
-  Linux). Run `ensure-colima.sh` first on macOS. No local-bundle.
+  `cargo xtask appium launch` (**Colima on Darwin**; nested on
+  Linux). Run `cargo xtask appium colima` first on macOS. No local-bundle.
 - Colima guest SSH must use its generated SSH config (`COLIMA_SSH_CONFIG` or
   `${COLIMA_HOME:-$HOME/.colima}/ssh_config`). Never assume an internal key,
   port, or profile path.

@@ -96,7 +96,7 @@ pub fn capabilities(platform: &str) -> Value {
     Value::Object(m)
 }
 
-/// A pre-warmed WebDriverAgentMac (`ensure-wda-mac.sh`), named or probed.
+/// A pre-warmed WebDriverAgentMac (`cargo xtask appium wda`), named or probed.
 fn wda_url() -> Option<String> {
     let named = env_or("WAWONA_MAC2_WDA_URL", "");
     if !named.is_empty() {

@@ -35,7 +35,7 @@ Restart the IDE after `nh darwin switch`.
 | [`xtask/src/appium/`](../../xtask/src/appium/) | `cargo xtask appium`: WebDriver client, page objects, cases, evidence checks |
 | [`Tests/appium/matrix.toml`](../../Tests/appium/matrix.toml) | Platform gates + catalog Wayland guests |
 | [`Tests/appium/selectors.json`](../../Tests/appium/selectors.json) | Canonical `wwn.*` ids |
-| [`scripts/appium/launch-wayland-client.sh`](../../scripts/appium/launch-wayland-client.sh) | Real Wayland guest launcher |
+| `cargo xtask appium launch` | Real Wayland guest launcher |
 | [`.github/workflows/ui-appium.yml`](../../.github/workflows/ui-appium.yml) | Nightly / path-filtered `development` |
 
 ## Wayland catalog clients (23.A / 23.B)
@@ -55,9 +55,9 @@ step ran.
 Capture locally (Wawona up, Appium on :4723):
 
 ```bash
-./scripts/appium/capture-catalog-gallery.sh
+cargo xtask appium catalog
 # or one client:
-./scripts/appium/capture-catalog-gallery.sh kde_plasma_de
+cargo xtask appium catalog kde_plasma_de
 cargo xtask appium gallery --only kde_plasma_de
 open .agent-device/test-artifacts/appium/catalog-gallery/index.html
 ```
@@ -66,10 +66,10 @@ Each client is a real Wayland process forwarded into the host Wawona socket:
 
 | `guest` | How |
 |---------|-----|
-| `colima` | **Required on Darwin.** Colima Linux VM + `waypipe-ssh-colima-lab.sh`. No local-bundle, no Apple Containerization shortcut for catalog tests. |
+| `colima` | **Required on Darwin.** Colima Linux VM + `cargo xtask appium waypipe`. No local-bundle, no Apple Containerization shortcut for catalog tests. |
 | `nested` | Linux runner only: same-host nested client on `WAYLAND_DISPLAY` (`WAWONA_WAYLAND_GUEST=nested`) |
 
-CI fails closed if `matrix.toml` and `launch-wayland-client.sh` drift
+CI fails closed if `matrix.toml` and `cargo xtask appium launch` drift
 (`cargo xtask appium verify`). Appium then asserts the host
 compositor surface (`wwn.compositor.surface`).
 
@@ -97,10 +97,10 @@ cargo test --manifest-path xtask/Cargo.toml appium
 # Wayland catalog (host compositor must own wayland-0 first):
 export WAWONA_APPIUM_PLATFORM=macos   # or linux
 # Darwin: tip host + Colima (never /Applications).
-eval "$(scripts/appium/ensure-tip-wawona-macos.sh)"
+eval "$(cargo xtask tip macos)"
 colima start   # once on the host
-./scripts/appium/ensure-colima.sh
-# Or: ./scripts/appium/capture-catalog-gallery.sh foot
+cargo xtask appium colima
+# Or: cargo xtask appium catalog foot
 cargo xtask appium run --group catalog --only foot
 
 # Full native session (Appium server on :4723, tip app):
