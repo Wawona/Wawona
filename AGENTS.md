@@ -59,8 +59,8 @@ locally and requires **macOS 27 + Xcode 27**. `Wawona.xcodeproj` is
 committed; run `nix run .#deps -- <sdk>` once to link `.deps/<sdk>`.
 
 For **CI / prebuilt distribution** (Wawona v2.5+ Fastlane beta lanes), read
-`wwn-mcp/knowledge/wawona/fastlane.md` and use `scripts/sync-github-secrets.sh`
-+ `scripts/bootstrap-apple-signing.sh`. Query **Fastlane** (`project=fastlane`)
+`wwn-mcp/knowledge/wawona/fastlane.md` and use `cargo xtask secrets sync`
++ `cargo xtask secrets bootstrap-signing`. Query **Fastlane** (`project=fastlane`)
 and **GitHub Actions** (`project=github-actions`) via wwn-mcp for upstream syntax.
 Mutating GitHub (issues, milestones, PRs, runs) is local **`gh` via Shell**,
 not MCP. Skill `wawona-gh`. Rule `wawona-gh`.

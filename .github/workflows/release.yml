@@ -254,7 +254,7 @@ jobs:
           find artifacts -type f \( -name '*.dmg' -o -name '*.apk' -o -name '*.ipa' -o -name '*.AppImage' \) \
             -exec cp -v {} release-assets/ \;
           ls -la release-assets/
-          test "$(ls release-assets | wc -l)" -ge 4
+          test "$(find release-assets -type f | wc -l)" -ge 4
 
       - name: Create GitHub Release
         env:

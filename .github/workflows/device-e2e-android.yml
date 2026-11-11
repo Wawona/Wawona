@@ -57,6 +57,13 @@ jobs:
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: android-e2e
+
+      - name: Build cargo xtask
+        run: cargo xtask --help >/dev/null
+
       - name: Enable KVM group perms
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -91,8 +98,7 @@ jobs:
           script: >-
             adb shell settings put secure immersive_mode_confirmations confirmed
             && export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
-            && chmod +x ./scripts/ci-android-espresso-smoke.sh
-            && ./scripts/ci-android-espresso-smoke.sh
+            && cargo xtask lab android-runtime
 
       - name: Upload Android runtime artifacts
         if: always()

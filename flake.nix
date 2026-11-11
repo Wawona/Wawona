@@ -372,11 +372,20 @@
           relPath = pkgs.lib.removePrefix (toString ./.) (toString path);
           hasAny = pkgs.lib.any (p: pkgs.lib.hasPrefix p relPath);
         in
-          !(hasAny [ "/Sources" "/Darwin" "/android" "/scripts" "/flake"
-                     "/src/platform/android" "/src/platform/cproof" "/src/platform/ios"
-                     "/src/platform/macos" "/src/platform/watchos" ])
+          !(hasAny [
+            "/Sources"
+            "/Darwin"
+            "/android"
+            "/scripts"
+            "/flake"
+            "/src/platform/android"
+            "/src/platform/cproof"
+            "/src/platform/ios"
+            "/src/platform/macos"
+            "/src/platform/watchos"
+          ])
           && (!(pkgs.lib.hasPrefix "/src/resources/" relPath)
-              || hasAny [ "/src/resources/Wawona.icon" ]);
+            || hasAny ["/src/resources/Wawona.icon"]);
       };
 
     # Xcode project generation needs the complete source tree, unlike the Rust
@@ -468,7 +477,7 @@
     };
     # uutils pin owned by wwn-uutils-rs (do not re-fetch here). See
     # wwn-uutils-rs/dependencies/libs/coreutils/coreutils-src.nix and
-    # scripts/ensure-coreutils.sh (mkPatchedSrc).
+    # dependencies/wawona/deps-src.nix (mkPatchedSrc).
     coreutils-src = wwn-uutils-rs.lib.coreutilsSrc bootstrapPkgs;
 
     getPackagesForSystem = system: pkgs: let
@@ -657,8 +666,13 @@
         wawonaSrc = rustSrc;
         androidCC = toolchainsAndroid.androidToolchain.androidCC;
         coreutilsAndroid = coreutils-multicall-android;
-        inherit westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill westonToytoolkitLdflagsNix
-          westonCompositorLdflagsNix ilandGlAndroidLdflagsNix;
+        inherit
+          westonSimpleShmPatchedSrcNix
+          westonAndroidSignalPolyfill
+          westonToytoolkitLdflagsNix
+          westonCompositorLdflagsNix
+          ilandGlAndroidLdflagsNix
+          ;
       };
 
       androidToolchainSanity = import androidToolchainSanityNix {
@@ -753,13 +767,13 @@
         # via GhosttySurfaceHost (ensure-tip default-on); GhosttyGpu fallback.
         # See Ghostty/docs/METAL-SURFACE.md.
         // (pkgs.lib.optionalAttrs (
-          pkgs.stdenv.hostPlatform.isDarwin
-          && (inputs.wwn-ghostty.packages.${system} ? libghostty-macos)
-        ) {
-          libghostty-macos = inputs.wwn-ghostty.packages.${system}.libghostty-macos;
-          libghostty-macos-draw-proof =
-            inputs.wwn-ghostty.packages.${system}.libghostty-macos-draw-proof;
-        })
+            pkgs.stdenv.hostPlatform.isDarwin
+            && (inputs.wwn-ghostty.packages.${system} ? libghostty-macos)
+          ) {
+            libghostty-macos = inputs.wwn-ghostty.packages.${system}.libghostty-macos;
+            libghostty-macos-draw-proof =
+              inputs.wwn-ghostty.packages.${system}.libghostty-macos-draw-proof;
+          })
         # WLCS conformance runner (ci-l2-wlcs). Linux-only; production WWNCore ABI.
         # backend-linux lives in the Darwin packages let only; define a Linux
         # scoped backend here so nix run .#wawona-wlcs-run evaluates on GHA.
@@ -775,29 +789,36 @@
               platform = "linux";
               inherit wawonaVersion;
             };
-            backend-linux-wlcs = (pkgs.makeRustPlatform {
-              cargo = pkgs.rustToolchain;
-              rustc = pkgs.rustToolchain;
-            }).buildRustPackage {
-              pname = "wawona-backend-linux";
-              version = wawonaVersion;
-              src = workspace-src-linux-wlcs;
-              cargoLock = {
-                lockFile = "${workspace-src-linux-wlcs}/Cargo.lock";
-                allowBuiltinFetchGit = true;
+            backend-linux-wlcs =
+              (pkgs.makeRustPlatform {
+                cargo = pkgs.rustToolchain;
+                rustc = pkgs.rustToolchain;
+              }).buildRustPackage {
+                pname = "wawona-backend-linux";
+                version = wawonaVersion;
+                src = workspace-src-linux-wlcs;
+                cargoLock = {
+                  lockFile = "${workspace-src-linux-wlcs}/Cargo.lock";
+                  allowBuiltinFetchGit = true;
+                };
+                nativeBuildInputs = [pkgs.pkg-config pkgs.rustPlatform.bindgenHook];
+                buildInputs = [
+                  pkgs.wayland
+                  pkgs.libxkbcommon
+                  pkgs.pixman
+                  pkgs.libffi
+                  pkgs.openssl
+                  inputs.ghostty.packages.${system}.libghostty-vt
+                ];
+                buildPhase = ''
+                  cargo rustc --offline --release --lib --crate-type cdylib --no-default-features \
+                    --features "smithay-protocols desktop-protocols nix-ghostty-vt"
+                '';
+                installPhase = ''
+                  install -Dm644 "$(find target -path '*/release/libwawona.so' | head -1)" $out/lib/libwawona_core.so
+                '';
+                doCheck = false;
               };
-              nativeBuildInputs = [ pkgs.pkg-config pkgs.rustPlatform.bindgenHook ];
-              buildInputs = [ pkgs.wayland pkgs.libxkbcommon pkgs.pixman pkgs.libffi pkgs.openssl
-                inputs.ghostty.packages.${system}.libghostty-vt ];
-              buildPhase = ''
-                cargo rustc --offline --release --lib --crate-type cdylib --no-default-features \
-                  --features "smithay-protocols desktop-protocols nix-ghostty-vt"
-              '';
-              installPhase = ''
-                install -Dm644 "$(find target -path '*/release/libwawona.so' | head -1)" $out/lib/libwawona_core.so
-              '';
-              doCheck = false;
-            };
           in {
             wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix {
               wawonaBackend = backend-linux-wlcs;
@@ -1166,11 +1187,28 @@
             };
           };
           # The libraries the backend's crates link, per slice (slice.json).
-          backendLibs = d: pkgs.lib.filterAttrs (n: _: builtins.elem n [
-            "xkbcommon" "libffi" "libwayland" "pixman" "zstd" "lz4" "libssh2"
-            "mbedtls" "openssl" "kosmickrisp" "ffmpeg" "epoll-shim" "zlib"
-          ]) d;
-          mobile = deps: { inherit deps; native = backendLibs deps; };
+          backendLibs = d:
+            pkgs.lib.filterAttrs (n: _:
+              builtins.elem n [
+                "xkbcommon"
+                "libffi"
+                "libwayland"
+                "pixman"
+                "zstd"
+                "lz4"
+                "libssh2"
+                "mbedtls"
+                "openssl"
+                "kosmickrisp"
+                "ffmpeg"
+                "epoll-shim"
+                "zlib"
+              ])
+            d;
+          mobile = deps: {
+            inherit deps;
+            native = backendLibs deps;
+          };
           wawonaDeps = import ./dependencies/wawona/deps.nix {
             inherit (pkgs) lib;
             inherit pkgs wawonaVersion wawonaSrc ilandGlLdflagsNix;
@@ -1195,8 +1233,8 @@
               watchsimulator = mobile watchosSimDeps;
             };
             macosExtras =
-              pkgs.lib.genAttrs [ "fastfetch" "moltenvk" "kosmickrisp" "foot" "niri" "fuzzel" "phoon" "weston-simple-egl" "iland-baremetal" ]
-                (n: toolchains.buildForMacOS n {})
+              pkgs.lib.genAttrs ["fastfetch" "moltenvk" "kosmickrisp" "foot" "niri" "fuzzel" "phoon" "weston-simple-egl" "iland-baremetal"]
+              (n: toolchains.buildForMacOS n {})
               // {
                 zsh = pkgs.zsh;
                 igetty = iGetty.packages.${system}.wwn-igetty;

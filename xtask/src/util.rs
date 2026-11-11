@@ -160,3 +160,8 @@ pub fn wawona_runtime() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(format!("/tmp/wawona-{}", uid())))
 }
+
+/// True when `tool` is an executable on PATH.
+pub fn have(tool: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(tool).is_file()))
+}

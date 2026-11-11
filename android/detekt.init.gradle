@@ -1,4 +1,4 @@
-// detekt for scripts/verify-kotlin.sh. Applied from an init script so the
+// detekt for `cargo xtask prove kotlin`. Applied from an init script so the
 // product build never resolves it (the offline Nix mirror does not carry it).
 initscript {
     repositories { gradlePluginPortal() }

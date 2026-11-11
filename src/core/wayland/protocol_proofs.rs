@@ -8,7 +8,7 @@
 //! [`PROTOCOL_PROOF_OBLIGATIONS`]. Interfaces with no client-facing protocol
 //! errors use [`ErroneousChecks::None`]. Interfaces with errors must list
 //! named helpers that have `#[cfg(kani)]` harnesses (fail-closed in
-//! `scripts/verify-formal.sh`).
+//! `cargo xtask prove formal`).
 
 #![allow(dead_code)] // helpers are referenced from protocol modules + Kani
 

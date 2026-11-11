@@ -162,11 +162,7 @@ jobs:
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
       - name: Ensure Cargo path dependencies
-        run: |
-          chmod +x ./scripts/ensure-waypipe.sh ./scripts/ensure-coreutils.sh ./scripts/ensure-terminal.sh
-          ./scripts/ensure-waypipe.sh
-          ./scripts/ensure-coreutils.sh
-          ./scripts/ensure-terminal.sh
+        run: cargo xtask deps get src
 
       - name: Run Rust tests
         run: nix develop -c cargo test --lib --tests --locked
@@ -177,7 +173,7 @@ jobs:
             tests::protocol_matrix::test_generate_protocol_status_manifest \
             -- --exact --nocapture
           git diff --exit-code -- docs/protocol-status.md \
-            || { echo "::error::docs/protocol-status.md is stale; run scripts/gen-protocol-status.sh"; exit 1; }
+            || { echo "::error::docs/protocol-status.md is stale; run cargo xtask gen protocol-status"; exit 1; }
 
       - name: Protocol expect manifests are up to date
         run: |
@@ -185,7 +181,7 @@ jobs:
             core::wayland::catalog::tests::test_generate_protocol_expect_manifests \
             -- --exact --nocapture
           git diff --exit-code -- docs/protocol-expect \
-            || { echo "::error::docs/protocol-expect stale; run scripts/gen-protocol-expect.sh"; exit 1; }
+            || { echo "::error::docs/protocol-expect stale; run cargo xtask gen protocol-expect"; exit 1; }
 
       - name: Build Linux GTK UI (linux-ui feature)
         run: nix develop -c cargo build --bin wawona-linux-ui --features linux-ui --locked
@@ -214,11 +210,7 @@ jobs:
             cores = 0
       - uses: DeterminateSystems/flakehub-cache-action@v3
       - name: Ensure Cargo path dependencies
-        run: |
-          chmod +x ./scripts/ensure-waypipe.sh ./scripts/ensure-coreutils.sh ./scripts/ensure-terminal.sh
-          ./scripts/ensure-waypipe.sh
-          ./scripts/ensure-coreutils.sh
-          ./scripts/ensure-terminal.sh
+        run: cargo xtask deps get src
       - name: Run Rust tests (native aarch64-darwin)
         run: nix develop -c cargo test --lib --tests --locked
 

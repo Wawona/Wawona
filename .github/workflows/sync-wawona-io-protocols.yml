@@ -9,7 +9,7 @@ on:
       - "docs/protocol-status.md"
       - "src/core/wayland/catalog.rs"
       - "src/tests/protocol_matrix.rs"
-      - "scripts/gen-protocol-status.sh"
+      - "xtask/src/gen.rs"
   workflow_dispatch:
 
 jobs:

@@ -136,17 +136,24 @@ pub fn get(a: GetArgs) -> Result<()> {
     let lock = Lock::load()?;
     for sdk in expand(&a.sdks) {
         let dst = dir.join(&sdk);
-        if a.nix {
+        let nix_build = || -> Result<()> {
             remove(&dst)?;
-            run(cmd("nix").current_dir(&root).args(["build", &format!(".#deps-{sdk}"), "--out-link"]).arg(&dst))?;
+            run(cmd("nix").current_dir(&root).args(["build", &format!(".#deps-{sdk}"), "--out-link"]).arg(&dst))
+        };
+        if a.nix {
+            nix_build()?;
             continue;
         }
         let Some(e) = lock.slices.get(&sdk) else {
             if dst.exists() {
                 eprintln!("{sdk}: not in deps.lock; using the local {}", dst.display());
-                continue;
+            } else if have("nix") {
+                eprintln!("{sdk}: not in deps.lock; building it with Nix");
+                nix_build()?;
+            } else {
+                bail!("deps.lock has no {sdk} slice yet, and Nix is not installed to build it");
             }
-            bail!("deps.lock has no {sdk} slice yet. Build it with: cargo xtask deps get --nix {sdk}");
+            continue;
         };
         if read(dst.join(".sha256")).ok().as_deref() == Some(e.sha256.as_str()) {
             eprintln!("{sdk}: up to date");
@@ -161,6 +168,22 @@ pub fn get(a: GetArgs) -> Result<()> {
     }
     for (link, target) in [("terminal", "src/terminal"), ("toolbar-keys", "src/toolbar-keys")] {
         symlink(target, dir.join(link))?;
+    }
+    link_path_crates(false)
+}
+
+/// Points the root Cargo.toml's path crates (`waypipe/`, `coreutils/`) at
+/// .deps/src. Android's waypipe carries its own patch set.
+pub fn link_path_crates(android: bool) -> Result<()> {
+    let root = root();
+    let src = root.join(".deps/src");
+    for c in ["waypipe", "coreutils"] {
+        let patched = src.join("android").join(c);
+        let want = if android && patched.exists() { patched } else { src.join(c) };
+        let link = root.join(c);
+        if std::fs::read_link(&link).ok().as_deref() != Some(want.as_path()) {
+            symlink(&want, &link)?;
+        }
     }
     Ok(())
 }

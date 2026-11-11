@@ -95,8 +95,7 @@ jobs:
       - name: Stub optional path dependencies for fmt
         shell: bash
         run: |
-          # ./coreutils and ./waypipe are populated locally by
-          # scripts/ensure-coreutils.sh / ensure-waypipe.sh (Nix).
+          # ./coreutils and ./waypipe link into .deps/src (`cargo xtask deps get src`).
           # cargo fmt --all resolves workspace metadata for all path deps even
           # when they are optional; stub Cargo.toml (with the feature names
           # Cargo.toml requests) so metadata load succeeds without a real
@@ -118,15 +117,14 @@ jobs:
       - name: Stub dangling Terminal symlinks for fmt
         shell: bash
         run: |
-          # src/term/{screen,kitty}.rs are committed as symlinks to a sibling
-          # Terminal checkout. CI shallow clones do not have that tree;
-          # scripts/ensure-terminal.sh (Nix) materializes real files for builds.
+          # src/term/{cell,engine,ffi_surface,key_input}.rs are committed as
+          # symlinks into .deps/src/terminal, which this job does not fetch.
           # rustfmt follows the broken links and aborts, so replace them with
           # tiny stubs for the format check only.
-          for f in src/term/screen.rs src/term/kitty.rs; do
+          for f in src/term/*.rs; do
             if [[ -L "$f" && ! -e "$f" ]]; then
               rm -f "$f"
-              printf '// stub for fmt; real file from scripts/ensure-terminal.sh\n' > "$f"
+              printf '// stub for fmt; real file from .deps/src/terminal\n' > "$f"
             fi
           done
       - run: cargo fmt --all -- --check

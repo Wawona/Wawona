@@ -116,8 +116,7 @@ jobs:
         env:
           WAWONA_APP_BIN: result-macos/Applications/Wawona.app/Contents/MacOS/Wawona
         run: |
-          chmod +x ./scripts/ci-macos-compat-smoke.sh
-          ./scripts/ci-macos-compat-smoke.sh
+          cargo xtask lab macos-runtime
 
       - name: Upload macOS runtime artifacts
         if: always()

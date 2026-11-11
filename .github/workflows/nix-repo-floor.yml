@@ -22,10 +22,10 @@ jobs:
       - name: Nix floor
         run: |
           set -euo pipefail
-          if [[ -f scripts/verify-nix.sh ]]; then
-            bash scripts/verify-nix.sh verification-out/nix.ndjson
+          if [[ -f xtask/Cargo.toml ]]; then
+            cargo xtask prove nix --out verification-out/nix.ndjson
           else
-            # Caller without Wawona scripts: inline floor
+            # A caller without the Wawona xtask: inline floor
             mkdir -p verification-out
             : > verification-out/nix.ndjson
             fail=0

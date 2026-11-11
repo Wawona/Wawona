@@ -50,19 +50,11 @@ jobs:
         with:
           key: verify-formal
       - uses: ./.github/actions/setup-nix-flakehub
-      - run: ./scripts/ensure-waypipe.sh; ./scripts/ensure-coreutils.sh; ./scripts/ensure-terminal.sh
+      - run: cargo xtask deps get src
       - run: cargo install cargo-deny --locked
-      # Prebuilt release under ~/.kani (same layout as `cargo kani setup`).
-      # kani-driver has no setup subcommand; see scripts/install-kani-release.sh.
+      # The release tarball under ~/.kani; the formal lane runs its harnesses.
       - name: Install Kani 0.68.0 (release tarball)
-        run: bash scripts/install-kani-release.sh 0.68.0
-      - name: Kani helpers-check harnesses
-        run: |
-          set -euo pipefail
-          cargo kani --manifest-path verification/helpers-check/Cargo.toml \
-            --harness clamped_rect_stays_inside_nonnegative_bounds \
-            --harness sanitize_ascii_has_no_shell_metacharacters \
-            --output-format terse
+        run: cargo xtask prove install-kani 0.68.0
       - name: Install pinned Verus
         run: |
           rustup toolchain install 1.98.1-x86_64-unknown-linux-gnu --profile minimal
@@ -74,7 +66,7 @@ jobs:
       - name: Install Miri nightly
         run: rustup toolchain install nightly-2026-09-29 --profile minimal --component miri
       - name: Formal scripts
-        run: bash scripts/verify-formal.sh verification-out/formal.ndjson
+        run: cargo xtask prove formal --out verification-out/formal.ndjson
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -95,7 +87,7 @@ jobs:
       - run: rustup toolchain install nightly --profile minimal
       - run: cargo +nightly install cargo-fuzz --version 0.13.2 --locked
       - name: Heavy scripts and ASan fuzz
-        run: bash scripts/verify-heavy.sh verification-out/heavy.ndjson
+        run: cargo xtask prove heavy --out verification-out/heavy.ndjson
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -120,7 +112,7 @@ jobs:
           # frama-c is not in Ubuntu 24.04 apt; verify-c records a missing-tool finding.
           sudo apt-get install -y clang-tidy clang-tools valgrind || true
           sudo apt-get install -y cbmc || true
-      - run: bash scripts/verify-c.sh verification-out/c.ndjson
+      - run: cargo xtask prove c --out verification-out/c.ndjson
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -138,7 +130,7 @@ jobs:
       - uses: ./.github/actions/setup-xtask
         with:
           key: verify-swift
-      - run: bash scripts/verify-swift.sh verification-out/swift.ndjson
+      - run: cargo xtask prove swift --out verification-out/swift.ndjson
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -193,7 +185,7 @@ jobs:
           test -n "$SM"
           yes | "$SM" --licenses >/dev/null || true
           "$SM" --install "platforms;android-36" "build-tools;36.1.0"
-      - run: bash scripts/verify-kotlin.sh verification-out/kotlin.ndjson
+      - run: cargo xtask prove kotlin --out verification-out/kotlin.ndjson
         env:
           WAWONA_VERIFICATION_KOTLIN: "1"
       - if: always()
@@ -217,7 +209,7 @@ jobs:
         with:
           # Parse / format floor. FlakeHub Cache not required here.
           determinate: false
-      - run: bash scripts/verify-nix.sh verification-out/nix.ndjson
+      - run: cargo xtask prove nix --out verification-out/nix.ndjson
       - if: always()
         uses: actions/upload-artifact@v4
         with:

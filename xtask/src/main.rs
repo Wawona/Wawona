@@ -5,10 +5,14 @@ mod artifact;
 mod backend;
 mod ci;
 mod deps;
+mod gen;
+mod lab;
 mod macho;
 mod package;
 mod parity;
 mod product;
+mod prove;
+mod secrets;
 mod slices;
 mod testflight;
 mod tip;
@@ -67,6 +71,17 @@ enum Cmd {
     /// Prepare the path crates of a Wawona workspace (coreutils, waypipe, libghostty).
     #[command(subcommand)]
     Workspace(workspace::Cmd),
+    /// Regenerate committed files from their sources.
+    #[command(subcommand)]
+    Gen(gen::Cmd),
+    /// Run one Verification report lane (`--help` lists them).
+    Prove(prove::Args),
+    /// Runtime smokes and lab drives of a built product.
+    #[command(subcommand)]
+    Lab(lab::Cmd),
+    /// Release secrets: check, run a command with them, sync to GitHub, fastlane match, rulesets.
+    #[command(subcommand)]
+    Secrets(secrets::Cmd),
     /// Build (when stale), check and clean-launch the tip app every UI proof uses.
     Tip(tip::Args),
     /// Wawona.xcodeproj build phases.
@@ -91,6 +106,10 @@ fn main() -> Result<()> {
         Cmd::Artifact(c) => artifact::main(c),
         Cmd::Ci(c) => ci::main(c),
         Cmd::Workspace(c) => workspace::main(c),
+        Cmd::Gen(c) => gen::main(c),
+        Cmd::Prove(a) => prove::main(a),
+        Cmd::Lab(c) => lab::main(c),
+        Cmd::Secrets(c) => secrets::main(c),
         Cmd::Tip(a) => tip::main(a),
         Cmd::Xcode(c) => xcode::main(c),
     }

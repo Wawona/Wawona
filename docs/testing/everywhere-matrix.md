@@ -140,8 +140,8 @@ lands, the manual item is retired in favor of the ID. IDs are Rust test fns
 | Registry advertises core globals | `test_protocol_matrix_core_globals_advertised` | rust | done |
 | Advertisement honesty per profile | `test_protocol_matrix_profile_honesty` | rust | done |
 | Protocol manifest not drifted | `test_generate_protocol_status_manifest` (CI `cargo-test-linux`) | rust+ci | done |
-| `weston-simple-shm` SHM buffer visible | `scripts/ci-macos-compat-smoke.sh` (macOS), `test_shm_protocol` | script+rust | done (macOS) |
-| `weston-flower` / demo client | `scripts/ci-macos-compat-smoke.sh` | script | done (macOS) |
+| `weston-simple-shm` SHM buffer visible | `cargo xtask lab macos-runtime` (macOS), `test_shm_protocol` | xtask+rust | done (macOS) |
+| `weston-flower` / demo client | `cargo xtask lab macos-runtime` | xtask | done (macOS) |
 | Keyboard `KEY_A` → keysym | `test_keyboard_key_a_keysym` | rust | done |
 | Live resize + configure ack, no SHM exhaustion | `test_configure_serial_backlog_without_ack` | rust | done |
 | Window maximize/fullscreen transitions | `test_window_maximized_transition`, `test_window_fullscreen_transition` | rust | done |
@@ -150,8 +150,8 @@ lands, the manual item is retired in favor of the ID. IDs are Rust test fns
 | dmabuf feedback resolves, no raw formats | `test_protocol_matrix_dmabuf_feedback_resolves` | rust | done |
 | iOS boot + launch client (UI) | `.agent-device/wawona-ios-smoke.ad` | agent-device | done |
 | Android boot + launch client (UI) | `.agent-device/wawona-android-smoke.ad` | agent-device | done |
-| macOS present-frame per bundled client | `scripts/ci-macos-compat-smoke.sh` | script | done |
-| Nested Weston child socket + demo client | (capability lane) | script | pending (`ci-capability-lane`) |
+| macOS present-frame per bundled client | `cargo xtask lab macos-runtime` | xtask | done |
+| Nested Weston child socket + demo client | (capability lane) | xtask | pending (`cargo xtask lab capability`) |
 | waypipe session | (capability lane) | script | pending |
 | UI parity vs golden baselines | `cargo xtask ci ui-parity` + agent-device batch | ci | pending (`ci-l3-parity-agentdevice`) |
 | Graphics conformance (GL/Vulkan) | `dependencies/tests/graphics-validate.nix` | nix | pending (`ci-graphics-cts`) |
@@ -160,5 +160,5 @@ lands, the manual item is retired in favor of the ID. IDs are Rust test fns
 | Linux UI + catalog | Appium AT-SPI2 / Linux driver | appium | in progress (`ui-appium.yml`) |
 
 Run locally: `nix develop -c cargo test --lib --tests`;
-`./scripts/ci-macos-compat-smoke.sh`; `agent-device replay .agent-device/<name>.ad`.
+`cargo xtask lab macos-runtime`; `agent-device replay .agent-device/<name>.ad`.
 

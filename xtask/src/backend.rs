@@ -70,15 +70,7 @@ pub fn main(a: Args) -> Result<()> {
     let min = a.min_os.as_deref().unwrap_or(s.min_os);
     let out = a.out.unwrap_or_else(|| root.join(".build/backend").join(s.name));
 
-    for c in ["waypipe", "coreutils"] {
-        let link = root.join(c);
-        // Android's waypipe carries its own patch set (patch-waypipe-android.sh).
-        let android = src.join("android").join(c);
-        let want = if s.name == "android" && android.exists() { android } else { src.join(c) };
-        if std::fs::read_link(&link).ok().as_deref() != Some(want.as_path()) {
-            symlink(&want, &link)?;
-        }
-    }
+    crate::deps::link_path_crates(s.name == "android")?;
 
     let triple = if s.name == "linux" { host_triple()? } else { s.triple.to_string() };
     let u = triple.replace('-', "_");

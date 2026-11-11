@@ -7,7 +7,7 @@ See docs/THIRD_PARTY_LICENSES.md for full details and license compatibility.
 Rust crates
 -----------
 Licenses (MIT and/or Apache-2.0) are listed in Cargo.toml / crates.io.
-Generate a full list with: ./scripts/list-licenses.sh
+Generate a full list with: cargo xtask gen licenses
 UniFFI (Rust bindings): Mozilla Public License 2.0 (MPL-2.0)
   https://github.com/mozilla/uniffi-rs
 

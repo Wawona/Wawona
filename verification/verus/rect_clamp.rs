@@ -1,5 +1,5 @@
 // Host-side Verus model of clamp_rect. Not linked into the app.
-// Run: scripts/verify-verus.sh
+// Run: cargo xtask prove verus
 // Mirrors src/core/invariants.rs::clamp_rect (max(0).min(max_*), saturating spans).
 use vstd::prelude::*;
 

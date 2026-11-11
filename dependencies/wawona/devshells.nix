@@ -1,7 +1,7 @@
 { systems, pkgsFor }:
 
 let
-  # secretspec: CI + local release-env. pass/gnupg stay on the host (dendritic /
+  # secretspec: CI and `cargo xtask secrets run`. pass/gnupg stay on the host (dendritic /
   # sops-nix); bundling gnupg here forces a slow Darwin rebuild of the shell.
   releasePackages = pkgs: with pkgs; [
     fastlane
@@ -26,7 +26,7 @@ builtins.listToAttrs (map (system: let
     export SECRETSPEC_FILE="''${SECRETSPEC_FILE:-$PWD/secretspec.toml}"
     export PASSWORD_STORE_DIR="''${PASSWORD_STORE_DIR:-$HOME/.password-store}"
     echo "Release secrets: SecretSpec + pass (tier 0 -> docs/maintainers/secrets.md)"
-    echo "Fastlane: ./scripts/release-env.sh fastlane ios beta"
+    echo "Fastlane: cargo xtask secrets run -- fastlane ios beta"
   '';
 
   # Fastlane match and xcodebuild need DEVELOPER_DIR and xcodebuild on PATH inside

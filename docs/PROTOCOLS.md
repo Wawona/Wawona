@@ -43,7 +43,7 @@ handler:
 4. **No speculative legacy.** Do not land an older named interface "just in
    case."
 5. **Status docs.** Refresh `docs/protocol-status.md` via
-   `scripts/gen-protocol-status.sh` (or the cargo test that generates it). That
+   `cargo xtask gen protocol-status` (or the cargo test that generates it). That
    script also syncs https://wawona.io/docs/contributor/protocols/ when the
    sibling `wawona.io` checkout is present. Update
    `docs/compliance/wayland-protocol-conformance-matrix.md` when behavior gates
@@ -52,7 +52,7 @@ handler:
    [`protocol-milestones.md`](./protocol-milestones.md) (P0–P6 / Proof).
 7. **Proofs.** Every Functional protocol must have a row in
    `src/core/wayland/protocol_proofs.rs`. Erroneous checks are pure helpers with
-   Kani harnesses (`scripts/verify-protocol-proofs.sh`). Inventory drift fails
+   Kani harnesses (`cargo xtask prove protocol-proofs`). Inventory drift fails
    **compile** (`build.rs`); Kani failures fail **Verification report**.
 8. **Removals.** If removing an older named interface, note which clients break
    and why the drop is acceptable.

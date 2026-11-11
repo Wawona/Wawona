@@ -40,16 +40,21 @@ pub enum Cmd {
 
 pub fn main(c: Cmd) -> Result<()> {
     match c {
-        Cmd::Emit { out, tool, file, line, rule, failure, fix, severity } => {
-            if let Some(d) = out.parent() {
-                std::fs::create_dir_all(d)?;
-            }
-            let row = json!({"tool": tool, "file": file, "line": line, "rule": rule, "failure": failure, "fix": fix, "severity": severity});
-            writeln!(std::fs::OpenOptions::new().create(true).append(true).open(&out)?, "{row}")?;
-            Ok(())
-        }
+        Cmd::Emit { out, tool, file, line, rule, failure, fix, severity } => append(
+            &out,
+            &json!({"tool": tool, "file": file, "line": line, "rule": rule, "failure": failure, "fix": fix, "severity": severity}),
+        ),
         Cmd::Summarize { inputs, markdown } => summarize(&inputs, &markdown),
     }
+}
+
+/// Appends one finding row to `out`.
+pub fn append(out: &std::path::Path, row: &Value) -> Result<()> {
+    if let Some(d) = out.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    writeln!(std::fs::OpenOptions::new().create(true).append(true).open(out)?, "{row}")?;
+    Ok(())
 }
 
 fn rows(inputs: &[PathBuf]) -> Result<Vec<Value>> {
@@ -85,7 +90,7 @@ fn field(r: &Value, k: &str) -> String {
     }
 }
 
-fn summarize(inputs: &[PathBuf], md: &std::path::Path) -> Result<()> {
+pub fn summarize(inputs: &[PathBuf], md: &std::path::Path) -> Result<()> {
     let rows = rows(inputs)?;
     let mut text = String::from("# Verification report\n\n");
     if rows.is_empty() {

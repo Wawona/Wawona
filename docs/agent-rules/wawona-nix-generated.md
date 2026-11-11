@@ -33,7 +33,7 @@ Bindings: `uniffi-bindgen` is `dependencies/generators/uniffi-bindgen.nix`
 
 ## Allowed committed generate-and-diff
 
-`docs/protocol-status.md` is a human/CI **contract**. `scripts/gen-protocol-status.sh`
+`docs/protocol-status.md` is a human/CI **contract**. `cargo xtask gen protocol-status`
 rewrites it; CI `git diff --exit-code` fails if stale. That is not an app
 binary. Do not use it as a pattern for Swift, Kotlin, or project files.
 

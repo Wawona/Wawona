@@ -1,5 +1,5 @@
 # Nix-only floor for other flakes / manual dispatch. On Wawona, Verification
-# already runs scripts/verify-nix.sh. Do not fire on every push (Actions noise).
+# already runs `cargo xtask prove nix`. Do not fire on every push (Actions noise).
 # Required development check remains "Verification report" in verify-all.yml.
 name: Nix floor
 

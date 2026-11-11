@@ -20,12 +20,12 @@ Findings                          → NDJSON via cargo xtask report
 
 | Change | Helper / vector | Script |
 |---|---|---|
-| Rect clamp, generation counter | `src/core/invariants.rs` | `verify-formal.sh`, `verify-heavy.sh` |
-| Wayland protocol erroneous checks | `src/core/wayland/protocol_proofs.rs` | `verify-protocol-proofs.sh` |
-| SSH host policy | `src/domain/validation.rs` + `verification/ssh_host_vector.tsv` | `verify-swift.sh`, `verify-kotlin.sh` |
-| C bounds / atomics | `src/platform/cproof/wawona_cproof.h` | `verify-c.sh` |
+| Rect clamp, generation counter | `src/core/invariants.rs` | `cargo xtask prove formal`, `cargo xtask prove heavy` |
+| Wayland protocol erroneous checks | `src/core/wayland/protocol_proofs.rs` | `cargo xtask prove protocol-proofs` |
+| SSH host policy | `src/domain/validation.rs` + `verification/ssh_host_vector.tsv` | `cargo xtask prove swift`, `cargo xtask prove kotlin` |
+| C bounds / atomics | `src/platform/cproof/wawona_cproof.h` | `cargo xtask prove c` |
 | Relay VM / MMU | production helpers + Verus models | `Relay/scripts/verify-formal.sh` |
-| Flake parse | all `*.nix` | `verify-nix.sh` |
+| Flake parse | all `*.nix` | `cargo xtask prove nix` |
 
 ## Fragility and optimization
 
@@ -54,12 +54,12 @@ Workflow: `.github/workflows/verify-all.yml` (name Verification).
 Required check: job **Verification report**.
 
 ```bash
-bash scripts/verify-formal.sh verification-out/formal.ndjson
-bash scripts/verify-heavy.sh verification-out/heavy.ndjson
-bash scripts/verify-c.sh verification-out/c.ndjson
-bash scripts/verify-swift.sh verification-out/swift.ndjson
-bash scripts/verify-kotlin.sh verification-out/kotlin.ndjson
-bash scripts/verify-nix.sh verification-out/nix.ndjson
+cargo xtask prove formal --out verification-out/formal.ndjson
+cargo xtask prove heavy --out verification-out/heavy.ndjson
+cargo xtask prove c --out verification-out/c.ndjson
+cargo xtask prove swift --out verification-out/swift.ndjson
+cargo xtask prove kotlin --out verification-out/kotlin.ndjson
+cargo xtask prove nix --out verification-out/nix.ndjson
 cargo xtask report summarize verification-out --markdown verification-out/report.md
 ```
 
@@ -69,7 +69,7 @@ Fuzz targets live under `fuzz/` and depend on `verification/helpers-check`
 Ruleset enable (pass-wrapped `gh`; unset stale `GH_TOKEN`):
 
 ```bash
-scripts/enable-verification-ruleset.sh Wawona/Wawona
+cargo xtask secrets ruleset Wawona/Wawona
 ```
 
 ## Hard rejects

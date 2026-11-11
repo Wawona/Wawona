@@ -3,9 +3,9 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
-    // detekt comes from android/detekt.init.gradle (scripts/verify-kotlin.sh).
+    // detekt comes from android/detekt.init.gradle (`cargo xtask prove kotlin`).
     // SpotBugs is not applied: AGP 9 dropped BaseExtension and spotbugs 6.1.7
-    // fails at configuration. verify-kotlin.sh records that blocker in NDJSON.
+    // fails at configuration. `cargo xtask prove kotlin` records that blocker in NDJSON.
 }
 
 // `cargo xtask deps android` unpacks .deps/android: CMake flags, jniLibs, assets.
@@ -234,7 +234,7 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
-// Verification report (scripts/verify-kotlin.sh) runs unit tests / detekt / lint
+// Verification report (`cargo xtask prove kotlin`) runs unit tests / detekt / lint
 // without the Nix Android native dependency graph. Skip cmake/NDK there.
 if (System.getenv("WAWONA_VERIFICATION_KOTLIN") == "1") {
     tasks.matching {

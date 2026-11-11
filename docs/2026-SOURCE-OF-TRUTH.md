@@ -17,7 +17,7 @@ change, update **here first**, then the specialized docs linked below.
 - **Advertised Wayland globals: see [`protocol-status.md`](./protocol-status.md)**
   (auto-generated from the live registry for the active `ProtocolProfile`).
   Do **not** hand-maintain a count anywhere else.
-- Regenerate: `scripts/gen-protocol-status.sh`. CI (`cargo-test-linux`) fails if
+- Regenerate: `cargo xtask gen protocol-status`. CI (`cargo-test-linux`) fails if
   the committed manifest drifts from the live registry.
 - Behavioral requirements (not just presence) live in
   [`compliance/wayland-protocol-conformance-matrix.md`](./compliance/wayland-protocol-conformance-matrix.md).

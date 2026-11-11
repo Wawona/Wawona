@@ -9,7 +9,7 @@ need this document to build or test the public tree.
 | Lives in **public** `Wawona/Wawona` | Lives only in **private** vaults |
 | ----------------------------------- | -------------------------------- |
 | [`secretspec.toml`](../../secretspec.toml). Secret **names** | GPG ciphertext in pass |
-| Scripts (`release-env.sh`, `sync-github-secrets.sh`, `setup-release-secrets.sh`) | GPG private key + passphrase |
+| `cargo xtask secrets` (`xtask/src/secrets.rs`) | GPG private key + passphrase |
 | This doc (procedural) | Apple/Play plaintext values |
 | GitHub Environment secret *slots* on `release-beta` | Values synced into those slots |
 
@@ -34,8 +34,8 @@ gitignored.
 Public Wawona                    Private aspauldingcode/.password-store
 ┌─────────────────────┐          ┌────────────────────────────────────┐
 │ secretspec.toml     │          │ secretspec/wawona/release-apple/   │
-│ scripts/release-env │──pass───▶│ secretspec/wawona/release-android/ │
-│ sync-github-secrets │          │ (.gpg-id = tier 0 fingerprints)    │
+│ cargo xtask secrets │──pass───▶│ secretspec/wawona/release-android/ │
+│ (run, sync)         │          │ (.gpg-id = tier 0 fingerprints)    │
 └─────────┬───────────┘          └────────────────────────────────────┘
           │ gh secret set
           ▼
@@ -56,8 +56,8 @@ Public Wawona                    Private aspauldingcode/.password-store
 
 | Profile | Provider | Use |
 |---------|----------|-----|
-| `local` | `pass_apple` / `pass_android` | Local Fastlane (`./scripts/release-env.sh ...`) |
-| `sync` | pass | `./scripts/sync-github-secrets.sh` |
+| `local` | `pass_apple` / `pass_android` | Local Fastlane (`cargo xtask secrets run -- ...`) |
+| `sync` | pass | `cargo xtask secrets sync` |
 | `ci-apple` | `env` | Ship: beta (stores) Apple job |
 | `ci-android` | `env` | Ship: beta (stores) Android job |
 | `ci` | `env` (all optional) | Combined env when both platforms are present |
@@ -76,9 +76,9 @@ Public Wawona                    Private aspauldingcode/.password-store
 
    ```bash
    nix develop .#release
-   ./scripts/setup-release-secrets.sh
+   cargo xtask secrets check
    secretspec check -P local
-   ./scripts/release-env.sh fastlane validate_env
+   cargo xtask secrets run -- fastlane validate_env
    ```
 
 ## Apple pass keys (`release-apple`)
@@ -107,7 +107,7 @@ pass; **P12 passphrase is `MATCH_PASSWORD`**.
 
 ```bash
 pass show secretspec/wawona/release-apple/DEVELOPER_ID_APPLICATION_P12_BASE64 | wc -c
-./scripts/sync-github-secrets.sh --apple-only
+cargo xtask secrets sync --apple-only
 ```
 
 Notary auth reuses `ASC_*` → GitHub `APP_STORE_CONNECT_*`. Keep identities in
@@ -124,7 +124,7 @@ CI path: **Ship: GitHub assets** → `release-macos` → `cargo xtask package dm
 Local, with the Developer ID identity in the login keychain:
 
 ```bash
-./scripts/release-env.sh cargo xtask package dmg --notarize
+cargo xtask secrets run -- cargo xtask package dmg --notarize
 ```
 
 Without `--notarize` it signs and builds the DMG without contacting Apple;
@@ -134,16 +134,16 @@ without a Developer ID identity it signs ad hoc (a local test DMG only).
 
 ```bash
 # Local TestFlight / Play
-./scripts/release-env.sh fastlane ios beta
-./scripts/release-env.sh fastlane android beta
+cargo xtask secrets run -- fastlane ios beta
+cargo xtask secrets run -- fastlane android beta
 
 # Push secrets to GitHub Environment release-beta
-./scripts/sync-github-secrets.sh            # full
-./scripts/sync-github-secrets.sh --apple-only
+cargo xtask secrets sync            # full
+cargo xtask secrets sync --apple-only
 
 # First-time / regenerate match certs
-./scripts/bootstrap-apple-signing.sh
-# or: MATCH_FORCE=1 ./scripts/release-env.sh fastlane regenerate_signing
+cargo xtask secrets bootstrap-signing
+# or: MATCH_FORCE=1 cargo xtask secrets run -- fastlane regenerate_signing
 ```
 
 IPA builds use **match + gym** (not `nix build …-ipa`). The lane first runs
