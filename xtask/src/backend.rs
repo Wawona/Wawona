@@ -42,9 +42,6 @@ pub struct Args {
     /// simulators and macOS and release for devices.
     #[arg(long)]
     pub profile: Option<String>,
-    /// Override the slice's minimum OS (the TrollStore tipa builds 14.0).
-    #[arg(long)]
-    pub min_os: Option<String>,
     /// Output directory; default .build/backend/<slice>.
     #[arg(long)]
     pub out: Option<PathBuf>,
@@ -57,7 +54,7 @@ pub fn main(a: Args) -> Result<()> {
     let src = root.join(".deps/src");
     for d in [&deps, &src] {
         if !d.join(if d == &src { "waypipe" } else { "slice.json" }).exists() {
-            bail!("{} is missing. Run: cargo xtask deps {}", d.display(), slices::deps_name(s.name));
+            bail!("{} is missing. Run: cargo xtask deps get {}", d.display(), slices::deps_name(s.name));
         }
     }
     let j = SliceJson::load(&deps)?;
@@ -67,7 +64,7 @@ pub fn main(a: Args) -> Result<()> {
         Err(_) if s.apple.as_ref().is_some_and(|x| !x.simulator) && s.name != "macosx" => "release".into(),
         Err(_) => "dev".into(),
     });
-    let min = a.min_os.as_deref().unwrap_or(s.min_os);
+    let min = s.min_os;
     let out = a.out.unwrap_or_else(|| root.join(".build/backend").join(s.name));
 
     crate::deps::link_path_crates(s.name == "android")?;

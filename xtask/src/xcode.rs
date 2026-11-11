@@ -59,7 +59,7 @@ fn prebuild() -> Result<()> {
     let deps = root.join(".deps").join(crate::slices::deps_name(&slice));
     std::fs::create_dir_all(&derived)?;
 
-    crate::backend::main(crate::backend::Args { slice: slice.clone(), profile: None, min_os: None, out: None })?;
+    crate::backend::main(crate::backend::Args { slice: slice.clone(), profile: None, out: None })?;
     // Copy, never link: Xcode's dependency scan stats the input.
     std::fs::copy(root.join(".build/backend").join(&slice).join("lib/libwawona.a"), derived.join("libwawona.a"))?;
 
@@ -91,7 +91,7 @@ fn prebuild() -> Result<()> {
 }
 
 /// TerminalMetalPresent paints unless WAWONA_LINK_LIBGHOSTTY=1 and
-/// `cargo xtask deps libghostty-macos` staged Zig GhosttyLib. Bridge.c reads
+/// `cargo xtask deps get libghostty-macos` staged Zig GhosttyLib. Bridge.c reads
 /// the define from a header; the link flags go under .build/, which
 /// wwn-version.xcconfig includes.
 fn libghostty(root: &Path, derived: &Path) -> Result<()> {

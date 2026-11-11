@@ -229,6 +229,6 @@ Retina output.
 ## Android / Linux VM automation
 
 ```bash
-nix run .#wawona-android        # Android build + adb install/launch smoke
+cargo xtask build android && cargo xtask lab android-runtime   # APK + emulator launch smoke
 nix run .#wawona-linux-vm     # NixOS Plasma 6 Wayland VM for Linux UI testing
 ```

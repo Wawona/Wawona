@@ -11,25 +11,17 @@ Flake rename cascade: skill `wawona-flake-consumer-rename`.
 
 ## Build ladder (use smallest cell first)
 
-| Goal | Attr / path | Notes |
-|------|-------------|--------|
-| Rust backend only | `.#wawona-ios-sim-backend` | Proves the Cargo build + nativeDeps |
-| Full store-shaped app | `.#wawona-ios-app-sim` | Embeds **Watch** companion. Watch Ld red ≠ phone UI broken |
-| Phone UI tip | `nix run .#deps -- iphonesimulator` + `xcodebuild -scheme Wawona-iOS` | After Rust edits: `scripts/build-backend.sh iphonesimulator` |
+| Goal | Command | Notes |
+|------|---------|--------|
+| Rust backend only | `cargo xtask backend iphonesimulator` | Proves the Cargo build against the slice's C libraries |
+| Phone UI tip | `eval "$(cargo xtask tip ios)"` | `Wawona-iOS` scheme; exports `WAWONA_APP_PATH` and `WAWONA_SIM_UDID` |
+| Full store-shaped app | `cargo xtask build ios` | Embeds the **Watch** companion. Watch Ld red ≠ phone UI broken |
 
 ```bash
 cd ~/Wawona/Wawona
-nix build .#wawona-ios-sim-backend --out-link /tmp/wawona-ios-sim-backend -L
-# full app when Watch also links:
-nix build .#wawona-ios-app-sim --out-link result-ios-sim-tip -L
+cargo xtask deps get iphonesimulator   # once; also fetches watchsimulator
+cargo xtask backend iphonesimulator
 ```
-
-### Agent nix log hygiene
-
-Do **not** pipe long `nix build` through `tee … | tail`. Pipeline exit can
-be 0 while nix failed; terminal file shows only the last lines. Prefer
-`nix build -L 2>&1 | tee /tmp/build.log` (no `tail`), then `rg error:
-/tmp/build.log` / `nix log <drv>`.
 
 ## nativeDeps: waypipe video needs ffmpeg (2026-10-12)
 
@@ -41,21 +33,20 @@ Symptom:
 
 ```text
 Package libavutil was not found …
-PKG_CONFIG_PATH contains …/jq-…/lib/pkgconfig
 ```
 
 Fix: `dependencies/wawona/mobile-platform-deps.nix` must pass
 `ffmpeg = buildFn "ffmpeg" { inherit simulator; };` for Apple-mobile
-variants that pull waypipe (same idea as `wwn-waypipe` `ios.nix`).
-`rust-backend-c2n.nix` only sets `PKG_CONFIG_PATH` when
-`nativeDeps ? ffmpeg`.
+variants that pull waypipe (same idea as `wwn-waypipe` `ios.nix`), so the
+slice's `slice.json` lists its `.pc` directory. Try it with
+`cargo xtask deps get iphonesimulator --nix`.
 
-Prove: `nix build .#wawona-ios-sim-backend` shows
+Prove: `cargo xtask backend iphonesimulator` shows
 `-L native=…/ffmpeg-ios/lib` on the waypipe/wawona rustc line.
 
 ## Watch companion vs phone proof
 
-`wawona-ios-app-sim` builds Watch into the iPhone scheme. Failure:
+`cargo xtask build ios` builds Watch into the iPhone scheme. Failure:
 
 ```text
 Ld …/Watch/Wawona.app/Wawona …
@@ -66,14 +57,13 @@ referenced from WWNMiniWaylandServer.o
 That is a **Watch** link debt. Do not park machine-editor / Machines UI
 proof on it. Phone path:
 
-1. `nix run .#deps -- iphonesimulator` (and `scripts/build-backend.sh
-   iphonesimulator` after Rust edits)
-2. `xcodebuild -scheme Wawona-iOS …` (or XcodeBuildMCP) with tip Sources
-3. Install + agent-device
+1. `eval "$(cargo xtask tip ios)"` (Xcode's prebuild rebuilds the backend)
+2. `xcrun simctl install "$WAWONA_SIM_UDID" "$WAWONA_APP_PATH"`
+3. agent-device
 
 A stale `.deps/iphonesimulator` may still `-force_load` `libfoot.a` /
 `libfuzzel.a` after optional-software unbundle. Prebuild does **not**
-build those archives. Re-run `nix run .#deps -- iphonesimulator` (skill
+build those archives. Re-run `cargo xtask deps get iphonesimulator` (skill
 `wawona-optional-software`).
 
 ## Install tip app

@@ -137,14 +137,14 @@ const MODE_B_STRIP: &[&str] = &[
     "wawona-rootfs/usr/share/zsh/Completion/Unix/Command/_qemu",
 ];
 
-/// Build Wawona-iOS-ModeB at one deployment floor and stage it ldid-signed.
-fn mode_b_app(floor: &str, stage: &Path) -> Result<()> {
+/// Build Wawona-iOS-ModeB and stage it ldid-signed.
+fn mode_b_app(stage: &Path) -> Result<()> {
     product::build(product::Args {
         target: "ios-modeb".into(),
         device: true,
         release: true,
         sign: false,
-        settings: vec![format!("IPHONEOS_DEPLOYMENT_TARGET={floor}")],
+        settings: Vec::new(),
     })?;
     let _ = std::fs::remove_dir_all(stage);
     std::fs::create_dir_all(stage.parent().unwrap())?;
@@ -167,21 +167,20 @@ fn mode_b_app(floor: &str, stage: &Path) -> Result<()> {
     Ok(())
 }
 
-/// TrollStore installs from iOS 14, Sileo from iOS 13
-/// (docs/agent-rules/wawona-ios-min-os.md), so each wrapper gets its own build.
+/// One build serves the debs and the tipa: the iOS 27 SDK floors every
+/// target at 15.0 (docs/agent-rules/wawona-ios-min-os.md).
 fn ios_mode_b() -> Result<()> {
     let (v, out) = (version()?, dist()?);
     let stage = root().join(".build/package/ios-mode-b/Wawona.app");
-    mode_b_app("13.0", &stage)?;
+    mode_b_app(&stage)?;
     for (scheme, arch, prefix) in SCHEMES {
         let control = format!(
             "Package: com.aspauldingcode.wawona.modeb\nName: Wawona\nVersion: {v}\nArchitecture: {arch}\n\
              Maintainer: Wawona <hello@wawona.io>\nDescription: Wawona Mode B ({scheme}). JIT + IOMFB Desktop. Not App Store.\n\
-             Section: Applications\nPriority: optional\nDepends: firmware (>= 13.0)\nHomepage: https://wawona.io\n"
+             Section: Applications\nPriority: optional\nDepends: firmware (>= 15.0)\nHomepage: https://wawona.io\n"
         );
         deb(&control, prefix, &stage, &out.join(format!("Wawona-{v}-iOS-arm64-{scheme}.deb")))?;
     }
-    mode_b_app("14.0", &stage)?;
     tipa(&stage, &out.join(format!("Wawona-{v}-iOS-arm64.tipa")))
 }
 

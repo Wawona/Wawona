@@ -13,7 +13,7 @@ dependencies/
 │   ├── rust-backend-c2n.nix      # Per-platform libwawona.a (crate2nix)
 │   └── devshells.nix             # `nix develop` shell
 ├── clients/                      # Wawona shell/tools (integration-only)
-├── generators/                   # applications catalog, uniffi-bindgen, Android icons
+├── generators/                   # applications catalog, Android icons
 ├── gradle-deps.nix               # Offline Gradle mirror for the Nix APK build
 └── smoke-test-lists.nix          # CI smoke targets
 ```

@@ -16,13 +16,15 @@ or a stale OpenJDK path. Symptom: **Invalid Gradle JDK configuration**.
 
 Override path: `ANDROID_STUDIO_JBR`.
 
-## Nix
+## Where Gradle runs
 
 | Host | Gradle JVM |
 |---|---|
-| Linux CI / `.#wawona-android` | `jetbrains.jdk-no-jcef-21` (JBR 21, no JCEF) |
-| Darwin Nix sandbox | OpenJDK 17. nixpkgs `jetbrains.jdk*` is Linux-only |
-| Darwin local Studio / `.#wawona-android-project` | Embedded Studio JBR 21 |
+| Android Studio, `cargo xtask build android` locally | Embedded Studio JBR 21 |
+| CI (`setup-xtask` with `android: true`) | `actions/setup-java`, distribution `jetbrains`, 21 |
+
+Nix builds only the Android dependency slice (`.#deps-android`); it runs no
+Gradle.
 
 ## Hard rejects
 

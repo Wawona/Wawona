@@ -14,7 +14,7 @@ RAG: `wwn-mcp/knowledge/wawona/ios-min-os.md`.
 Editing `IPHONEOS_DEPLOYMENT_TARGET` in `project.xcproj`, ANGLE or MoltenVK
 iOS recipes, `@available` / weak-link on iOS, a bundled client recipe
 (`apple-mobile.nix`, CMake toolchain, Meson cross file), or the
-`xcode-prebuild.sh` privatize step.
+`cargo xtask xcode prebuild` privatize step.
 
 ## Hard rejects
 

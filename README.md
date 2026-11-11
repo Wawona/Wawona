@@ -40,40 +40,17 @@ Wawona is engineering **the world's first App Store-compliant bundled native Z s
 
 ### How do I build this?
 
-1. Use a macOS machine with Xcode installed.
-2. Install Nix.
-3. Configure your environment (see below).
-4. Build with the Nix flake.
+With Xcode 27 on a Mac, or Android Studio for Android, see
+[Building](#building) below. Nix is not required.
 
-On a cold laptop build, log into FlakeHub so already-built `wwn-*` store
-paths substitute. Cursor assets no longer pull `librsvg` /
-`adwaita-icon-theme`. If a compile still dies with exit 137 / `Killed: 9`,
-cap Nix parallelism:
+For device signing, copy the example and set your Apple Development Team ID;
+`cargo xtask deps get` writes it into the Xcode project's signing settings:
 
 ```bash
-determinate-nixd login
-./scripts/nix-build-low-mem.sh .#wawona-macos
+cp .envrc.local.example .envrc.local   # then: source .envrc.local (or direnv allow)
 ```
 
-See [Compilation Guide](docs/compilation.md) (Troubleshooting macOS builds)
-and [FlakeHub Cache](docs/flakehub-cache.md).
-
-### Environment Configuration
-
-This project uses a pinned Nix flake through direnv. `.envrc` loads the flake;
-local signing values live in ignored `.envrc.local`.
-
-1.  **Create `.envrc.local` from the example**:
-    ```bash
-    cp .envrc.local.example .envrc.local
-    # Edit TEAM_ID and, for signed IPA exports, the signing inputs.
-    ```
-    
-    Replace `your_apple_team_id_here` with your actual Apple Development Team ID.
-
-2.  **The environment is automatically loaded** when you use `nix develop` - no additional tools required!
-
-> For build targets and Nix pipeline details, see [Compilation Guide](docs/compilation.md) and [Nix Build System](docs/2026-nix-build-system.md). Cross-compiled libraries and toolchains live in upstream [`wwn-toolchain`](https://github.com/Wawona/wwn-toolchain) and sibling `wwn-*` repos; Wawona's flake wires them in as inputs.
+> Build targets and the dependency pipeline: [Compilation Guide](docs/compilation.md) and [Nix Build System](docs/2026-nix-build-system.md). Cross-compiled libraries and toolchains live in upstream [`wwn-toolchain`](https://github.com/Wawona/wwn-toolchain) and sibling `wwn-*` repos.
 
 ### How do I install Wawona on macOS?
 
@@ -90,7 +67,7 @@ cargo xtask install
 
 ### How do I run Weston or Waypipe?
 
-- **Weston natively on macOS:** `nix run .#weston` (full compositor) or `nix run .#weston-terminal` (terminal client)
+- **Weston natively on macOS:** install it from [repo.wawona.io](https://repo.wawona.io) and start it from Machines (Native Shell)
 - **Waypipe (remote apps):** Configure SSH in Settings > Waypipe, set Remote Command (e.g. `nix run ~/Wawona#weston-terminal`), tap Run Waypipe
 
 See [Usage Guide](docs/usage.md) and [Settings Reference](docs/settings.md).
@@ -108,47 +85,22 @@ See [Usage Guide](docs/usage.md) and [Settings Reference](docs/settings.md).
   - Linux virtual machines via host `cloud-hypervisor` (`/dev/kvm`), containers via OCI runtime, and Wasm packages for Store/WASI-P1/WASIX apps.
   - Zero QEMU dependency. Unified runtime across Linux, macOS, iOS, Android.
 
-### "I don't have nix"
+### Building
 
-[hm. Fresh out of luck, I guess! `¯\_(ツ)_/¯`](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
+Apple and Android builds need Xcode 27 or Android Studio, Rust (rustup reads
+`rust-toolchain.toml`) and nothing else:
 
-### Why Nix?
+```bash
+cargo xtask deps get macosx iphonesimulator android   # prebuilt dependency slices
+open Wawona.xcodeproj                                 # or open android/ in Android Studio
+```
 
-I use Nix to maintain a clean repository free of vendored dependency source code while ensuring hermetic, reproducible builds across all platforms. Nix allows us to define precise build environments for iOS, macOS, and Android without polluting your system.
-
-#### Reproducibility & Usability
-
-- **Hermetic Builds**: Every dependency, from the Rust toolchain to system libraries like `libwayland` or `ffmpeg`, is pinned to exact versions in `flake.lock`. This guarantees that if it builds on CI, it will build on your machine.
-- **Zero-Config Environments**: Running `nix develop` (or using `direnv`) automatically enters a shell with all required compilers, headers, and auxiliary tools (like `android-sdk`) ready to go.
-- **Composable Modules**: The `flake.nix` exports clean, reusable packages and development shells. You can easily integrate Wawona into other NixOS configurations or use its individual modules as building blocks for your own Wayland projects.
-
-> _B`*`tch, I worked hard to make nix your ONLY dependency, use it!_
-
-#### Xcode And iOS Builds
-
-Cross-compiling for iOS still depends on Apple's proprietary SDKs and toolchains, so Wawona now follows the same high-level pattern as Nixpkgs `xcodeenv`: expose the host Xcode installation as an impure Nix package, build the Rust and native dependencies with Nix, then let `xcodebuild` package the app.
-
-The Apple integration is centralized in [`wwn-toolchain`](https://github.com/Wawona/wwn-toolchain) (`dependencies/apple/`, `dependencies/toolchains/ios-xcodeenv.nix`) and is modeled after [`nix-xcodeenvtests`](https://github.com/svanderburg/nix-xcodeenvtests). Wawona consumes it as a flake input; this keeps iOS and macOS Xcode discovery, SDK checks, and simulator helpers in one upstream place.
-
-The Apple integration layer now does four distinct jobs:
-1.  **Expose host Xcode into Nix** through a thin `xcodeenv`-style wrapper.
-2.  **Build Rust/static dependencies** such as `libwawona.a` and the iOS support libraries with Nix.
-3.  **Generate the Xcode project** with store-path references to those prebuilt artifacts.
-4.  **Package or launch the app** through first-class flake outputs.
-
-This keeps the wrapper minimal and lets the same flow work on local machines and on GitHub macOS runners.
-
-##### Common iOS outputs
-
-- `nix build .#wawona-ios-app-sim`
-- `nix build .#wawona-ios-app-device`
-- `nix build .#weston-compositor-ios`. Nested Weston (Wayland/Pixman)
-- `nix build .#weston-compositor-ios-drm`. Nested Weston DRM+GL archive (CI)
-- `nix build .#wawona-ios-ipa --impure`
-- `nix build .#wawona-ios-xcarchive --impure`
-- `nix run .#wawona-ios`
-- `nix run .#wawona-ios-project`
-- `nix run .#wawona-ios-provision`
+Press Run. The Xcode and Gradle projects build the Rust backend themselves,
+so a Rust edit needs no extra step. `cargo xtask build <target>` does the same
+from a shell (`macos`, `ios`, `ipados`, `ios-modeb`, `tvos`, `visionos`,
+`watchos`, `android`); `cargo xtask --help` lists the rest: tests, archives,
+the Mode B `.tipa` and Sileo debs, the macOS DMG. Details:
+[Compilation Guide](docs/compilation.md).
 
 **Nested Weston on iOS** presents in-process via Settings → Compositor clients. Two backends are available:
 
@@ -159,21 +111,19 @@ This keeps the wrapper minimal and lets the same flow work on local machines and
 
 Production `weston.ini`, bundled `terminal.png`, and Adwaita cursors ship in the app bundle. Startup target: panel visible within ~2s on the Pixman path.
 
-##### Requirements
+### Why Nix?
 
-1.  **Install Xcode**.
-2.  **Select the Xcode you want to use** with `xcode-select`, unless the default selected Xcode is already correct. CI selects the highest `Xcode*.app` version and exports `XCODE_APP` before running Nix builds.
-3.  **For local release signing**, export `TEAM_ID` and build with `--impure` so the automatic-signing path can see it.
-
-Example:
-```bash
-export TEAM_ID="YOURTEAMID"
-nix build .#wawona-ios-ipa --impure
-```
+Nix builds what an IDE cannot: the cross-compiled C libraries (`libwayland`,
+`ffmpeg`, cairo, ANGLE, …) for every platform, pinned in `flake.lock`, and
+the Linux product. CI publishes those libraries as prebuilt slices, so a
+contributor never installs Nix to build the Apple or Android apps. With
+Nix installed, `cargo xtask deps get <sdk> --nix` builds a slice locally,
+which is how a C dependency change is tried, and `nix develop` enters the
+same environment CI uses.
 
 ### Contributing & Supporting
 
-For fast Xcode iteration after a warm Nix store, see [Compilation Guide. Xcode Iteration](docs/compilation.md#xcode-iteration).
+Build setup: [Compilation Guide](docs/compilation.md).
 
 Wawona is a massive undertaking to bring a native Wayland compositor to Apple platforms and Android, and **I cannot sustain this project alone**. Your support _whether through code, issues, ideas, or donations_ is essential to its progress and survival.
 

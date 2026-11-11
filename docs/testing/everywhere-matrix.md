@@ -9,14 +9,8 @@ iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
 
 | Platform | Flake target | Notes |
 |----------|--------------|-------|
-| macOS backend | `.#wawona-macos-backend` | Rust static lib + bundled Weston |
+| SDK slices | `.#deps-<sdk>` | C libraries and bundle per Xcode platform (`macosx`, `iphoneos`, `iphonesimulator`, `appletvsimulator`, `watchsimulator`, `xrsimulator`, …) and `android` |
 | macOS GL | `.#iland-gl-clients` | kmscube over iland + ANGLE |
-| iOS device backend | `.#wawona-ios-backend` | |
-| iOS sim backend | `.#wawona-ios-sim-backend` | |
-| iPadOS sim backend | `.#wawona-ipados-sim-backend` | |
-| tvOS sim backend | `.#wawona-tvos-sim-backend` | |
-| visionOS sim backend | `.#wawona-visionos-sim-backend` | |
-| watchOS sim backend | `.#wawona-watchos-sim-backend` | |
 | Weston toytoolkit iOS | `.#weston-ios` | cairo/pango demo clients |
 | zsh iOS (planned) | `.#zsh-ios` | App Store-compliant bundled shell. [ios-local-shell](../ios-local-shell/README.md) |
 | wawona rootfs iOS (planned) | `.#wawona-rootfs-ios` | usr/bin/zsh + share for app bundle |
@@ -24,7 +18,6 @@ iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
 | Weston compositor iOS | `.#weston-compositor-ios` | nested compositor archive (Wayland/Pixman default) |
 | Weston compositor iOS DRM | `.#weston-compositor-ios-drm` / `-sim` | iland DRM + GL renderer (CI validation) |
 | Weston GL clients iOS | `.#weston-ios-gl` / `.#weston-ios-gl-sim` | `enableGlClients=true` |
-| Android APK | `.#wawona-android` | NDK toytoolkit + compositor + JNI |
 | Android compositor | `.#weston-compositor-android` | nested compositor archive |
 | ANGLE iOS | `.#angle-ios` / `.#angle-ios-sim` | GLES over Metal |
 | ANGLE Android | `.#angle-android` | |
@@ -33,7 +26,7 @@ iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
 | SDL2_gfx demo (planned) | `.#testgfx-ios` / `-macos` / `-android` | in-process `testgfx_main`; software/`wl_shm` first. [#107](https://github.com/Wawona/Wawona/issues/107) |
 | Linux reference | `pkgs.weston` (nixpkgs) | baseline |
 
-CI runs `cargo xtask verify wayland-profile-smoke` (host-scoped `nix eval`). Use `--build` for compile verification on the matching host.
+The Rust backend and apps are not flake targets: `cargo xtask backend <sdk>` and `cargo xtask build <target>` build them over a slice. CI runs `cargo xtask verify wayland-profile-smoke` (host-scoped `nix eval`). Use `--build` for compile verification on the matching host.
 
 ## Developer refresh workflow (Phase 5C)
 
@@ -41,15 +34,14 @@ After changing native dependencies:
 
 ```bash
 # Apple mobile / macOS
-nix run .#wawona-ios-project          # regenerate Xcode project
-nix build .#wawona-ios-sim-backend    # refresh libwawona.a paths
+cargo xtask deps get iphonesimulator --nix   # rebuild the slice Xcode links
 nix build .#weston-ios                # refresh toytoolkit archives
 nix build .#weston-compositor-ios     # refresh nested compositor archive
 nix build .#weston-compositor-ios-drm # refresh DRM+GL compositor variant (CI)
 nix build .#iland-gl-clients-ios      # refresh kmscube archive
 
 # Android
-nix build .#wawona-android
+cargo xtask deps get android --nix
 nix build .#weston-compositor-android
 # Then sync Gradle in Android Studio
 ```

@@ -4,8 +4,8 @@ Use this checklist before merging changes that touch shared UI or Android host w
 
 ## Required builds
 
-- `nix build .#wawona-android`
-- Darwin backend/package targets required by the current branch scope
+- `cargo xtask build android`
+- `cargo xtask build <target>` for each Apple target the branch touches
 
 ## Screenshot capture matrix
 

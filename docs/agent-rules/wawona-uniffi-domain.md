@@ -40,9 +40,9 @@ watchOS, visionOS) plus Android and Linux.
   cutover done while product `.m` remain.
 
 A bindgen + Apple-triples helper in Wawona or `wwn-toolchain` is fine. A JFFI
-clone is not. Host bindgen is `dependencies/generators/uniffi-bindgen.nix`.
-Generated Swift/Kotlin live in the Nix store (`wawona-nix-generated`). `nix run
-.#deps -- <sdk>` links them at `.deps/<sdk>/uniffi` (`SWIFT_INCLUDE_PATHS`).
+clone is not. The xtask binary serves `uniffi-bindgen`: `cargo xtask backend
+<slice>` generates the Swift into `.build/backend/<slice>/uniffi/swift` and
+links it at `.deps/uniffi` (`SWIFT_INCLUDE_PATHS`; `wawona-nix-generated`).
 Prefer `import wawona` when linked; else
 `WawonaDomainBridge` C trampolines.
 
@@ -51,7 +51,7 @@ Prefer `import wawona` when linked; else
 | Layer | Path | Role |
 |---|---|---|
 | Domain | rust + `#[uniffi::export]` | Source of truth |
-| Bindings | Nix `$out/uniffi/{swift,kotlin}` | Sacred. Rebuild. Never git |
+| Bindings | `.build/backend/<slice>/uniffi/swift` (`cargo xtask backend`) | Sacred. Rebuild. Never git |
 | Apple views | `Sources/WawonaUI` | Machines, Welcome, shared SwiftUI |
 | Watch views | `Sources/WawonaWatch` | WatchKit-shaped. Same rust API |
 | Apple leftover non-view Swift | one SPM target (`WawonaModel` or thinner) | Shared by all Apple platforms. Thin wrap only |

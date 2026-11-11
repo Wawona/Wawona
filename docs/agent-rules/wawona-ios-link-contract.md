@@ -17,6 +17,6 @@ must be exported by an archive on that SDK's link line, including
 check: build every scheme a change can reach (macOS, the four simulator
 schemes, and a device archive through Nix) before claiming it links.
 
-A stale `.deps/<sdk>` slice (`nix run .#deps -- <sdk>` refreshes it), or a
+A stale `.deps/<sdk>` slice (`cargo xtask deps get <sdk>` refreshes it), or a
 backend built from waypipe that does not export `wwn_waypipe_client_fd`,
 fails here. Do not stub the symbol. Rebuild the archive that owns it.

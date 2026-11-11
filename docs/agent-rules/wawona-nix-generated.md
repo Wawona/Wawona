@@ -22,14 +22,14 @@ the per-SDK slice through `.deps/<sdk>/Wawona.xcconfig`.
 
 | Artifact | How it appears |
 |---|---|
-| `.deps/<sdk>` (backend, archives, bundle tree, xcconfig, UniFFI Swift) | `nix run .#deps -- <sdk>` |
-| `.deps/android` (jniLibs, assets, `shader_spv.h`, UniFFI Kotlin) | `nix run .#deps -- android` |
-| `.build/backend/<sdk>` | `scripts/build-backend.sh <sdk>` (working-tree Rust) |
+| `.deps/<sdk>` (C libraries, archives, bundle tree, xcconfig) | `cargo xtask deps get <sdk>` |
+| `.deps/android` (jniLibs, assets, `shader_spv.h`) | `cargo xtask deps get android` |
+| `.build/backend/<sdk>` (libwawona, UniFFI Swift linked at `.deps/uniffi`) | `cargo xtask backend <sdk>` (working-tree Rust) |
 | Wayland `_GEN-*.rs` | rustc / scanner in the backend build |
 | `result`, `target/`, `.build/` | local builds |
 
-Bindings: `uniffi-bindgen` is `dependencies/generators/uniffi-bindgen.nix`
-(host rustPlatform, UniFFI 0.30). Not `uniffi` `cli` on the Wawona crate.
+Bindings: the xtask binary serves `uniffi-bindgen` (UniFFI 0.30, `xtask/src/tools`).
+Not `uniffi` `cli` on the Wawona crate.
 
 ## Allowed committed generate-and-diff
 
@@ -44,13 +44,13 @@ binary. Do not use it as a pattern for Swift, Kotlin, or project files.
 - A `/nix/store` or `/store/<hash>` path in `project.xcproj`, an xcconfig in git, or Gradle files
 - Committing `.deps/` or `org.gradle.java.home`
 - `|| true` on bindgen so a missing binding still "succeeds"
-- Copying `result/uniffi` into git "for convenience"
+- Copying `.build/backend/*/uniffi` into git "for convenience"
 
 ## Local
 
 ```text
-nix run .#deps -- macosx            # then open Wawona.xcodeproj
-nix run .#deps -- iphonesimulator   # adds watchsimulator for the companion
-nix run .#deps -- android           # then open the root in Android Studio
-scripts/build-backend.sh macosx     # rebuild Rust from the working tree
+cargo xtask deps get macosx            # then open Wawona.xcodeproj
+cargo xtask deps get iphonesimulator   # adds watchsimulator for the companion
+cargo xtask deps get android           # then open the root in Android Studio
+cargo xtask backend macosx     # rebuild Rust from the working tree
 ```

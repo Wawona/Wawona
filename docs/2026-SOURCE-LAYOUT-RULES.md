@@ -7,7 +7,7 @@ Wawona is organized around a strict ownership split:
 - `src/ffi` contains the public C poll ABI (`WWNCore*`) that platform hosts call into. Split by job: `poll`, `input`, `present`, `launch` (plus legacy `c_api` re-exports during cutover).
 - `src/platform/android` contains Android JNI glue only.
 - `src/linux` contains Linux GTK UI.
-- `Sources/WawonaModel` contains the Apple-shared Swift wrapper for machine/session/preferences until UniFFI Swift is imported (`bridging: true`). Rust UniFFI is the schema owner (`docs/agent-rules/wawona-uniffi-domain.md`). Do not add new domain fields only in Swift. Generated UniFFI Swift/Kotlin are Nix `$out/uniffi` (`wawona-nix-generated`). Never commit them under `Sources/` or `android/`.
+- `Sources/WawonaModel` contains the Apple-shared Swift wrapper for machine/session/preferences until UniFFI Swift is imported (`bridging: true`). Rust UniFFI is the schema owner (`docs/agent-rules/wawona-uniffi-domain.md`). Do not add new domain fields only in Swift. Generated UniFFI Swift comes from `cargo xtask backend` (`.deps/uniffi`) (`wawona-nix-generated`). Never commit them under `Sources/` or `android/`.
 - `Sources/WawonaUI` contains canonical Apple SwiftUI for machines, welcome, and settings on macOS, iOS, iPadOS, tvOS, and visionOS.
 - `Sources/WawonaWatch` contains watchOS SwiftUI screens.
 - `Sources/WawonaApple` contains framework glue that is not a screen: Metal/SpriteKit present, seat forward, keymap, lifecycle, shell, Mode B helpers, runners. Calls Rust. No Objective-C classes.

@@ -47,9 +47,9 @@ Apple uses **Liquid Glass (OS 26)**; Android uses **M3 Expressive (API 36+)** pe
 | `.#weston-android` | Weston clients (optional link) |
 | `.#weston-compositor-android` | Nested Weston compositor archive |
 | `.#iland-android` | iland userland (DRM path; optional) |
-| `nix run .#deps -- android` | Links `.deps/android` for the root Gradle project |
+| `cargo xtask deps get android` | Links `.deps/android` for the root Gradle project |
 
-After rebuilding Nix Android deps (weston, toolchain, etc.), re-run `nix run .#deps -- android` before building in Android Studio.
+After rebuilding Nix Android deps (weston, toolchain, etc.), re-run `cargo xtask deps get android` before building in Android Studio.
 
 
 ## Parity vs Apple (high level)

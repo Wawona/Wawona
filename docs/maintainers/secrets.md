@@ -147,7 +147,7 @@ cargo xtask secrets bootstrap-signing
 ```
 
 IPA builds use **match + gym** (not `nix build …-ipa`). The lane first runs
-`nix run .#deps -- <sdk>`; the archive's `xcode-prebuild.sh` phase stages the
+`cargo xtask deps get <sdk>`; the archive's `cargo xtask xcode prebuild` phase stages the
 Nix backend from `.deps`.
 
 ## ACL (tier 0 vs helpers)

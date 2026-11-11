@@ -90,7 +90,7 @@ eval "$(cargo xtask tip macos)"
 ```
 
 Never `/Applications/Wawona.app` or old `DerivedData-macos*`.
-`cargo xtask appium catalog` calls ensure-tip first.
+`cargo xtask appium catalog` calls `cargo xtask tip macos` first.
 `WAWONA_TEST_REBUILD=1` forces xcodebuild. `WAWONA_ALLOW_STALE_TEST_APP=1`
 is forbidden for catalog.
 
@@ -194,10 +194,8 @@ on this command. See RAG `appium-linux-driver-ci.md` for the incident and
 evidence.
 
 The macOS catalog lane always builds a clean tip host app when no matching
-`Gate: products` artifact is supplied. Install the repository's
-`setup-nix-flakehub` action before catalog capture so `ensure-tip-wawona-macos`
-can link `.deps/macosx` and build the current checkout. The workflow needs
-`id-token: write` for FlakeHub cache access. Keep the Colima guest launch and
+`Gate: products` artifact is supplied. `cargo xtask tip macos` fetches `.deps/macosx` from `deps.lock` and builds
+the current checkout (`setup-xtask` puts Cargo on PATH). Keep the Colima guest launch and
 required screenshot check enabled.
 
 ## Hard rejects

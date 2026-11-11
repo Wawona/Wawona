@@ -1,4 +1,4 @@
-# Copy to .envrc.local, then run `direnv allow`.
+# Copy to .envrc.local, then source it (or run `direnv allow`).
 # Do not commit local signing identities, passwords, or profiles.
 export TEAM_ID="YOUR_APPLE_DEVELOPER_TEAM_ID"
 # export CERTIFICATE_FILE="$HOME/.config/wawona/signing/distribution.p12"

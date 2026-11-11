@@ -1,6 +1,6 @@
 // Project configuration file. Everything the dependency slices provide (link
 // flags, MARKETING_VERSION, dependency versions) is in the per-SDK file that
-// `cargo xtask deps <sdk>` unpacks, named by Xcode's PLATFORM_NAME. An SDK
+// `cargo xtask deps get <sdk>` unpacks, named by Xcode's PLATFORM_NAME. An SDK
 // without one fails at link time, never at project open. Include paths are
 // relative to this file: Xcode does not expand build settings in them.
 CURRENT_PROJECT_VERSION = 1

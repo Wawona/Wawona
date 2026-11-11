@@ -1,5 +1,5 @@
 # The patched sources every backend build reads, as .deps/src
-# (`cargo xtask deps <sdk>` always fetches it):
+# (`cargo xtask deps get <sdk>` always fetches it):
 #   waypipe, coreutils     the root Cargo.toml's path crates (Apple waypipe)
 #   android/waypipe        waypipe with the Android patch set
 #   crates/<name>-<ver>    crates.io crates `cargo xtask backend` [patch]es

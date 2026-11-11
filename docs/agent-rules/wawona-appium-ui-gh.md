@@ -21,7 +21,7 @@ Install / refresh from `/etc/nix-darwin/.dotfiles` (`skills/appium`,
 
 ## When this fires
 
-- Editing `Tests/appium/`, `scripts/appium/`, `.github/workflows/ui-appium.yml`
+- Editing `Tests/appium/` (matrix, selectors), `xtask/src/appium/`, `.github/workflows/ui-appium.yml`
 - Touching `wwn.*` a11y ids / `selectors.json` / `matrix.toml`
 - Any red or flaky **UI / Appium / GUI smoke** job on GitHub Actions
 - Wayland catalog guests on runners (Colima on Darwin; nested on Linux)
@@ -67,9 +67,8 @@ lane under `ui-appium.yml`):
   instead of VZ. Lima falls back from HVF to TCG when HVF is not available.
   Local runs keep the normal Colima VM type.
 - When no successful same-SHA `Gate: products` artifact is supplied, the
-  macOS catalog lane builds a clean tip host app. Install
-  `setup-nix-flakehub` before catalog capture so `nix run .#deps` and the Nix build are
-  available. Grant `id-token: write` for FlakeHub cache access.
+  macOS catalog lane builds a clean tip host app. `cargo xtask tip macos`
+  fetches the `deps.lock` slices and builds it (`setup-xtask` puts Cargo on PATH).
 - **Catalog green = Present surface PNG** in
   `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`
   (non-blank via `require_client_screenshot`). Capture

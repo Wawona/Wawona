@@ -52,7 +52,7 @@ After unbundle, `deps.nix` must drop `-force_load` `libfoot.a` /
 `libfuzzel.a` (and similar move-set archives) from `WWN_LDFLAGS` in the
 same change. A leftover flag fails `xcodebuild -scheme Wawona-iOS` with
 `library '…/libfoot.a' not found` or undefined `_foot_main` /
-`_fuzzel_main` (from libwwn-pty dispatch). `scripts/xcode-prebuild.sh`
+`_fuzzel_main` (from libwwn-pty dispatch). `cargo xtask xcode prebuild`
 privatizes zsh/fastfetch; it does not build foot/fuzzel.
 
 ## Never

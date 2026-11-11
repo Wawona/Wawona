@@ -1,5 +1,5 @@
 # The Android slice of .deps: what the committed Gradle project reads that is
-# not in git. `cargo xtask deps android` unpacks it into .deps/android.
+# not in git. `cargo xtask deps get android` unpacks it into .deps/android.
 #   slice.json          the C libraries `cargo xtask backend android` builds against
 #   wawona.properties   wawona.nixDepIncludes / nixDepLibs (CMake)
 #   jniLibs/arm64-v8a   runtime .so files and the lib*_bin.so executables android_jni.c runs

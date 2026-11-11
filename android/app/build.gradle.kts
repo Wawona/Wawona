@@ -8,7 +8,7 @@ plugins {
     // fails at configuration. `cargo xtask prove kotlin` records that blocker in NDJSON.
 }
 
-// `cargo xtask deps android` unpacks .deps/android: CMake flags, jniLibs, assets.
+// `cargo xtask deps get android` unpacks .deps/android: CMake flags, jniLibs, assets.
 // The preBuild task below builds libwawona_core.so into .build/backend/android.
 val deps = rootProject.file(".deps/android")
 val backend = rootProject.file(".build/backend/android")

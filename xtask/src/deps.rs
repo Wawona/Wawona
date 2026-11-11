@@ -2,7 +2,7 @@
 //!
 //! Nix builds each slice (`.#deps-<sdk>`) in CI; `deps pack` makes it
 //! relocatable and `deps push` publishes it to GHCR as an OCI artifact.
-//! `deps.lock` records each slice's digest, and `cargo xtask deps <sdk>`
+//! `deps.lock` records each slice's digest, and `cargo xtask deps get <sdk>`
 //! downloads, verifies and unpacks it. `--nix` builds the slice locally
 //! instead, which is how a C dependency change is tried before CI.
 
@@ -48,7 +48,7 @@ impl Lock {
     }
     pub fn save(&self) -> Result<()> {
         let head = "# Prebuilt dependency slices (ghcr.io/wawona/deps). The deps workflow\n\
-                    # writes this file; `cargo xtask deps <sdk>` reads it.\n\n";
+                    # writes this file; `cargo xtask deps get <sdk>` reads it.\n\n";
         write(Self::path(), format!("{head}{}", toml::to_string(self)?))
     }
 }
@@ -79,6 +79,10 @@ pub struct GetArgs {
     /// Build the slices with Nix instead of downloading them.
     #[arg(long)]
     pub nix: bool,
+    /// Extra `nix build` arguments after `--`, such as
+    /// `--override-input wwn-zsh path:../wwn-zsh`; they imply `--nix`.
+    #[arg(last = true)]
+    pub nix_args: Vec<String>,
 }
 
 pub fn main(c: Cmd) -> Result<()> {
@@ -138,9 +142,14 @@ pub fn get(a: GetArgs) -> Result<()> {
         let dst = dir.join(&sdk);
         let nix_build = || -> Result<()> {
             remove(&dst)?;
-            run(cmd("nix").current_dir(&root).args(["build", &format!(".#deps-{sdk}"), "--out-link"]).arg(&dst))
+            run(cmd("nix")
+                .current_dir(&root)
+                .args(["build", &format!(".#deps-{sdk}")])
+                .args(&a.nix_args)
+                .arg("--out-link")
+                .arg(&dst))
         };
-        if a.nix {
+        if a.nix || !a.nix_args.is_empty() {
             nix_build()?;
             continue;
         }

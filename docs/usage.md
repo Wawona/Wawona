@@ -74,10 +74,10 @@ In-app `virtual_machine` / `container` profiles (coming soon):
 
 | Host | How |
 |------|-----|
-| iOS Simulator | `nix run .#wawona-ios` |
-| iOS TrollStore vphone (Mode B) | `nix run .#wawona-ios-trollstore` (short: `.#wawona-ios-ts`) |
-| iOS Sileo / jailbreak vphone (Mode B) | `nix run .#wawona-ios-jailbreak` (short: `.#wawona-ios-jb`) |
-| Android emulator | `nix run .#wawona-android` |
+| iOS Simulator | `cargo xtask build ios`, or Run `Wawona-iOS` in Xcode |
+| iOS TrollStore vphone (Mode B) | `cargo xtask package ios-mode-b`, then `agent-device packages tipa install … --device "vphone wawona-jb"` |
+| iOS Sileo / jailbreak vphone (Mode B) | `cargo xtask package ios-mode-b`, then `agent-device packages apt install … --device "vphone wawona-jb"` |
+| Android emulator | `cargo xtask build android`, or Run in Android Studio |
 | Linux QEMU NixOS | `nix run .#wawona-linux-vm` |
 
 ---
@@ -85,36 +85,18 @@ In-app `virtual_machine` / `container` profiles (coming soon):
 
 Wawona includes a **native port of Weston** for macOS. No Linux, no VM. Weston runs as a nested compositor client inside Wawona.
 
-### Weston (Full Compositor)
+### Weston, niri and other clients
 
-```bash
-nix run .#weston
-```
+Weston and niri install as optional software from
+[repo.wawona.io](https://repo.wawona.io) and start from Machines (Native
+Shell). They run natively on macOS, inside Wawona's Wayland session.
 
-Launches the full Weston compositor as a nested client. Weston runs natively on macOS, inside Wawona's Wayland session.
-
-### Weston Terminal
-
-After `cargo xtask install`, bundled clients are on PATH (see
-[`macos-cli.md`](./macos-cli.md)):
+The clients bundled in Wawona.app are on PATH after `cargo xtask install`
+(see [`macos-cli.md`](./macos-cli.md)):
 
 ```bash
 weston-terminal
-```
-
-From a nix tree without installing:
-
-```bash
-nix run .#weston-terminal
-```
-
-Launches Weston Terminal. A native Wayland terminal client. Connects to Wawona's Wayland display.
-
-### Other Weston Clients
-
-```bash
-nix run .#weston-debug      # Weston debug client
-nix run .#weston-simple-shm # Simple SHM test client
+foot
 ```
 
 ---
@@ -149,10 +131,8 @@ This checks:
 3. **SSH User**: Your username on the remote
 4. **SSH Password** (or **Public Key**): Authentication
 5. **Remote Command**: The app to run remotely, e.g.:
-   - `nix run ~/Wawona#weston-terminal`
    - `weston-terminal`
    - `foot`
-   - `nix run ~/Wawona#weston` (full Weston compositor)
 6. Tap **Run Waypipe** (or **Start Waypipe** on mobile)
 
 ### Command-Line Waypipe (macOS)
@@ -165,7 +145,7 @@ export XDG_RUNTIME_DIR="/tmp/wawona-$(id -u)"
 export WAYLAND_DISPLAY="wayland-0"
 
 # Run waypipe to a remote host
-nix run .#waypipe -- ssh user@remote-host weston-terminal
+waypipe ssh user@remote-host weston-terminal
 ```
 
 The **Shell Setup** in Settings > Connection shows the exact `export` commands for your session.
@@ -174,10 +154,8 @@ The **Shell Setup** in Settings > Connection shows the exact `export` commands f
 
 | Command | Description |
 |---------|-------------|
-| `nix run ~/Wawona#weston-terminal` | Weston Terminal (if Wawona repo on remote) |
 | `weston-terminal` | Weston Terminal (if installed on remote) |
 | `foot` | Foot terminal |
-| `nix run ~/Wawona#weston` | Full Weston compositor |
 | `geary` | Geary email client |
 | `gnome-calculator` | GNOME Calculator |
 
@@ -201,8 +179,8 @@ export XDG_RUNTIME_DIR="/tmp/wawona-$(id -u)"
 export WAYLAND_DISPLAY="wayland-0"
 
 # Then run any Wayland client
-nix run .#weston-terminal
-nix run .#foot
+weston-terminal
+foot
 ```
 
 ---
@@ -212,7 +190,7 @@ nix run .#foot
 | Platform | Weston | Waypipe |
 |----------|--------|---------|
 | **Linux** | `nix run` (GTK shell + nested Wawona host service) | GUI-first Machine launcher (Native/SSH/Waypipe) |
-| **macOS** | `nix run .#weston`, `.#weston-terminal` | OpenSSH process spawn; Settings > Waypipe |
+| **macOS** | Machines (optional software); bundled clients on PATH | OpenSSH process spawn; Settings > Waypipe |
 | **iOS** | Via Settings > Advanced toggles | libssh2 in-process; Settings > Waypipe, SSH |
 | **Android** | Via Settings > Advanced toggles | OpenSSH portable (`wwn-ssh`); Machines > Waypipe |
 

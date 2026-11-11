@@ -23,7 +23,7 @@ store-bound artifacts uploaded by Fastlane.
 
 ## #24. TestFlight + Fastlane automation
 
-Fully automated. **Nix** links `.deps/<sdk>` (`nix run .#deps`) for the
+Fully automated. `cargo xtask deps get <sdk>` fills `.deps/<sdk>` for the
 committed Xcode project, whose prebuild phase stages the Rust backend; **Fastlane** runs `match` + `build_app`
 (gym) + TestFlight upload.
 

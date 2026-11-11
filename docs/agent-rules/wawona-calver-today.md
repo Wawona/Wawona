@@ -2,7 +2,7 @@
 
 Wawona marketing version is CalVer `YY.M.D` (no zero-pad), e.g. `26.10.10`.
 
-When building product artifacts (Xcode, tipa, IPA, nix product packages)
+When building product artifacts (Xcode, `cargo xtask build`/`archive`/`package`, tipa, IPA)
 while iterating with AI, **VERSION must equal today's date** in
 `America/Los_Angeles`. Stale CalVer fails the build by default.
 
@@ -20,8 +20,8 @@ while iterating with AI, **VERSION must equal today's date** in
 
 Wired into:
 
-- `scripts/xcode-prebuild.sh` (every Xcode target)
-- `.#wawona-ios-modeb-tipa` / `.#wawona-ios-modeb-tipa-slim` packaging
+- `cargo xtask xcode prebuild` (every Xcode target)
+- `cargo xtask package ios-mode-b` and `package demo` (their Xcode builds run the prebuild)
 
 ## Agent loop
 

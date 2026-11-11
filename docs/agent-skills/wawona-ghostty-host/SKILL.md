@@ -53,4 +53,4 @@ WAWONA_TEST_REBUILD=1 eval "$(cargo xtask tip macos)"
 
 `wawona-ghostty-host`, `wawona-terminal-shell-backend`,
 `wawona-platform-targets` §14, `wawona-ios-min-os`,
-`wawona-nix-fresh-build`, `wawona-rust-first`.
+`wawona-fresh-build`, `wawona-rust-first`.

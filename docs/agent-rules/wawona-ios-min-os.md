@@ -13,10 +13,12 @@ future systems work.
 
 ## Build contract
 
-- `Wawona.xcodeproj/project.xcproj` sets `IPHONEOS_DEPLOYMENT_TARGET = 15.0`.
-  Nix products inherit it; no flake attribute overrides it.
-- `scripts/xcode-prebuild.sh` `ld -r` takes `IPHONEOS_DEPLOYMENT_TARGET`.
-  Do not hardcode a version.
+- `Wawona.xcodeproj` sets `IPHONEOS_DEPLOYMENT_TARGET = 15.0` on every iOS
+  target, and `xtask/src/slices.rs` builds the iphoneos, iphoneos-modeb and
+  iphonesimulator Rust slices at 15.0. One Mode B build serves the TrollStore
+  `.tipa` and both Sileo `.deb`s (`Depends: firmware (>= 15.0)`).
+- `cargo xtask xcode prebuild` builds the backend at the slice minimum and
+  takes nothing from the environment that could raise it.
 - L0 `wwn-toolchain/dependencies/apple/default.nix` still builds dependency
   archives at 13.0. An archive with an older minimum links into a 15.0 app;
   one with a newer minimum than 15.0 must not be linked.
@@ -29,8 +31,7 @@ C flags and Meson `c_args` do not apply to `.m` / `.mm`. CMake must set
 `-miphoneos-version-min` as C. Meson cross files must set `objc_args` /
 `objcpp_args` the same way. Without that, clang targets the iPhoneOS SDK.
 It emits `_objc_release_xN`, which `libobjc` does not provide before iOS
-16, and dyld aborts on iOS 15. Check:
-`wwn-toolchain/.github/scripts/verify-apple-objc-deployment.py`.
+16, and dyld aborts on iOS 15. The check lives in `wwn-toolchain` CI.
 
 ## Renderer and UI
 
@@ -50,8 +51,8 @@ All iOS binaries target 15.0. App Store Mode A stays no Cranelift, no
 Mode A Wasm may use Wasmer WASIX in WebKit. TrollStore and Sileo retain their
 separate installation and entitlement contracts. A deployment target does not
 extend TrollStore's installer window or the iOS Hypervisor window.
-`cargo xtask artifact ios` requires 15.0 on the tipa and
-Sileo executables.
+`cargo xtask artifact ios` requires 15.0 on the app, the tipa and the Sileo
+executables.
 
 Compile success, device operation, App Store processing and review are
 separate gates. Do not describe the whole range or store acceptance as

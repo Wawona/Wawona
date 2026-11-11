@@ -56,7 +56,7 @@ For **building/running/testing the Apple (iOS/macOS) Xcode projects**. Including
 simulators, devices, and log capture. Use the **`xcodebuild`** MCP server
 (getsentry/XcodeBuildMCP) instead of raw `xcodebuild` shell commands. It runs
 locally and requires **macOS 27 + Xcode 27**. `Wawona.xcodeproj` is
-committed; run `nix run .#deps -- <sdk>` once to link `.deps/<sdk>`.
+committed; run `cargo xtask deps get <sdk>` once to link `.deps/<sdk>`.
 
 For **CI / prebuilt distribution** (Wawona v2.5+ Fastlane beta lanes), read
 `wwn-mcp/knowledge/wawona/fastlane.md` and use `cargo xtask secrets sync`
@@ -102,7 +102,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
 - **Product domain vs compositor ABI.** UniFFI owns machines, prefs, launch,
   validation. SwiftUI stays views (`Sources/WawonaUI`, `Sources/WawonaWatch`).
   Do not fork JFFI. Full Apple set is Wawona’s job. Generated UniFFI
-  Swift/Kotlin are Nix `$out/uniffi` only (`wawona-nix-generated`). See
+  Swift comes from `cargo xtask backend` into `.build/` only (`wawona-nix-generated`). See
   `.cursor/rules/wawona-uniffi-domain.mdc` and
   `docs/agent-rules/wawona-uniffi-domain.md`.
 - **Apple Swift/SwiftUI skills (mandatory).** Before editing Apple host UI,
@@ -135,10 +135,13 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
     `wawona-mode-b-watchdog-safety`.
     Wawona Swinging Bridge is separate (`docs/swinging-bridge.md`, `wawona-swinging-bridge`).
   - Query `project=macos-internals` for Mach-O/dyld/Mach/XNU/launchd details.
-- **Rust backend is one Cargo build in the slice's Nix env.** Nix products
-  build it with `dependencies/wawona/backend.nix`; Xcode and Gradle rebuild
-  the working tree with `scripts/build-backend.sh <slice>` into
-  `.build/backend/<slice>`.
+- **Rust backend is one Cargo build per slice.** `cargo xtask backend <slice>`
+  builds the working tree into `.build/backend/<slice>` against the slice's
+  prebuilt C libraries (`.deps/<slice>/slice.json`); Xcode's prebuild phase
+  and Gradle's `preBuild` call it. Nix builds only the slices (CI) and Linux.
+- **No Python.** Build, CI, tests and tools are `cargo xtask` (shell only
+  where an ABI needs it). Gate `cargo xtask verify no-python`; rule
+  `wawona-no-python`.
 - **Apple = OS 27 SDK / Liquid Glass**; **Material 3 Expressive = Android 16+ only**.
 - **iOS min OS vs SDK.** Mach-O min is iOS **15.0** on every channel, built with the iOS 27 SDK (Xcode 27 refuses lower). Never raise that floor to match a dependency (GhosttyKit 17 stays unlinked). Never downgrade the SDK. App Store IPAs do not ship a product `.dylib` (static archives; Apple `libswift*` is the exception). One ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo. Bundled clients (fastfetch, weston, and every other in-process archive) compile at 13.0 or higher and link into the 15.0 app. CMake `CMAKE_C_FLAGS` and Meson `c_args` do not apply to `.m`. Set `CMAKE_OBJC_FLAGS` and `objc_args` or clang emits `_objc_release_xN` and dyld aborts on iOS 13-15. See `docs/agent-rules/wawona-ios-min-os.md`.
 - **Apple-mobile process entry.** `Darwin/Sources/Main.swift` on iOS/iPadOS/tvOS/visionOS (and macOS). Mobile uses `UIApplicationMain` (iOS 15 floor). Never leave LC_MAIN to a bundled client's C `_main` (`gbm_es2_demo`). Set `XDG_RUNTIME_DIR` to `preferredSharedRuntimeDir` before host compositor start. See `docs/agent-rules/wawona-ios-app-entry.md` and skill `wawona-ios-sim-runtime`.
@@ -186,8 +189,8 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   userland SkyLight/Mach IPC. Direct Turnip/KGSL is forbidden.
 - **Patched upstreams**: query `get_patch` before assuming upstream behavior. The
   patch anchors are checked in each repo's CI (`verify-weston-ios-patches.py` in
-  `repo.wawona.io` `catalog/deb/gui/weston/in-app`, `verify-zsh-ios-patches.py` in `wwn-zsh`); Wawona keeps the
-  Wayland/Android maintainability checks under `.github/scripts/`.
+  `repo.wawona.io` `catalog/deb/gui/weston/in-app`, `verify-zsh-ios-patches.py` in `wwn-zsh`); Wawona's own gates
+  are `cargo xtask verify --list`.
 - **zsh on iOS**: static `libwawona-zsh.a` (`wawona_zsh_main`) run **in-process
   on a pthread**, NO fork/exec/posix_spawn/dlopen; external commands dispatched
   in-process to uutils coreutils (safe subset owned by **wwn-uutils-rs**
@@ -250,13 +253,14 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   until store TF. Skill/rule `wawona-staticcpu-shm-tip`. RAG
   `staticcpu-shm-tip.md`. Graph: `Relay/docs/agentic-graph-staticcpu.md`.
 
-## Nix fresh builds (hard)
+## Fresh builds (hard)
 
-Products and Terminal are **Nix**. `nix run .#wawona-macos`, `nix run .#terminal`,
-or tip via `WAWONA_TEST_REBUILD=1` + `cargo xtask tip macos`. Never
+Apps build in Xcode 27 and Android Studio over `cargo xtask deps get` slices,
+or with `cargo xtask build <target>`; Terminal standalone is `nix run .#terminal`;
+the UI-proof tip is `WAWONA_TEST_REBUILD=1` + `cargo xtask tip <platform>`. Never
 `/Applications/Wawona.app`. Never host-cargo `/tmp` overlays as the ship path.
 Never boot Vision Pro when the task is Wawona Terminal on macOS. Rule/skill:
-`wawona-nix-fresh-build`. Guide: `docs/compilation.md`. Query wwn-mcp first.
+`wawona-fresh-build`. Guide: `docs/compilation.md`. Query wwn-mcp first.
 
 ## Local before CI (do not burn the queue)
 
@@ -266,8 +270,9 @@ first**, then push. Do not use CI to discover `ld: duplicate symbols`,
 missing patch anchors, meson version floors, or `Cargo.lock` skew.
 
 - Link / `*Ldflags` / stubs / second Rust staticlib beside niri → build the
-  **affected app target** (e.g. `nix build .#wawona-watchos-app-sim`). Parse
-  or attr eval is not enough.
+  **affected app target** (e.g. `cargo xtask build watchos`). Parse
+  or attr eval is not enough. A C dependency change: `cargo xtask deps get
+  <sdk> --nix`, then the app build.
 - Prefer lazy `-lfoo` + `-Wl,-u,_foo_main` after niri's `-force_load` when
   another Rust `staticlib` embeds std (waypipe precedent). Never
   double-force-load std archives.
@@ -331,7 +336,8 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
   keys in its `baseRegistry`, never make `iLand` depend on weston/kmscube/waypipe,
   and never make Wawona an input of any `wwn-*` or of the catalog. Canonical:
   `docs/wwn-repo-dag.md`; workspace rule `wawona-repo-dag`.
-- Builds are Nix-based; see `docs/compilation.md` and `docs/2026-nix-build-system.md`.
+- Builds are Xcode, Gradle and `cargo xtask` over Nix-built dependency slices;
+  see `docs/compilation.md` and `docs/2026-nix-build-system.md`.
 - Don't commit secrets.
 - **GitHub Sponsors.** Every `github.com/Wawona/*` repo must ship the same
   `.github/FUNDING.yml` as `Wawona/Wawona` (`github` / `ko_fi`:

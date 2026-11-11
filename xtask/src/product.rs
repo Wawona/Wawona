@@ -132,7 +132,7 @@ fn fetch(t: &Target, device: bool) -> Result<()> {
     if t.name == "ios" {
         sdks.push(if device { "watchos" } else { "watchsimulator" }.into());
     }
-    deps::get(deps::GetArgs { sdks, nix: false })
+    deps::get(deps::GetArgs { sdks, nix: false, nix_args: vec![] })
 }
 
 /// Gradle runs on JetBrains Runtime 21 (rule wawona-android-jbr): an exported
@@ -172,7 +172,7 @@ fn gradle_output(dir: &str, ext: &str) -> Result<std::path::PathBuf> {
 
 pub fn build(a: Args) -> Result<()> {
     if a.target == "android" {
-        deps::get(deps::GetArgs { sdks: vec!["android".into()], nix: false })?;
+        deps::get(deps::GetArgs { sdks: vec!["android".into()], nix: false, nix_args: vec![] })?;
         gradle(if a.release { "assembleRelease" } else { "assembleDebug" })?;
         let v = if a.release { "release" } else { "debug" };
         println!("{}", gradle_output(&format!("apk/{v}"), "apk")?.display());
@@ -189,7 +189,7 @@ pub fn test(a: Args) -> Result<()> {
     match a.target.as_str() {
         "rust" => run(cmd("cargo").current_dir(root()).args(["test", "--tests", "--no-fail-fast"])),
         "android" => {
-            deps::get(deps::GetArgs { sdks: vec!["android".into()], nix: false })?;
+            deps::get(deps::GetArgs { sdks: vec!["android".into()], nix: false, nix_args: vec![] })?;
             gradle("testDebugUnitTest")
         }
         "ios" => {
@@ -204,7 +204,7 @@ pub fn test(a: Args) -> Result<()> {
 
 pub fn archive(a: ArchiveArgs) -> Result<()> {
     if a.target == "android" {
-        deps::get(deps::GetArgs { sdks: vec!["android".into()], nix: false })?;
+        deps::get(deps::GetArgs { sdks: vec!["android".into()], nix: false, nix_args: vec![] })?;
         gradle("bundleRelease")?;
         println!("{}", gradle_output("bundle/release", "aab")?.display());
         return Ok(());

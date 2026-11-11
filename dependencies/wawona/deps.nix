@@ -1,6 +1,6 @@
 # Per-SDK inputs of the committed Wawona.xcodeproj, named by Xcode's
 # PLATFORM_NAME. CI packs each one (`cargo xtask deps pack`) and
-# `cargo xtask deps <sdk>` unpacks it into .deps/<sdk>:
+# `cargo xtask deps get <sdk>` unpacks it into .deps/<sdk>:
 #   slice.json        the C libraries `cargo xtask backend` builds against
 #   Wawona.xcconfig   WWN_HEADERS_<target> and WWN_LDFLAGS_<target>,
 #                     included by src/resources/xcode/wwn-version.xcconfig

@@ -9,10 +9,9 @@ app must use a **tip build** and a **clean launch**. Never a stale install.
    `/tmp/wawona-macos-tip/DerivedData/Build/Products/Debug/Wawona.app` via
    `cargo xtask tip macos`). Rebuild when `git HEAD` no
    longer matches the tip stamp, or when `WAWONA_TEST_REBUILD=1`.
-   **macOS dogfood (hard):** always `nix run .#deps -- macosx` (or the
-   ensure-tip path that runs it) then `xcodebuild -scheme Wawona-macOS`.
-   Never claim macOS Terminal/Present green from `run-standalone-macos.sh`
-   alone. Standalone is atlas smoke only.
+   **macOS dogfood (hard):** the tip (or Xcode Run of `Wawona-macOS`).
+   Never claim macOS Terminal/Present green from `nix run .#terminal` alone:
+   standalone is grid smoke only.
 2. **Refuse stale paths**: `/Applications/Wawona.app`,
    `~/Applications/Wawona.app`, old `build/DerivedData-macos*`, random
    Xcode DerivedData outside the tip root. Never `sudo rm` or symlink tip
@@ -44,5 +43,5 @@ Appium catalog: `cargo xtask appium catalog` always calls
 | Android | Tip APK/AAB from current HEAD Gradle/nix, not a random old install |
 
 Cursor: `wawona-test-tip-app`. Skill: `wawona-appium`. Related:
-`wawona-nix-fresh-build` (Nix attrs / never Vision Pro for Terminal),
+`wawona-fresh-build` (build commands; never Vision Pro for Terminal),
 `wawona-appium-ui-gh`, `wawona-test-control`, `wawona-calver-today`.
