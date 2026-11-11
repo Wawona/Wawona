@@ -3,7 +3,7 @@
 
 use crate::deps;
 use crate::util::{cmd, root, run, write};
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use std::path::PathBuf;
 
 pub struct Target {
@@ -136,7 +136,21 @@ fn fetch(t: &Target, device: bool) -> Result<()> {
 }
 
 fn gradle(task: &str) -> Result<()> {
-    run(cmd(root().join("android/gradlew")).current_dir(root().join("android")).arg(task))
+    run(cmd(root().join("gradlew")).current_dir(root()).arg(task))
+}
+
+/// The one file with extension `ext` Gradle wrote under android/app/build/outputs/`dir`.
+fn gradle_output(dir: &str, ext: &str) -> Result<std::path::PathBuf> {
+    let d = root().join("android/app/build/outputs").join(dir);
+    let mut found: Vec<_> = std::fs::read_dir(&d)
+        .with_context(|| format!("read {}", d.display()))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == ext))
+        .collect();
+    match found.len() {
+        1 => Ok(found.remove(0)),
+        n => bail!("{} holds {n} .{ext} files, expected one", d.display()),
+    }
 }
 
 pub fn build(a: Args) -> Result<()> {
@@ -144,7 +158,7 @@ pub fn build(a: Args) -> Result<()> {
         deps::get(deps::GetArgs { sdks: vec!["android".into()], nix: false })?;
         gradle(if a.release { "assembleRelease" } else { "assembleDebug" })?;
         let v = if a.release { "release" } else { "debug" };
-        println!("{}", root().join(format!("android/app/build/outputs/apk/{v}/app-{v}.apk")).display());
+        println!("{}", gradle_output(&format!("apk/{v}"), "apk")?.display());
         return Ok(());
     }
     let t = target(&a.target)?;
@@ -175,7 +189,7 @@ pub fn archive(a: ArchiveArgs) -> Result<()> {
     if a.target == "android" {
         deps::get(deps::GetArgs { sdks: vec!["android".into()], nix: false })?;
         gradle("bundleRelease")?;
-        println!("{}", root().join("android/app/build/outputs/bundle/release/app-release.aab").display());
+        println!("{}", gradle_output("bundle/release", "aab")?.display());
         return Ok(());
     }
     let t = target(&a.target)?;

@@ -38,11 +38,18 @@ pub enum Cmd {
 
 pub fn main(c: Cmd) -> Result<()> {
     let Cmd::Prepare { dir, libghostty, platform, version } = c;
-    if dir.join("waypipe/Cargo.toml").is_file() {
-        waypipe(&dir.join("waypipe"))?;
+    // A symlink is a tree `cargo xtask backend` linked from .deps/src, which
+    // Nix already prepared and keeps read-only.
+    let local = |name: &str| {
+        let p = dir.join(name);
+        let linked = p.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink());
+        Some(p).filter(|p| !linked && p.join("Cargo.toml").is_file())
+    };
+    if let Some(p) = local("waypipe") {
+        waypipe(&p)?;
     }
-    if dir.join("coreutils/Cargo.toml").is_file() {
-        coreutils(&dir.join("coreutils"))?;
+    if let Some(p) = local("coreutils") {
+        coreutils(&p)?;
     }
     if let Some(src) = libghostty {
         libghostty_stage(&src, &dir)?;

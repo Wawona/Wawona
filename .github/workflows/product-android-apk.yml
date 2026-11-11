@@ -49,12 +49,12 @@ jobs:
           android: true
 
       - name: Build the debug APK
-        run: cargo xtask build android
+        run: set -o pipefail; cargo xtask build android | tee build.out
 
       - name: Stage APK
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Wawona.apk
+          cp "$(tail -n1 build.out)" dist/Wawona.apk
           printf '{"target":"android","sha":"%s","artifact":"product-android-apk"}\n' "${{ github.sha }}" \
             > dist/product-manifest.json
 

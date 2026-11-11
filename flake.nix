@@ -179,6 +179,13 @@
             gjs = super.gjs.overrideAttrs (_old: {
               doCheck = false;
             });
+            # The dejavu-fonts override below rebuilds harfbuzz locally. Its
+            # in-house HarfBust.ttf test shapes through the host's CoreText,
+            # which on macOS 27 returns one ligature glyph where the test
+            # expects eight.
+            harfbuzz = super.harfbuzz.overrideAttrs (_old: {
+              doCheck = !super.stdenv.hostPlatform.isDarwin;
+            });
             # charset-normalizer mypyc-compiles with mypy. mypy's pytest suite
             # is ~45 minutes on a cold Darwin laptop. cargo-auditable's vendor
             # helper (niri) and any requests stack would otherwise rebuild it.

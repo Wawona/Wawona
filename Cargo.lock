@@ -4432,7 +4432,7 @@ dependencies = [
 
 [[package]]
 name = "wawona"
-version = "26.11.10"
+version = "26.11.11"
 dependencies = [
  "anyhow",
  "ash",

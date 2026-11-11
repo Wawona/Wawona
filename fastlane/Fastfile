@@ -1286,8 +1286,9 @@ def build_aab_path
     "WAWONA_VERSION" => wawona_version,
     "WAWONA_BUILD_NUMBER" => wawona_build_number
   }
-  sh(ENV.to_h.merge(env), "cargo", "xtask", "archive", "android", log: true)
-  aab = File.expand_path("../android/app/build/outputs/bundle/release/app-release.aab", __dir__)
+  # The xtask prints the bundle path last.
+  out = sh(ENV.to_h.merge(env), "cargo", "xtask", "archive", "android", log: true)
+  aab = out.lines.last.to_s.strip
   UI.user_error!("No AAB at #{aab}") unless File.file?(aab)
   aab
 ensure
