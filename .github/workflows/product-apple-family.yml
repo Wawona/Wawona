@@ -40,7 +40,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -100,7 +100,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -160,7 +160,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -220,7 +220,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5

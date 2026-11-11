@@ -3,7 +3,6 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_ARG="${1:-$ROOT/verification-out/kotlin.ndjson}"
-# Keep NDJSON at repo root even after we cd into android/.
 if [[ "$OUT_ARG" = /* ]]; then
   OUT="$OUT_ARG"
 else
@@ -20,13 +19,13 @@ emit() {
   fail=1
 }
 
-cd "$ROOT/android"
+cd "$ROOT"
 
 # Verification floor is JVM + detekt + lint. Skip NDK/cmake (needs Nix deps).
 export WAWONA_VERIFICATION_KOTLIN="${WAWONA_VERIFICATION_KOTLIN:-1}"
 
-# Module path is :Wawona (settings.gradle maps it to app/).
-GRADLE_TASKS=(:Wawona:testDebugUnitTest :Wawona:detekt :Wawona:lintDebug)
+# Module path is :Wawona (settings.gradle.kts maps it to android/app).
+GRADLE_TASKS=(:Wawona:testDebugUnitTest :Wawona:detekt :Wawona:lintDebug --init-script android/detekt.init.gradle)
 if ! ./gradlew "${GRADLE_TASKS[@]}" --offline; then
   if ! ./gradlew "${GRADLE_TASKS[@]}"; then
     emit gradle "android/app/src/test/java/com/aspauldingcode/wawona/MachineInputSanitizerTest.kt" \

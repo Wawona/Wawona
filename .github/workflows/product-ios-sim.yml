@@ -38,7 +38,7 @@ env:
 jobs:
   ios-sim:
     name: "iOS sim .app"
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
@@ -49,11 +49,9 @@ jobs:
         id: xcode
         run: ./.github/scripts/select-xcode.sh
 
-      # XcodeGen emits every Apple target in one project.yml. A cache-miss
-      # Relay/backend for watch/tv/vision needs that SDK at configure even when
-      # this job only builds the iOS slice. Warm the full simulator set.
+      # The iOS app embeds the watch companion, so both slices build here.
       - name: Ensure Apple simulator SDKs
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh all
+        run: ./.github/scripts/warm-ios-simulator-sdk.sh ios watchos
 
       - uses: ./.github/actions/setup-nix-flakehub
 

@@ -48,7 +48,7 @@ require_ios_minimum() {
     fail "expected iOS minimum $expected, got ${actual:-missing}"
 }
 
-# Info.plist can advertise 13.0 while an embedded Mach-O requires a newer OS.
+# Info.plist can advertise a lower floor while an embedded Mach-O requires a newer OS.
 # Check every iOS slice; watchOS companion slices retain their own floor.
 require_ios_dependency_minima() {
   local app="$1" expected_platform="$2" maximum="$3" binary platform minimum
@@ -114,12 +114,9 @@ if [[ "$mode" == "--mode-a" || "$mode" == "--mode-a-simulator" ]]; then
       fail "Mode A contains Mode B entitlements"
   fi
   expected_platform=2
-  expected_minimum=13.0
+  expected_minimum=15.0
   if [[ "$mode" == "--mode-a-simulator" ]]; then
-    # SDK 26.5's arm64 Simulator linker stamps 14.0 even for a 13.0
-    # deployment target. A minimal clang link reproduces this platform floor.
     expected_platform=7
-    expected_minimum=14.0
     [[ "$(/usr/bin/lipo -archs "$executable")" == "arm64" ]] ||
       fail "Simulator floor check requires the native arm64 artifact"
   fi
@@ -143,8 +140,8 @@ if [[ "$mode" == "--sileo" ]]; then
   [[ -x "$executable" ]] || fail "Sileo executable is missing"
   [[ "$(plist_value "$app/Info.plist" CFBundleIdentifier)" == "com.aspauldingcode.Wawona.ModeB" ]] ||
     fail "Sileo bundle identifier is wrong"
-  require_ios_minimum "$executable" "13.0"
-  echo "Sileo iOS 13+ artifact gate OK: $app"
+  require_ios_minimum "$executable" "15.0"
+  echo "Sileo iOS 15+ artifact gate OK: $app"
   exit 0
 fi
 
@@ -188,7 +185,7 @@ echo "Mode B tipa: skipping leftover guest Image/rootfs (Relay frames planned)"
   fail "Mode B bundle identifier is wrong"
 [[ -n "$(plist_value "$app/Info.plist" CFBundleVersion)" ]] ||
   fail "Mode B build number is missing"
-require_ios_minimum "$executable" "14.0"
+require_ios_minimum "$executable" "15.0"
 /usr/bin/nm -gU "$executable" 2>/dev/null | /usr/bin/grep '_wwn_iomfb_open' >/dev/null ||
   fail "Mode B IOMFB sink is not linked"
 /usr/bin/nm -gU "$executable" 2>/dev/null | /usr/bin/grep '_wwn_igetty_ios_initialize' >/dev/null ||

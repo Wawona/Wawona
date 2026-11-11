@@ -546,11 +546,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791870731,
-        "narHash": "sha256-zXv6QWGJCy73CgEpLUPN9qLDFGS5c8gSACcG/scI1hE=",
+        "lastModified": 1794361293,
+        "narHash": "sha256-bi/xa/JIKxU4xVGBeyAl/01/62fN9u1yrdFtVJw7umA=",
         "owner": "Wawona",
         "repo": "iLand",
-        "rev": "bf6d4d37b555265b26296e6259e471d83faa0986",
+        "rev": "e792f90ae29fe1a91ca4bce766cd76515b3dd064",
         "type": "github"
       },
       "original": {
@@ -787,11 +787,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792797287,
-        "narHash": "sha256-qUAo3KNJ3zfOtG/l4YIFufN4xPKB2kKevDdUPu00Jgw=",
+        "lastModified": 1794364296,
+        "narHash": "sha256-+IjciyphlJ7HWtE6DMPYh8/4TsEnWVh60OJFs1B+xL0=",
         "owner": "Wawona",
         "repo": "repo.wawona.io",
-        "rev": "8d1b018ffbf9810003095f17d40011328a11a94c",
+        "rev": "9b17cefc9c31a217f649f851503ebbe678b69c2e",
         "type": "github"
       },
       "original": {

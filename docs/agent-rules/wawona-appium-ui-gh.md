@@ -68,7 +68,7 @@ lane under `ui-appium.yml`):
   Local runs keep the normal Colima VM type.
 - When no successful same-SHA `Gate: products` artifact is supplied, the
   macOS catalog lane builds a clean tip host app. Install
-  `setup-nix-flakehub` before catalog capture so XcodeGen and the Nix build are
+  `setup-nix-flakehub` before catalog capture so `nix run .#deps` and the Nix build are
   available. Grant `id-token: write` for FlakeHub cache access.
 - **Catalog green = Present surface PNG** in
   `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`

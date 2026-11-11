@@ -23,7 +23,7 @@ env:
 jobs:
   graphics-smoke:
     name: "macOS (arm64): graphics driver-sanity"
-    runs-on: macos-15
+    runs-on: macos-27
     steps:
       - uses: actions/checkout@v5
         with:

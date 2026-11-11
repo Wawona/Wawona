@@ -1,123 +1,60 @@
 # Compilation Guide
 
-Wawona uses **Nix Flakes** for all builds. For the full build pipeline (crate2nix, cross-compilation, layers), see [2026-nix-build-system.md](2026-nix-build-system.md).
+Wawona builds with **Nix Flakes**. Xcode 27 opens the committed
+`Wawona.xcodeproj` and Android Studio the root Gradle project; what neither
+can build (the Rust backend, cross-compiled libraries, generated UniFFI Swift)
+comes from Nix through `.deps/`. Layers and recipes:
+[2026-nix-build-system.md](2026-nix-build-system.md).
 
-## Quick Build
-
-```bash
-# macOS app (build + launch)
-nix run .#wawona
-nix run .#wawona-macos
-
-# Low-RAM / OOM. See Troubleshooting below.
-./scripts/nix-build-low-mem.sh .#wawona-macos
-
-# Store-shaped macOS vs SIP Desktop Replacement host
-nix build .#wawona-macos
-nix build .#wawona-macos-desktop-host
-
-# Apple family simulators
-nix run .#wawona-ios
-# TrollStore Mode B on vphone (not the Xcode Simulator)
-nix run .#wawona-ios-modeb
-nix build .#wawona-watchos-app-sim
-nix build .#wawona-tvos-sim
-nix build .#wawona-visionos-sim
-
-# Android / Linux
-nix run .#wawona-android
-nix run .#wawona-linux
-# On a Linux host, .#wawona and .#default are the same prebuilt UI wrapper:
-nix run .#wawona
-nix build .#wawona-appimage
-```
-
-Linux wrappers (`wawona-linux-run`, compositor-host, tray) require LF line
-endings. A CRLF git checkout inside Docker/NixOS containers breaks the
-generated shell (`syntax error near unexpected token $'in\r'`; issue #164).
-Keep `.gitattributes` (`*.nix text eol=lf`) and avoid `core.autocrlf=true`
-on the build host.
-
-`--rebuild` is not a Nix flag. Use `nix build --rebuild` only if you mean Nix's
-`--rebuild` (force rebuild of a derivation). For a clean tree, `nix build` the
-attribute again.
-
-## Build Monitoring With `nom`
-
-`nix-output-monitor` is integrated into the flake:
+## IDE loop
 
 ```bash
-# Run nom from the flake
-nix run .#nom -- build .#wawona-macos
+# Link .deps/<sdk> for the SDKs you build (Xcode PLATFORM_NAME, or android).
+# iphoneos also links watchos for the embedded Watch app.
+nix run .#deps -- macosx
+nix run .#deps -- iphonesimulator watchsimulator
+nix run .#deps -- android
 
-# If you are already in nix develop
-nom build .#wawona-macos
-nb .#wawona-macos   # alias for `nom build`
+open Wawona.xcodeproj        # schemes Wawona-macOS, Wawona-iOS, Wawona-tvOS, ...
+./gradlew :Wawona:assembleDebug   # or open the repo root in Android Studio
 ```
 
-## Build (without run)
+After a Rust edit, rebuild the working-tree backend for that SDK. It uses the
+slice's Nix environment (toolchain, vendored crates, native libraries) and
+stages `.build/backend/<sdk>`, which `scripts/xcode-prebuild.sh` links in
+place of the Nix backend until the next `nix run .#deps`:
 
 ```bash
-nix build .#wawona-macos
-nix build .#wawona-ios-backend
-nix build .#wawona-android-backend
+scripts/build-backend.sh iphonesimulator
 ```
 
-## Common Flags
+The prebuild and `scripts/xcode-embed.sh` run on every build (Xcode notes
+this) but only copy files. Re-run `nix run .#deps -- <sdk>` after pulling a
+change to Nix inputs or `Cargo.lock`.
 
-| Flag | Purpose |
-|------|---------|
-| `-L` | Print full build logs |
-| `--show-trace` | Stack trace on Nix evaluation errors |
-
-## Xcode Iteration
-
-`xcodebuild` (including `nix run .#wawona-macos`) may print notes that Run
-Script phases will run during **every** build because "Based on dependency
-analysis" is unchecked. Those are notes, not errors.
-
-`dependencies/generators/xcodegen.nix` sets `basedOnDependencyAnalysis = false`
-for several phases on purpose. Xcode cannot skip them from declared inputs and
-outputs. The Nix closure, store copies, and Info.plist edits are not a graph
-Xcode can track. On `Wawona-macOS` that includes Stamp Build Number, Build
-Rust Backend via Nix (`scripts/xcode-prebuild.sh`), Bundle Executables, and
-Strip iOS-only keys from Info.plist (#138).
-
-The **script still runs** every time. Cheap when the store is warm: Nix
-cache, `WAWONA_BACKEND_OUT*` copy of a realized `libwawona.a`, or
-`WAWONA_SKIP_NIX_PREBUILD=1` for UI-only iteration. By default the prebuild
-builds only the **active SDK backend** (device or simulator, not both).
+## Nix products
 
 ```bash
-# One-time warm (full iOS, both device and simulator backends)
-nix build .#wawona-ios-backend .#wawona-ios-sim-backend
-mkdir -p .nix-gcroots && nix build --out-link .nix-gcroots/xcodegen .#xcodegen
+nix run .#wawona-macos                   # build + launch
+nix build .#wawona-macos-desktop-host    # SIP-off Desktop Replacement host
+./scripts/nix-build-low-mem.sh .#wawona-macos   # small machines, see Troubleshooting
 
-# UI-only iteration. Skip Nix entirely (script still runs, then exits):
-export WAWONA_SKIP_NIX_PREBUILD=1
+nix build .#wawona-ios-app-sim .#wawona-ipados-app-sim
+nix build .#wawona-tvos-app-sim .#wawona-watchos-app-sim .#wawona-visionos-app-sim
+nix build .#wawona-ios-modeb-tipa        # TrollStore Mode B (vphone, not the Simulator)
+nix build .#wawona-android .#wawona-android-aab
 
-# Release builds that want both device+sim warm in one pass:
-export WAWONA_WARM_BOTH_BACKENDS=1
-
-# Skip redundant simulator runtime download during Nix iOS app builds
-export WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1
-
-# CI product-build (ios-sim + apple-family) / device-e2e / frontend-syntax set the
-# skip flag via `.github/scripts/warm-ios-simulator-sdk.sh` when the requested
-# simulator SDK is present (`ios`, `ipados`, `tvos`, `watchos`, `visionos`, or `all`).
-# Product `.#wawona-ios` uses `xcodegenIosSimOutputs` (ios-only + simulatorOnly).
-# Nix product builds also pass `WAWONA_BACKEND_OUT*` so xcode-prebuild copies
-# `libwawona.a` instead of nested-compiling the Rust backend during xcodebuild.
+nix build .#wawona-macos-backend .#wawona-ios-sim-backend .#wawona-android-backend
 ```
 
-After a `Cargo.lock` change, unset `WAWONA_SKIP_NIX_PREBUILD` or rebuild the relevant backend:
+On Linux, `nix run .#wawona` runs the prebuilt UI wrapper. Its scripts need
+LF line endings: a CRLF checkout breaks them (`syntax error near unexpected
+token $'in\r'`; issue #164). Keep `.gitattributes` (`*.nix text eol=lf`) and
+avoid `core.autocrlf=true`.
 
-```bash
-unset WAWONA_SKIP_NIX_PREBUILD
-# or: nix build .#wawona-ios-sim-backend
-```
-
-Use `nom` / `nb` for cold builds with build visibility. See [2026-nix-build-system.md](2026-nix-build-system.md) for the full pipeline.
+`nix run .#nom -- build .#wawona-macos` (or `nom build` inside `nix develop`)
+shows build progress. `-L` prints full logs, `--show-trace` evaluation stack
+traces.
 
 ## FlakeHub Cache (shared org binary cache)
 
@@ -131,20 +68,13 @@ determinate-nixd status  # Logged in: true
 Details, limits (forks / anonymous cold rebuild), and CI fragment:
 [`flakehub-cache.md`](flakehub-cache.md).
 
-## Project Generators
-
-```bash
-nix run .#xcodegen      # Generate Wawona.xcodeproj (iOS + macOS)
-nix run .#xcodegen-ios  # iOS only
-nix run .#gradlegen     # Generate ./Wawona-gradle-project for Android Studio
-```
-
 ## Requirements
 
-- Apple Silicon Mac
+- Apple Silicon Mac on macOS 27, Xcode 27 (SDK 27; older Xcode is refused)
 - Nix with flake support
-- Xcode (for iOS)
-- `.envrc` with `TEAM_ID` for iOS signing
+- Android Studio with its bundled JBR 21 for Android
+- `TEAM_ID` in `.envrc.local` for device signing (`nix run .#deps` writes
+  `.deps/signing.xcconfig` from it)
 
 See [README](../README.md) for environment setup.
 

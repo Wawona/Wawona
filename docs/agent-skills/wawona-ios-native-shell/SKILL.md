@@ -50,7 +50,7 @@ Stop → wwn_pty_ios_stop_shell_session
 | Present trigger | `WWNMachinesViewModel.presentGuestConsoleIfNeeded` (`source=shell`) |
 
 Prefer extending those files. Brand-new Swift under `Sources/` must still land
-on the xcodegen `Sources/WawonaApple` / `Sources/WawonaUI` tree and compile in
+in the `Sources/WawonaApple` / `Sources/WawonaUI` synchronized folders and compile in
 the app target (`wawona-ios-link-contract`).
 
 ## Gotchas (2026-10-11)
@@ -61,7 +61,6 @@ the app target (`wawona-ios-link-contract`).
 | User said "weston terminal" | Check for Native Shell / Wawona Terminal title first |
 | `weston_terminal_main` in binary | Fake SHM chrome (`mobile-weston-terminal.c`). Not a shell |
 | `write` to PTY master for keys | `wwn_ios_terminal_inject` |
-| `Font.TextStyle.caption2` | `.caption` (iOS 13 floor) |
 | Install OK, launch Locked | Unlock device; install already done |
 
 ## Stop and second session (2026-10-17)

@@ -16,6 +16,8 @@
   codeSignIdentity ? null,
   signMethod ? null,
   automaticProvisioning ? false,
+  # Release build signed ad hoc without entitlements (the macOS product).
+  adHoc ? false,
   # Per-platform overrides
   # target: Xcode scheme/target name
   xcodeTarget ? "Wawona-iOS",
@@ -32,17 +34,6 @@
   # legacy in-tree copy; Wawona's flake overrides this with the wwn-toolchain
   # input store path so the moved dir can be deleted.
   applePath,
-  # First-class Rust backend so product xcodebuild copies libwawona.a instead of
-  # nested `nix build --impure` (Gate: products iOS sim was recompiling rust).
-  rustBackend ? null,
-  # Absolute paths to libwawona-zsh.a / libfastfetch.a (skip nested nix in sandbox).
-  zshLib ? null,
-  fastfetchLib ? null,
-  mobileGuestArtifacts ? null,
-  mobileGuestArtifacts16k ? null,
-  mobileContainerGuestArtifacts ? null,
-  companionBackends ? { },
-  companionShellLibs ? { },
   ...
 }:
 
@@ -84,7 +75,7 @@ in
   scheme = xcodeTarget;
   inherit sdk;
   __noChroot = true;
-  configuration = if releaseBuild then "Release" else "Debug";
+  configuration = if releaseBuild || adHoc then "Release" else "Debug";
   # Mode B uses the Release Xcode configuration but remains an unsigned app
   # build. Its executable receives the TrollStore ldid signature afterward.
   release = releaseBuild && !modeB;
@@ -111,11 +102,19 @@ in
       # "Any iOS Simulator Device" when no named runtime is visible in the
       # builder. ARCHS=arm64 below still pins the slice.
       ''-destination "generic/platform=${destinationPlatform}"''
+      # The macro plugin sandbox cannot read a build under /nix/var/nix/builds,
+      # so SwiftUI's macros (@State, Xcode 27) fail to expand there.
+      ''SWIFTC_DISABLE_SANDBOX=YES''
     ]
-    ++ lib.optionals (!releaseBuild || modeB) [
+    ++ (if adHoc then [
+      ''CODE_SIGN_IDENTITY=-''
+      ''CODE_SIGN_STYLE=Manual''
+      ''CODE_SIGN_ENTITLEMENTS=''
+      ''DEVELOPMENT_TEAM=''
+    ] else lib.optionals (!releaseBuild || modeB) [
       ''CODE_SIGNING_ALLOWED=NO''
       ''CODE_SIGNING_REQUIRED=NO''
-    ]
+    ])
     ++ lib.optionals modeB [
       # Command-line scope reaches WawonaModel as well as the app target, so
       # Swift capability gates are compiled for this immutable product flavor.
@@ -123,18 +122,6 @@ in
     ]
     ++ lib.optionals (deploymentTarget != null) [
       ''IPHONEOS_DEPLOYMENT_TARGET=${deploymentTarget}''
-    ]
-    ++ lib.optionals (mobileGuestArtifacts != null) [
-      # xcodebuild does not preserve arbitrary process environment variables
-      # in Run Script phases. Pass these as build settings so the guest embed
-      # scripts receive the resolved artifact paths.
-      ''WAWONA_MOBILE_GUEST_DIR="${mobileGuestArtifacts}"''
-    ]
-    ++ lib.optionals (mobileGuestArtifacts16k != null) [
-      ''WAWONA_MOBILE_GUEST_16K_DIR="${mobileGuestArtifacts16k}"''
-    ]
-    ++ lib.optionals (mobileContainerGuestArtifacts != null) [
-      ''WAWONA_MOBILE_CONTAINER_GUEST_DIR="${mobileContainerGuestArtifacts}"''
     ]
     # Impure Ship: beta (stores): fastlane match installs App Store profiles; force
     # Manual signing so xcodebuild does not look for a Development account.
@@ -145,29 +132,14 @@ in
     ]
     # build-app.nix forces ONLY_ACTIVE_ARCH=NO; generic/platform without arch=
     # still compiles x86_64+arm64 Swift (WawonaUIContracts on macos-26).
-    ++ lib.optionals simulator [
+    ++ lib.optionals (simulator || nativeSdk == "macosx") [
       ''ONLY_ACTIVE_ARCH=YES''
       ''ARCHS=arm64''
       ''EXCLUDED_ARCHS="x86_64 i386"''
     ]
   );
 }).overrideAttrs (old:
-let
-  injected = (import ./inject-xcode-backend-env.nix {
-  inherit
-    lib
-    rustBackend
-    xcodeTarget
-    companionBackends
-    companionShellLibs
-    zshLib
-    fastfetchLib
-    mobileGuestArtifacts
-    mobileGuestArtifacts16k
-    mobileContainerGuestArtifacts
-    ;
-  }) old;
-in injected // {
+(import ./match-host-signing-attrs.nix { inherit lib; }) old // {
   # Validate the final bundle after all Xcode and stdenv packaging phases.
   postFixup = (old.postFixup or "") + lib.optionalString
     (nativeSdk == "iphoneos" && !releaseBuild) ''

@@ -121,8 +121,9 @@ fi
 if [[ "$need_build" -eq 1 ]]; then
   echo "ensure-tip-apple-sim: building $SCHEME for $HEAD (udid=$UDID)" >&2
   mkdir -p "$TIP_ROOT" "$DD"
-  if [[ ! -d "$ROOT/Wawona.xcodeproj" ]]; then
-    echo "FAIL: Wawona.xcodeproj missing; generate via nix/xcodegen first" >&2
+  _sdk="${SDK_DIR#Debug-}"
+  if ! nix run "$ROOT#deps" -- "$_sdk" >&2; then
+    echo "FAIL: nix run .#deps -- $_sdk" >&2
     exit 2
   fi
   xcodebuild \

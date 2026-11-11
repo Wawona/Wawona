@@ -2498,8 +2498,7 @@ JNIEXPORT void JNICALL Java_com_aspauldingcode_wawona_WawonaNative_nativeInit(
       pthread_mutex_unlock(&g_lock);
       jni_throw_illegal_state(
           env,
-          "Compositor core unavailable (rebuild with nix run .#gradlegen or "
-          "nix build .#wawona-android)");
+          "Compositor core unavailable (rebuild with nix build .#wawona-android)");
       return;
     }
     LOGI("WWNCoreNew() succeeded: %p", g_core);
@@ -5186,7 +5185,7 @@ static int kmscube_stub_main(int argc, const char **argv) {
   }
   return 0;
 #else
-  LOGE("kmscube unavailable on Android (rebuild with iland + ANGLE via gradlegen)");
+  LOGE("kmscube unavailable on Android (rebuild with iland + ANGLE)");
   return 1;
 #endif
 }
@@ -5228,7 +5227,7 @@ static int opengl_cube_stub_main(int argc, const char **argv) {
 #else
   (void)argc;
   (void)argv;
-  LOGE("opengl-cube unavailable on Android (rebuild with iland + ANGLE via gradlegen)");
+  LOGE("opengl-cube unavailable on Android (rebuild with iland + ANGLE)");
   return 1;
 #endif
 }

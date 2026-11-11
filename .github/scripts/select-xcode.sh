@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Pin host Xcode for GitHub Actions macOS runners (impure Apple builds).
 #
-# Default pin matches the macos-26 image used in CI. Override for local repro:
-#   WAWONA_XCODE_APP=/Applications/Xcode_26.6.0.app
-#   WAWONA_XCODE_VERSION=26.6.0   # resolves to /Applications/Xcode_${VERSION}.app
+# Default pin matches the macos-27 image used in CI. Override for local repro:
+#   WAWONA_XCODE_APP=/Applications/Xcode.app
+#   WAWONA_XCODE_VERSION=27.2   # resolves to /Applications/Xcode_${VERSION}.app
 #
 # Bumping the pin is a deliberate PR. Silent "newest Xcode" churn invalidates
 # impure weston/backend/product hashes. See docs/ci.md.
 set -euo pipefail
 
-# CI pin (macos-26 image, Xcode 26.6 / 17F113 as of 2026-07).
-DEFAULT_XCODE_APP="/Applications/Xcode_26.6.0.app"
+# CI pin (macos-27 image, Xcode 27.2 / 27B52). Wawona builds against SDK 27 only.
+DEFAULT_XCODE_APP="/Applications/Xcode_27.2.app"
 
 resolve_xcode_app() {
   if [[ -n "${WAWONA_XCODE_APP:-}" ]]; then
@@ -34,7 +34,7 @@ if [[ ! -d "$XCODE_APP" ]]; then
   exit 1
 fi
 
-# Resolve symlinks (runner images often symlink Xcode_26.6.0.app -> RC bundle).
+# Resolve symlinks (runner images often symlink Xcode_27.2.app -> RC bundle).
 XCODE_APP="$(cd "$XCODE_APP" && pwd -P)"
 
 sudo xcode-select -s "$XCODE_APP"
@@ -51,6 +51,11 @@ echo "Selected Xcode (pinned): $XCODE_APP"
 XCODE_VERSION_OUT="$("$DEVELOPER_DIR/usr/bin/xcodebuild" -version)"
 printf '%s\n' "$XCODE_VERSION_OUT"
 XCODE_VER="$(printf '%s\n' "$XCODE_VERSION_OUT" | awk '/Xcode/{print $2; exit}')"
+
+if [[ "${XCODE_VER%%.*}" != 27 ]]; then
+  echo "::error::Wawona requires Xcode 27 (SDK 27); selected $XCODE_VER" >&2
+  exit 1
+fi
 
 if [[ -n "${GITHUB_ENV:-}" ]]; then
   {

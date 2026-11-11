@@ -294,7 +294,7 @@ jobs:
 
   cargo-test-macos-arm64:
     name: "macOS (arm64): cargo test"
-    runs-on: macos-26
+    runs-on: macos-27
     needs: [ci-scope]
     if: ${{ github.event_name == 'workflow_dispatch' || needs.ci-scope.outputs.native == 'true' }}
     steps:
@@ -323,7 +323,7 @@ jobs:
 
   swift-test-macos-x86_64:
     name: "macOS (x86_64): swift test"
-    runs-on: macos-26
+    runs-on: macos-27
     needs: [ci-scope]
     if: ${{ github.event_name == 'workflow_dispatch' || needs.ci-scope.outputs.native == 'true' }}
     steps:
@@ -414,91 +414,6 @@ jobs:
           path: dist/*.AppImage
           if-no-files-found: error
 
-  frontend-syntax-check:
-    name: "macOS: Fast Path Frontend Check"
-    runs-on: macos-26
-    needs: [ci-scope]
-    if: ${{ github.event_name == 'workflow_dispatch' || needs.ci-scope.outputs.native == 'true' }}
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Select pinned Xcode
-        run: ./.github/scripts/select-xcode.sh
-
-      - name: Ensure Apple simulator SDKs
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh all
-
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v22
-        with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-            max-jobs = auto
-            cores = 0
-
-      - uses: DeterminateSystems/flakehub-cache-action@v3
-
-      - name: Test App Store Connect upload verdict gate
-        run: nix develop .#release --command ruby fastlane/spec/asc_build_upload_gate_spec.rb
-            
-      - name: Generate Xcode Project
-        run: nix run .#xcodegen
-        
-      - name: Syntax Check Apple Platforms
-        run: |
-          export WAWONA_SKIP_NIX_PREBUILD=1
-          
-          check_target() {
-            local scheme=$1
-            local dest=$2
-            echo "::group::Syntax Check: $scheme"
-            echo "Checking $scheme ($dest)..."
-            
-            # Simulator destinations + unsigned: device SDKs require a
-            # DEVELOPMENT_TEAM even for frontend syntax checks.
-            set +e
-            xcodebuild build \
-              -project Wawona.xcodeproj \
-              -scheme "$scheme" \
-              -destination "$dest" \
-              -jobs "$(sysctl -n hw.ncpu 2>/dev/null || echo 4)" \
-              ONLY_ACTIVE_ARCH=YES \
-              ARCHS=arm64 \
-              EXCLUDED_ARCHS="x86_64 i386" \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGN_IDENTITY=- \
-              > build.log 2>&1
-            local exit_code=$?
-            set -e
-            
-            if [ $exit_code -ne 0 ]; then
-              if grep -q "error:" build.log; then
-                # If there is an error that is NOT a missing Nix dependency, fail!
-                if grep -v "libwawona" build.log \
-                  | grep -v "linker command failed" \
-                  | grep -v "clang: error: no such file or directory" \
-                  | grep -v "requires a development team" \
-                  | grep -q "error:"; then
-                  echo "::error::Swift/ObjC Syntax error detected in $scheme!"
-                  cat build.log
-                  exit 1
-                fi
-              fi
-              echo "$scheme successfully passed frontend syntax check (backend linker errors safely ignored)."
-            else
-              echo "$scheme unexpectedly linked successfully without the Rust backend!"
-            fi
-            echo "::endgroup::"
-          }
-          
-          check_target "Wawona-tvOS" "generic/platform=tvOS Simulator"
-          check_target "Wawona-watchOS" "generic/platform=watchOS Simulator"
-          check_target "Wawona-visionOS" "generic/platform=visionOS Simulator"
-          check_target "Wawona-iOS" "generic/platform=iOS Simulator"
-
   # Folded from former android-parity.yml: Gradle assembleDebug + meson/shell
   # gates. Nix APK + emu e2e stay on Gate: products. Path-filtered so non-Android
   # tips skip this job.
@@ -532,8 +447,8 @@ jobs:
     name: "macOS: Android Gradle + meson gate"
     needs: android-path-filter
     if: ${{ github.event_name == 'workflow_dispatch' || needs.android-path-filter.outputs.android == 'true' }}
-    # macOS (not ubuntu) for Android cross deps; aligned to macos-26 with product jobs.
-    runs-on: macos-26
+    # macOS (not ubuntu) for Android cross deps; aligned to macos-27 with product jobs.
+    runs-on: macos-27
     steps:
       - uses: actions/checkout@v5
       - uses: DeterminateSystems/nix-installer-action@v22
@@ -558,6 +473,5 @@ jobs:
             .#weston-ios --no-link
       - name: Gradle project assembleDebug
         run: |
-          nix run .#gradlegen
-          cd Wawona-gradle-project
+          nix run .#deps -- android
           ./gradlew :Wawona:assembleDebug --no-daemon

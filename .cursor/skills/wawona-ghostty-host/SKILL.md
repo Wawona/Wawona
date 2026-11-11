@@ -38,7 +38,7 @@ WAWONA_TEST_REBUILD=1 eval "$(scripts/appium/ensure-tip-wawona-macos.sh)"
 ## Do
 
 - Query `ghostty-host.md` / rule `wawona-ghostty-host` before paint changes.
-- Keep iOS floor **13.0**. Static only on Apple-mobile.
+- Keep iOS floor **15.0**. Static only on Apple-mobile.
 - System shell vs Wawona PTY via Rust resolver. Never hardcode in hosts.
 
 ## Do not

@@ -40,8 +40,8 @@ jobs:
     name: "Android debug APK"
     # macOS (not ubuntu): Android cross deps (e.g. zsh-android) fail configure on
     # linux; runner OS version is irrelevant (Nix supplies NDK). Aligned to
-    # macos-26 with the Apple product jobs.
-    runs-on: macos-26
+    # macos-27 with the Apple product jobs.
+    runs-on: macos-27
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5

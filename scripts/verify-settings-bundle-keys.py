@@ -48,8 +48,8 @@ def main() -> int:
         if path.exists():
             errors.append(f"retired OS Settings host still present: {path.relative_to(ROOT)}")
 
-    xcodegen = ROOT / "dependencies" / "generators" / "xcodegen.nix"
-    xtext = xcodegen.read_text(encoding="utf-8")
+    project = ROOT / "Wawona.xcodeproj" / "project.xcproj"
+    xtext = project.read_text(encoding="utf-8")
     for needle in (
         "Wawona-PrefPane",
         "Settings.bundle",
@@ -58,7 +58,7 @@ def main() -> int:
         "Bundle Preference Pane",
     ):
         if needle in xtext:
-            errors.append(f"xcodegen.nix still references {needle!r}")
+            errors.append(f"Wawona.xcodeproj still references {needle!r}")
 
     for path in SCAN_FILES:
         if not path.is_file():

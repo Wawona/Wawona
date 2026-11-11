@@ -6,8 +6,8 @@ import Darwin
 /// Shared dlsym bridge for `src/domain` C trampolines.
 ///
 /// Generated UniFFI Swift (`namespace wawona`, Nix `$out/uniffi/swift`) is
-/// the preferred import when staged into `.nix-deps/uniffi` / product
-/// `macos-dependencies/uniffi` and linked. Until every Apple target compiles
+/// the preferred import when `.deps/<sdk>/uniffi` (`nix run .#deps`) is on
+/// the include path and linked. Until every Apple target compiles
 /// that module, callers use these trampolines. Do not hand-edit UniFFI output.
 public enum WawonaDomainBridge {
     public static var rustLinked: Bool {
@@ -15,7 +15,7 @@ public enum WawonaDomainBridge {
     }
 
     /// True when Nix-staged UniFFI Swift is on the include path this build.
-    /// Compile with `SWIFT_INCLUDE_PATHS` containing `.nix-deps/uniffi`.
+    /// Compile with `SWIFT_INCLUDE_PATHS` containing `.deps/<sdk>/uniffi`.
     public static var uniffiStaged: Bool {
         #if canImport(wawona)
         return true

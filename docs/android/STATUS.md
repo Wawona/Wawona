@@ -47,11 +47,10 @@ Apple uses **Liquid Glass (OS 26)**; Android uses **M3 Expressive (API 36+)** pe
 | `.#weston-android` | Weston clients (optional link) |
 | `.#weston-compositor-android` | Nested Weston compositor archive |
 | `.#iland-android` | iland userland (DRM path; optional) |
-| `.#gradlegen` | Android Studio project with Nix backend |
+| `nix run .#deps -- android` | Links `.deps/android` for the root Gradle project |
 
-After rebuilding Nix Android deps (weston, toolchain, etc.), run `nix run .#gradlegen` before building in Android Studio so native paths under `.nix-deps/` stay current.
+After rebuilding Nix Android deps (weston, toolchain, etc.), re-run `nix run .#deps -- android` before building in Android Studio.
 
-Studio fallback: `WAWONA_STUDIO_FALLBACK=1` in CMake → stub renderer/core for IDE sync only.
 
 ## Parity vs Apple (high level)
 

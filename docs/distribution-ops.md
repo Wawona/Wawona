@@ -23,8 +23,8 @@ store-bound artifacts uploaded by Fastlane.
 
 ## #24. TestFlight + Fastlane automation
 
-Fully automated. **Nix** generates the Xcode project (`xcodegen`) and supplies
-Rust/native via the Xcode prebuild phase; **Fastlane** runs `match` + `build_app`
+Fully automated. **Nix** links `.deps/<sdk>` (`nix run .#deps`) for the
+committed Xcode project, whose prebuild phase stages the Rust backend; **Fastlane** runs `match` + `build_app`
 (gym) + TestFlight upload.
 
 - [`fastlane/Fastfile`](../fastlane/Fastfile): `ios beta` builds each scheme

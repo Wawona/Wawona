@@ -154,8 +154,9 @@ nix develop .#release
 # or: MATCH_FORCE=1 ./scripts/release-env.sh fastlane regenerate_signing
 ```
 
-IPA builds use **match + gym** (not `nix build …-ipa`). Nix still runs
-`xcodegen` and the Xcode `xcode-prebuild.sh` Rust phase during archive.
+IPA builds use **match + gym** (not `nix build …-ipa`). The lane first runs
+`nix run .#deps -- <sdk>`; the archive's `xcode-prebuild.sh` phase stages the
+Nix backend from `.deps`.
 
 ## ACL (tier 0 vs helpers)
 

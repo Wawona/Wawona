@@ -2,7 +2,7 @@
 # Produces share/applications/*.desktop + share/icons/hicolor/{48x48,64x64}/apps
 # so fuzzel's XDG scan finds launchable bundled clients with icons.
 #
-# Wire into macos.nix / xcodegen.nix (install under both App/share and
+# Wired in by deps.nix and macos.nix (install under both App/share and
 # Contents/Resources/share), then set XDG_DATA_DIRS=<bundle>/share at
 # niri/fuzzel launch (WWNEnsureFuzzelXdgEnv). Prefer the share root that
 # contains applications/. See WWNWawonaShareRoot.

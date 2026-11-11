@@ -7,10 +7,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-# Shell-tool packaging was split out of android.nix into android-shell-tools.nix
-# to keep android.nix under its maintainability budget; scan both.
+# android-deps.nix stages the jniLibs Gradle packages; android-shell-tools.nix
+# builds the shell tools it copies.
 ANDROID_NIX_FILES = (
-    ROOT / "dependencies/wawona/android.nix",
+    ROOT / "dependencies/wawona/android-deps.nix",
     ROOT / "dependencies/wawona/android-shell-tools.nix",
 )
 FLAKE = ROOT / "flake.nix"
@@ -27,8 +27,8 @@ REQUIRED_ANDROID_NIX = (
     "libfastfetch_bin.so",
     "libphoon_bin.so",
     "libwaypipe_bin.so",
-    "libssh_bin.so",
-    "libssh_keygen_bin.so",
+    "ssh:ssh",
+    "ssh-keygen:ssh_keygen",
     "assets/zsh",
 )
 

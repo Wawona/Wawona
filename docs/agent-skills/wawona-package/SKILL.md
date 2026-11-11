@@ -145,7 +145,7 @@ Deb process packages live in `repo.wawona.io`.
 4. Pack with `packProcessDeb` (`lib/packProcessDeb.nix`): pname, upstream version, homepage, files. No copied `dpkg-deb` script.
 5. Termux apt unpack stays `lib/termuxSysroot.nix` (niri pango, glib, harfbuzz). Do not fold that into `ndkLibs.nix`.
 6. A new toolkit library is one `pkgs/wayland/<name>-android/default.nix` (`{ nativePkgs, androidNdk }`) plus one name in `ndkLibs.nix` `libs`. Callers use `pcPath`. They do not import the recipe.
-7. Wawona core does not gain that toolkit. No new `xcodegen.nix` link line and no store IPA archive. In-app stays compositor, Relay wasm, zsh, uutils, fastfetch. New programs are this deb card, or a wasm lane (`wawona-wasm-cli-ports`).
+7. Wawona core does not gain that toolkit. No new `deps.nix` link line and no store IPA archive. In-app stays compositor, Relay wasm, zsh, uutils, fastfetch. New programs are this deb card, or a wasm lane (`wawona-wasm-cli-ports`).
 
 `nix run .#package-doctor -- --target android|linux|macos|ios-rootless|ios-rootful|ios-roothide|wasi-p1|wasi-p2|wasix --out PATH`.
 
@@ -153,7 +153,7 @@ Deb process packages live in `repo.wawona.io`.
 
 Rust owns compositor policy, profiles, prefs, launch, and session.
 
-- **Apple.** Swift and SwiftUI in `Sources/WawonaUI`, `Sources/WawonaApple`, `Sources/WawonaWatch`, `Darwin/`. Load `wawona-apple-swift`, then `swiftui-pro` and `swiftui-expert-skill`. iOS 13 floor. No new Objective-C product class. C is the `WWNCore*` trampoline only.
+- **Apple.** Swift and SwiftUI in `Sources/WawonaUI`, `Sources/WawonaApple`, `Sources/WawonaWatch`, `Darwin/`. Load `wawona-apple-swift`, then `swiftui-pro` and `swiftui-expert-skill`. iOS 15 floor. No new Objective-C product class. C is the `WWNCore*` trampoline only.
 - **Android.** Kotlin and Compose. Load `wawona-android-compose`, then `compose-agent` and `modern-jetpack-compose`. In-app `SettingsDialog` only. JNI is a trampoline. Gradle JVM is JBR 21.
 
 Android product Gradle builds run offline from pinned Maven mirrors. When

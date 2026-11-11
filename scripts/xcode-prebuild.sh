@@ -1,503 +1,81 @@
 #!/usr/bin/env bash
-# Realize Nix Rust (and optional zsh) archives for the active Xcode target/SDK.
-# Copies into $DERIVED_FILE_DIR so OTHER_LDFLAGS paths exist before linking.
-# Static archives that carry colliding internal symbols (zsh, openssh)
-# are privatised via nmedit so only the public dispatch entry points remain
-# globally visible.  This avoids duplicate-symbol linker errors without
-# resorting to -multiply_defined,suppress (unsupported by ld-prime) or dylibs
-# (App Store non-compliant).
+# Stage what the link step reads from $DERIVED_FILE_DIR, out of the
+# .deps/<sdk> slice `nix run .#deps -- <sdk>` linked: libwawona.a, and on
+# Apple mobile zsh and fastfetch with every symbol but their entry point made
+# private. Those archives collide with each other and with OpenSSH; ld-prime
+# has no -multiply_defined suppress and a dylib is not App Store compliant.
 set -euo pipefail
 
-# CalVer must be today's date (YY.M.D). Fail closed unless
-# WAWONA_ALLOW_STALE_CALVER=1. See docs/agent-rules/wawona-calver-today.md.
-if [[ -n "${SRCROOT:-}" && -x "${SRCROOT}/.github/scripts/verify-calver-today.sh" ]]; then
-  bash "${SRCROOT}/.github/scripts/verify-calver-today.sh"
-elif [[ -x "$(cd "$(dirname "$0")/.." && pwd)/.github/scripts/verify-calver-today.sh" ]]; then
-  bash "$(cd "$(dirname "$0")/.." && pwd)/.github/scripts/verify-calver-today.sh"
+bash "$SRCROOT/.github/scripts/verify-calver-today.sh"
+
+derived=${DERIVED_FILE_DIR:?run this as an Xcode build phase}
+slice=$PLATFORM_NAME
+if [ "$TARGET_NAME" = Wawona-iOS-ModeB ] && [ "$slice" = iphoneos ]; then
+  slice=iphoneos-modeb
 fi
-
-# xcodebuild script phases reset HOME to the build user's pw_dir (/var/empty for
-# nixbld). Nested `nix` then dies creating /var/empty/.cache. Relocate early.
-if [ -z "${HOME:-}" ] || [ "$HOME" = "/var/empty" ] || [ ! -w "$HOME" ]; then
-  HOME="${NIX_BUILD_TOP:-${TMPDIR:-/tmp}}/wawona-xcode-home"
-  export HOME
-  mkdir -p "$HOME"
-fi
-export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
-export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
-mkdir -p "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME"
-
-# Relocating HOME hides ~/.config/nix/nix.conf. Nested `nix build` then
-# fails with "experimental Nix feature 'nix-command' is disabled" unless
-# flakes live in /etc/nix/nix.conf. Keep nix-command + flakes on for this
-# process; extra-experimental-features is additive if they are already on.
-_wwn_nix_features="nix-command flakes"
-export NIX_CONFIG="${NIX_CONFIG:+${NIX_CONFIG}
-}experimental-features = ${_wwn_nix_features}"
-
-derived="${DERIVED_FILE_DIR:?DERIVED_FILE_DIR is unset. Is this script running as an Xcode build phase?}"
-mkdir -p "$derived"
-
-# Local getprogname/setprogname for Apple mobile. Force-loaded before weston /
-# fontconfig so App Store Connect never sees libSystem's private ___progname.
-case "${PLATFORM_NAME:-}" in
-  iphoneos|iphonesimulator|appletvos|appletvsimulator|xros|xrsimulator)
-    _stub_src="${SRCROOT:?}/src/platform/ios/WWNGetprognameStub.c"
-    _stub_a="$derived/libwawona-getprogname.a"
-    _stub_o="$derived/wawona-getprogname.o"
-    _sdkroot="${SDKROOT:-$(xcrun --sdk "${PLATFORM_NAME}" --show-sdk-path)}"
-    _arch="${ARCHS%% *}"
-    _arch="${_arch:-arm64}"
-    # No -m*-version-min: visionOS clang rejects -mxros-version-min, and this
-    # stub has no SDK API surface that needs a deployment floor.
-    xcrun --sdk "${PLATFORM_NAME}" clang -c "$_stub_src" \
-      -isysroot "$_sdkroot" -arch "$_arch" \
-      -fPIC -O2 -o "$_stub_o"
-    xcrun --sdk "${PLATFORM_NAME}" libtool -static -o "$_stub_a" "$_stub_o"
-    echo "Built $_stub_a (getprogname stub for App Store)"
-    ;;
-esac
-
-wwn_find_nix() {
-  if [ -n "${WAWONA_NIX:-}" ] && [ -x "${WAWONA_NIX}" ]; then
-    echo "${WAWONA_NIX}"
-    return 0
-  fi
-  if command -v nix >/dev/null 2>&1; then
-    command -v nix
-    return 0
-  fi
-  local candidate profile
-  for candidate in \
-    "${HOME}/.nix-profile/bin/nix" \
-    "/nix/var/nix/profiles/default/bin/nix" \
-    "/run/current-system/sw/bin/nix" \
-    "/usr/local/bin/nix"; do
-    if [ -x "$candidate" ]; then
-      echo "$candidate"
-      return 0
-    fi
-  done
-  for profile in \
-    "${HOME}/.nix-profile/etc/profile.d/nix.sh" \
-    "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" \
-    "/etc/profile.d/nix.sh"; do
-    if [ -f "$profile" ]; then
-      # shellcheck disable=SC1090
-      . "$profile"
-      if command -v nix >/dev/null 2>&1; then
-        command -v nix
-        return 0
-      fi
-    fi
-  done
-  return 1
-}
-
-NIX="$(wwn_find_nix || true)"
-if [ -z "$NIX" ]; then
-  echo "error: nix not found. Run 'nix run .#xcodegen-ios' from the repo, then open Wawona.xcodeproj and build again." >&2
-  echo "       Or launch Xcode from a shell where 'nix' works (e.g. 'nix develop')." >&2
+deps="$SRCROOT/.deps/$slice"
+if [ ! -d "$deps" ]; then
+  echo "error: $deps is missing. Run: nix run .#deps -- $slice" >&2
   exit 1
 fi
+mkdir -p "$derived"
+# scripts/build-backend.sh stages a working-tree backend in .build/backend.
+backend="$SRCROOT/.build/backend/$slice"
+[ -f "$backend/lib/libwawona.a" ] || backend="$deps/backend"
+# Copy, never link: the store path can be collected before the link step.
+cp -f "$backend/lib/libwawona.a" "$derived/libwawona.a"
 
-if [ "${WAWONA_SKIP_NIX_PREBUILD:-0}" = "1" ]; then
-  echo "WAWONA_SKIP_NIX_PREBUILD=1; skipping Nix prebuild"
+if [ "$slice" = macosx ]; then
+  # TerminalMetalPresent paints unless WAWONA_LINK_LIBGHOSTTY=1 and
+  # `nix run .#deps -- libghostty-macos` staged Zig GhosttyLib. Bridge.c reads
+  # the define from a header because a DERIVED_FILE_DIR xcconfig is read too
+  # late; the link flags go under .build/, which wwn-version.xcconfig includes.
+  lg="$SRCROOT/.deps/libghostty-macos"
+  mkdir -p "$SRCROOT/.build"
+  if [ "${WAWONA_LINK_LIBGHOSTTY:-0}" = 1 ] && [ -f "$lg/lib/libghostty-internal.a" ]; then
+    cp -f "$lg/include/ghostty.h" "$derived/ghostty.h"
+    printf '#define WAWONA_HAS_LIBGHOSTTY 1\n#define GHOSTTY_STATIC 1\n' >"$derived/wwn_ghostty_host_config.h"
+    {
+      echo "HEADER_SEARCH_PATHS = \$(inherited) $lg/include"
+      echo "OTHER_LDFLAGS = \$(inherited) -force_load $lg/lib/libghostty-internal.a -lc++ -lz -lbz2 -framework Metal -framework MetalKit -framework QuartzCore -framework CoreText -framework CoreGraphics -framework CoreVideo -framework CoreImage -framework IOKit -framework Security -framework UniformTypeIdentifiers -framework Carbon -framework GameController -framework IOSurface -framework SystemConfiguration -framework Network"
+    } | tee "$derived/wwn-libghostty-link.xcconfig" >"$SRCROOT/.build/wwn-libghostty-link.xcconfig"
+  else
+    : >"$derived/wwn_ghostty_host_config.h"
+    : | tee "$derived/wwn-libghostty-link.xcconfig" >"$SRCROOT/.build/wwn-libghostty-link.xcconfig"
+  fi
   exit 0
 fi
 
-FLAKE_REF="."
-if [ -f "${SRCROOT:-.}/crates/Wawona/flake.nix" ]; then
-  FLAKE_REF="${SRCROOT}/crates/Wawona"
-elif [ -f "${SRCROOT:-.}/flake.nix" ]; then
-  FLAKE_REF="${SRCROOT:-.}"
-fi
-
-_sdk="${PLATFORM_NAME:-}"
-if [ -z "$_sdk" ] && [ -n "${SDKROOT:-}" ]; then
-  _sdk="$(basename "$SDKROOT" .sdk)"
-fi
-
-_is_sim=0
-case "$_sdk" in
-  *simulator*) _is_sim=1 ;;
-esac
-
-_with_zsh=0
-case "${TARGET_NAME:-}" in
-  Wawona-iOS|Wawona-iOS-ModeB)
-    BACKENDS=(wawona-ios-backend wawona-ios-sim-backend)
-    _with_zsh=1
-    ;;
-  Wawona-iPadOS)
-    BACKENDS=(wawona-ipados-backend wawona-ipados-sim-backend)
-    _with_zsh=1
-    ;;
-  Wawona-macOS)
-    BACKENDS=(wawona-macos-backend)
-    ;;
-  Wawona-tvOS)
-    BACKENDS=(wawona-tvos-backend wawona-tvos-sim-backend)
-    _with_zsh=1
-    ;;
-  Wawona-visionOS)
-    BACKENDS=(wawona-visionos-backend wawona-visionos-sim-backend)
-    _with_zsh=1
-    ;;
-  Wawona-watchOS)
-    BACKENDS=(wawona-watchos-backend wawona-watchos-sim-backend)
-    _with_zsh=1
-    ;;
-  *)
-    echo "Unknown TARGET_NAME=${TARGET_NAME:-}; skipping Nix prebuild"
-    exit 0
+# App Store Connect rejects libSystem's private ___progname, which weston and
+# fontconfig reach; device builds force-load this replacement first.
+case $PLATFORM_NAME in
+  iphoneos | appletvos | xros)
+    # No -m*-version-min: visionOS clang rejects it, and the stub uses no SDK API.
+    xcrun --sdk "$PLATFORM_NAME" clang -c "$SRCROOT/src/platform/ios/WWNGetprognameStub.c" \
+      -isysroot "$SDKROOT" -arch "${ARCHS%% *}" -fPIC -O2 -o "$derived/wawona-getprogname.o"
+    xcrun --sdk "$PLATFORM_NAME" libtool -static -o "$derived/libwawona-getprogname.a" "$derived/wawona-getprogname.o"
     ;;
 esac
 
-if [ "$_is_sim" = "1" ] && [ "${#BACKENDS[@]}" -ge 2 ]; then
-  _active_backend="${BACKENDS[1]}"
-else
-  _active_backend="${BACKENDS[0]}"
-fi
-
-_nix_flags=(
-  --impure
-  --extra-experimental-features "${_wwn_nix_features}"
-)
-if [ -n "${WAWONA_NIX_FLAGS:-}" ]; then
-  # shellcheck disable=SC2206
-  _nix_flags+=(${WAWONA_NIX_FLAGS})
-fi
-
-# Optional: reuse a previously realized backend (Nix product builds pass the
-# store path so xcodebuild does not nested-compile crate2nix / rustc).
-# Per-target: WAWONA_BACKEND_OUT_Wawona_iOS, …_Wawona_watchOS, …
-# Fallback:   WAWONA_BACKEND_OUT
-_backend_env=""
-case "${TARGET_NAME:-}" in
-  Wawona-iOS|Wawona-iOS-ModeB) _backend_env="${WAWONA_BACKEND_OUT_Wawona_iOS:-}" ;;
-  Wawona-iPadOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_iPadOS:-}" ;;
-  Wawona-macOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_macOS:-}" ;;
-  Wawona-tvOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_tvOS:-}" ;;
-  Wawona-visionOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_visionOS:-}" ;;
-  Wawona-watchOS) _backend_env="${WAWONA_BACKEND_OUT_Wawona_watchOS:-}" ;;
+# The merged object carries the app's floor: an SDK-default one makes clang
+# emit _objc_release_xN, which dyld before iOS 16 cannot bind.
+case $PLATFORM_NAME in
+  iphone*) platform=ios min=$IPHONEOS_DEPLOYMENT_TARGET ;;
+  appletv*) platform=tvos min=$TVOS_DEPLOYMENT_TARGET ;;
+  watch*) platform=watchos min=$WATCHOS_DEPLOYMENT_TARGET ;;
+  xr*) platform=xros min=$XROS_DEPLOYMENT_TARGET ;;
 esac
-if [ -z "$_backend_env" ]; then
-  _backend_env="${WAWONA_BACKEND_OUT:-}"
-fi
+case $PLATFORM_NAME in *simulator) platform=$platform-simulator ;; esac
 
-active_out=""
-if [ -n "$_backend_env" ] && [ -f "$_backend_env/lib/libwawona.a" ]; then
-  active_out="$_backend_env"
-  echo "Using realized backend $active_out (skipping nix build #$_active_backend)"
-else
-  echo "Realizing Nix backend(s) for ${TARGET_NAME} (sdk=${_sdk:-unknown}, active=${_active_backend}, nix=$NIX)"
-
-  # By default, build only the active backend matching the current SDK.
-  # Set WAWONA_WARM_BOTH_BACKENDS=1 for release builds that need both.
-  build_args=()
-  if [ "${WAWONA_WARM_BOTH_BACKENDS:-0}" = "1" ]; then
-    for backend in "${BACKENDS[@]}"; do
-      build_args+=("$FLAKE_REF#$backend")
-    done
-  else
-    build_args+=("$FLAKE_REF#$_active_backend")
-  fi
-  "$NIX" build --no-link "${_nix_flags[@]}" "${build_args[@]}"
-
-  active_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_active_backend")"
-fi
-# Copy (don't symlink): auto-GC can delete the store path between this script
-# exiting and the final link step, leaving a dangling symlink that fails clang.
-rm -f "$derived/libwawona.a"
-cp -f "$active_out/lib/libwawona.a" "$derived/libwawona.a"
-echo "Copied $derived/libwawona.a <- $active_out/lib/libwawona.a"
-
-# Tip path: prefer in-tree `nix-ghostty-vt` (engine.rs in libwawona). Overlay
-# libwawona_terminal.a only as fallback when the backend still ships the stub
-# ABI, or when WAWONA_TERMINAL_OVERLAY=1 forces it.
-case "${TARGET_NAME:-}" in
-  Wawona-macOS)
-    _has_real_vt=0
-    # Grep the archive directly. `strings | grep -q` under `set -o pipefail`
-    # returns 141 (SIGPIPE) when grep exits early, so the if always fails.
-    if grep -Eqa 'wawona-ghostty-vt|libghostty_vt::' "$derived/libwawona.a" 2>/dev/null; then
-      _has_real_vt=1
-    fi
-    if [ "${WAWONA_TERMINAL_OVERLAY:-0}" = "1" ]; then
-      _has_real_vt=0
-    fi
-    if [ "$_has_real_vt" = "1" ]; then
-      rm -f "$derived/libwawona_terminal.a" "$derived/wwn-terminal-force-load.xcconfig"
-      echo "libwawona.a already has nix-ghostty-vt; skipping Terminal overlay"
-    else
-      _term_a="${WAWONA_TERMINAL_LIB:-}"
-      if [ -z "$_term_a" ] || [ ! -f "$_term_a" ]; then
-        for _cand in /nix/store/*/lib/libwawona_terminal.a; do
-          if [ -f "$_cand" ] && grep -Eqa 'VtEngine|libghostty_vt' "$_cand" 2>/dev/null; then
-            _term_a="$_cand"
-            break
-          fi
-        done
-      fi
-      _overlay_sh="${SRCROOT:-}/scripts/overlay-libghostty-term.sh"
-      if [ ! -x "$_overlay_sh" ] && [ ! -f "$_overlay_sh" ]; then
-        _overlay_sh="$(cd "$(dirname "$0")" && pwd)/overlay-libghostty-term.sh"
-      fi
-      if [ -n "$_term_a" ] && [ -f "$_term_a" ] && [ -f "$_overlay_sh" ]; then
-        echo "Overlaying libghostty Terminal from $_term_a (fallback; prefer nix-ghostty-vt)"
-        bash "$_overlay_sh" "$derived/libwawona.a" "$_term_a" \
-          || echo "warning: libghostty term overlay failed; tip may keep VT stub" >&2
-        rm -f "$derived/libwawona_terminal.a" "$derived/wwn-terminal-force-load.xcconfig"
-      else
-        rm -f "$derived/wwn-terminal-force-load.xcconfig"
-        echo "warning: no in-tree nix-ghostty-vt and no libwawona_terminal.a overlay" >&2
-      fi
-    fi
-    ;;
-esac
-
-# Zig GhosttyLib tip link (Phase 5). Rust VT is wwn_term_* only, so
-# ghostty_surface_* from libghostty-internal.a no longer collide.
-# Prefer GhosttySurfaceHost when archive is staged (or WAWONA_LINK_LIBGHOSTTY=1).
-# Explicit WAWONA_LINK_LIBGHOSTTY=0 keeps GhosttyGpu. Stage:
-#   scripts/stage-libghostty-macos.sh (or set WAWONA_LIBGHOSTTY_A).
-# ensure-tip defaults the flag to 1 and stages when missing.
-#
-# Compile-time flag cannot rely on GCC_PREPROCESSOR_DEFINITIONS from a
-# late-written xcconfig. Bridge.c includes wwn_ghostty_host_config.h from
-# DERIVED_FILE_DIR. OTHER_LDFLAGS must live under SRCROOT/.build/ (included
-# from wwn-version.xcconfig); DERIVED_FILE_DIR #include? is too late for Link.
-case "${TARGET_NAME:-}" in
-  Wawona-macOS)
-    _lg_derived_xc="$derived/wwn-libghostty-link.xcconfig"
-    _lg_cfg_h="$derived/wwn_ghostty_host_config.h"
-    _lg_build_dir="${SRCROOT:-}/.build"
-    mkdir -p "$_lg_build_dir"
-    _lg_build_xc="$_lg_build_dir/wwn-libghostty-link.xcconfig"
-    _lg_a="${WAWONA_LIBGHOSTTY_A:-}"
-    _lg_inc="${SRCROOT:-}/.nix-deps/libghostty-macos/include"
-    if [ -z "$_lg_a" ] || [ ! -f "$_lg_a" ]; then
-      if [ -f "${SRCROOT:-}/.nix-deps/libghostty-macos/lib/libghostty-internal.a" ]; then
-        _lg_a="${SRCROOT}/.nix-deps/libghostty-macos/lib/libghostty-internal.a"
-      fi
-    fi
-    # Unset → auto-on when archive staged. Explicit 0/1 honored.
-    _lg_flag="${WAWONA_LINK_LIBGHOSTTY-}"
-    if [ -z "$_lg_flag" ]; then
-      if [ -n "$_lg_a" ] && [ -f "$_lg_a" ]; then
-        _lg_flag=1
-      else
-        _lg_flag=0
-      fi
-    fi
-    # Always write stubs (xcodegen outputFiles + clear stale force_load).
-    echo "// Zig GhosttyLib tip link off (GhosttyGpu fallback)." >"$_lg_derived_xc"
-    echo "// Zig GhosttyLib tip link off (GhosttyGpu fallback)." >"$_lg_build_xc"
-    echo "/* Zig GhosttyLib off. GhosttyGpu paints. */" >"$_lg_cfg_h"
-    if [ "$_lg_flag" = "1" ]; then
-      if [ -n "$_lg_a" ] && [ -f "$_lg_a" ]; then
-        cp -f "$_lg_a" "$derived/libghostty-internal.a"
-        if [ -f "$_lg_inc/ghostty.h" ]; then
-          cp -f "$_lg_inc/ghostty.h" "$derived/ghostty.h"
-        fi
-        {
-          echo "/* Generated by xcode-prebuild.sh when libghostty staged / WAWONA_LINK_LIBGHOSTTY=1. */"
-          echo "#ifndef WWN_GHOSTTY_HOST_CONFIG_H"
-          echo "#define WWN_GHOSTTY_HOST_CONFIG_H"
-          echo "#define WAWONA_HAS_LIBGHOSTTY 1"
-          echo "#ifndef GHOSTTY_STATIC"
-          echo "#define GHOSTTY_STATIC 1"
-          echo "#endif"
-          echo "#endif"
-        } >"$_lg_cfg_h"
-        # Absolute archive path: settings resolve before DerivedSources copy.
-        {
-          echo "// Zig GhosttyLib (staged or WAWONA_LINK_LIBGHOSTTY=1). GhosttySurfaceHost → ghostty_surface_draw."
-          echo "HEADER_SEARCH_PATHS = \$(inherited) ${_lg_inc} \$(DERIVED_FILE_DIR)"
-          echo "OTHER_CFLAGS = \$(inherited) -I${_lg_inc} -I\$(DERIVED_FILE_DIR)"
-          echo "OTHER_LDFLAGS = \$(inherited) -force_load ${_lg_a} -lc++ -lz -lbz2 -framework Metal -framework MetalKit -framework QuartzCore -framework CoreText -framework CoreGraphics -framework CoreVideo -framework CoreImage -framework IOKit -framework Security -framework UniformTypeIdentifiers -framework Carbon -framework GameController -framework IOSurface -framework SystemConfiguration -framework Network"
-        } | tee "$_lg_derived_xc" >"$_lg_build_xc"
-        echo "Linking Zig libghostty-internal.a from $_lg_a (GhosttySurfaceHost → ghostty_surface_draw)"
-      else
-        echo "warning: Zig GhosttyLib requested but libghostty-internal.a missing; run stage-libghostty-macos.sh (GhosttyGpu fallback)" >&2
-      fi
-    fi
-    ;;
-esac
-
-# Product keep-set no longer force-loads libniri.a. Keep Rust std in
-# libwawona.a so -lwawona / coreutils resolve without a second compositor archive.
-
-# Realize link-only native deps that the app links by absolute /nix/store path
-# (OTHER_LDFLAGS), but that are NOT in the Rust backend's build closure. These
-# impure (__noChroot) derivations are not in the binary cache, so unless they
-# are built here the linker fails with "Library not found" (e.g. kmscube-macos).
-LINK_DEPS=()
-case "${TARGET_NAME:-}" in
-  Wawona-macOS)
-    # Cubes / weston / niri are optional-software, not product link deps.
-    LINK_DEPS=()
-    ;;
-esac
-# Only iterate when non-empty. An empty "${LINK_DEPS[@]:-}" expands to a
-# single blank word and `nix build .#` builds the flake default (macOS).
-if [ "${#LINK_DEPS[@]}" -gt 0 ]; then
-  for _dep in "${LINK_DEPS[@]}"; do
-    [ -n "$_dep" ] || continue
-    echo "Realizing link-only dep: $_dep"
-    "$NIX" build --no-link "${_nix_flags[@]}" "$FLAKE_REF#$_dep"
-  done
-fi
-
-# ---------------------------------------------------------------------------
-# privatize_lib. Merge a static archive into a single relocatable .o, strip
-# all global symbols except the listed exports, and repackage as .a.
-# This prevents duplicate-symbol collisions when linking multiple UNIX
-# toolchains (zsh, openssh) into a single iOS binary.
-#
-# Usage: privatize_lib <src.a> <dst.a> <arch> <platform> <min_ver> <export_sym> [<export_sym> ...]
-# ---------------------------------------------------------------------------
-privatize_lib() {
-  local src="$1" dst="$2" arch="$3" platform="$4" min_ver="$5"
-  shift 5
-
-  local tmp_dir
-  tmp_dir="$(mktemp -d)"
-  local merged_o="$tmp_dir/merged.o"
-  local exports="$tmp_dir/exports.txt"
-
-  for sym in "$@"; do
-    echo "$sym" >> "$exports"
-  done
-
-  # Merge every .o in the archive into a single relocatable
-  ld -r -arch "$arch" -platform_version "$platform" "$min_ver" "$min_ver" \
-    -all_load "$src" -o "$merged_o" 2>/dev/null || \
-  ld -r -arch "$arch" -platform_version "$platform" "$min_ver" "$min_ver" \
-    -all_load "$src" -o "$merged_o"
-
-  # Make everything private except the public API
-  nmedit -s "$exports" "$merged_o"
-
-  # Repackage
-  libtool -static "$merged_o" -o "$dst"
-
-  rm -rf "$tmp_dir"
-  echo "Privatized $(basename "$src") -> $(basename "$dst") (exports: $*)"
+# privatize <src.a> <dst.a> <exported symbol>
+privatize() {
+  local tmp
+  tmp=$(mktemp -d)
+  ld -r -arch arm64 -platform_version "$platform" "$min" "$min" -all_load "$1" -o "$tmp/merged.o"
+  echo "$3" >"$tmp/exports"
+  nmedit -s "$tmp/exports" "$tmp/merged.o"
+  libtool -static "$tmp/merged.o" -o "$2"
+  rm -rf "$tmp"
 }
-
-# ---------------------------------------------------------------------------
-# Determine arch and platform for ld -r / nmedit
-# ---------------------------------------------------------------------------
-_arch="arm64"
-_ld_platform="ios"
-# iOS/iPadOS product floor. Tipa xcodebuild may export 14.0. Never 17.0.
-# SDK-default Objective-C emits _objc_release_xN (iOS 16+). dyld aborts on
-# iOS 13-15. Stamping the merged object at 17.0 also lies about the floor.
-_min_ver="${IPHONEOS_DEPLOYMENT_TARGET:-13.0}"
-case "$_sdk" in
-  iphonesimulator*)
-    _ld_platform="ios-simulator"
-    ;;
-  iphoneos*)
-    _ld_platform="ios"
-    ;;
-  appletvsimulator*)
-    _ld_platform="tvos-simulator"
-    _min_ver="${TVOS_DEPLOYMENT_TARGET:-17.0}"
-    ;;
-  appletvos*)
-    _ld_platform="tvos"
-    _min_ver="${TVOS_DEPLOYMENT_TARGET:-17.0}"
-    ;;
-  watchsimulator*)
-    _ld_platform="watchos-simulator"
-    _min_ver="${WATCHOS_DEPLOYMENT_TARGET:-10.0}"
-    ;;
-  watchos*)
-    _ld_platform="watchos"
-    _min_ver="${WATCHOS_DEPLOYMENT_TARGET:-10.0}"
-    ;;
-  xrsimulator*)
-    _ld_platform="xros-simulator"
-    _min_ver="${XROS_DEPLOYMENT_TARGET:-26.0}"
-    ;;
-  xros*)
-    _ld_platform="xros"
-    _min_ver="${XROS_DEPLOYMENT_TARGET:-26.0}"
-    ;;
-  *)
-    _ld_platform="ios"
-    ;;
-esac
-
-if [ "$_with_zsh" = "1" ]; then
-  # Must match the app SDK platform. IOS zsh cannot link into tvOS/watchOS/visionOS.
-  _zsh_attr="zsh-ios"
-  case "${TARGET_NAME:-}" in
-    Wawona-tvOS) _zsh_attr="zsh-tvos" ;;
-    Wawona-watchOS) _zsh_attr="zsh-watchos" ;;
-    Wawona-visionOS) _zsh_attr="zsh-visionos" ;;
-    *) _zsh_attr="zsh-ios" ;;
-  esac
-  case "$_sdk" in
-    *simulator*) _zsh_attr="${_zsh_attr}-sim" ;;
-  esac
-  # Per-target inject (iOS product builds also compile the watch companion).
-  _zsh_env_key="WAWONA_ZSH_LIB_$(echo "${TARGET_NAME:-}" | tr '-' '_')"
-  _zsh_lib="${!_zsh_env_key:-${WAWONA_ZSH_LIB:-}}"
-  if [ -n "$_zsh_lib" ] && [ -f "$_zsh_lib" ]; then
-    # Always platform-stamp. Bare cp leaves a wrong LC_BUILD_VERSION (e.g. macOS
-    # .o into visionOS-sim) and fails at Ld.
-    privatize_lib "$_zsh_lib" "$derived/libwawona-zsh.a" \
-      "$_arch" "$_ld_platform" "$_min_ver" \
-      _wawona_zsh_main
-    echo "Using injected zsh lib $_zsh_lib (platform-stamped for $_ld_platform)"
-  elif [ -n "${NIX_BUILD_TOP:-}" ]; then
-    echo "ERROR: NIX_BUILD_TOP set but no WAWONA_ZSH_LIB for ${TARGET_NAME:-}; inject via inject-xcode-backend-env.nix" >&2
-    exit 1
-  else
-    zsh_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_zsh_attr")"
-    privatize_lib "$zsh_out/lib/libwawona-zsh.a" "$derived/libwawona-zsh.a" \
-      "$_arch" "$_ld_platform" "$_min_ver" \
-      _wawona_zsh_main
-    echo "Privatized $derived/libwawona-zsh.a (from $zsh_out)"
-  fi
-
-  # fastfetch: in-process system-info tool (no fork/exec, no GPU dep) shipped on
-  # the WHOLE Apple family (#139). Per-target SDK-matched archives, same as zsh.
-  _ff_dev="fastfetch-ios-device"
-  _ff_sim="fastfetch-ios"
-  case "${TARGET_NAME:-}" in
-    Wawona-tvOS)     _ff_dev="fastfetch-tvos";     _ff_sim="fastfetch-tvos-sim" ;;
-    Wawona-watchOS)  _ff_dev="fastfetch-watchos";  _ff_sim="fastfetch-watchos-sim" ;;
-    Wawona-visionOS) _ff_dev="fastfetch-visionos"; _ff_sim="fastfetch-visionos-sim" ;;
-  esac
-  _ff_attr="$_ff_dev"
-  case "$_sdk" in
-    *simulator*) _ff_attr="$_ff_sim" ;;
-  esac
-  _ff_env_key="WAWONA_FF_LIB_$(echo "${TARGET_NAME:-}" | tr '-' '_')"
-  _ff_lib="${!_ff_env_key:-${WAWONA_FF_LIB:-}}"
-  if [ -n "$_ff_lib" ] && [ -f "$_ff_lib" ]; then
-    privatize_lib "$_ff_lib" "$derived/libfastfetch.a" \
-      "$_arch" "$_ld_platform" "$_min_ver" \
-      _fastfetch_main
-    echo "Using injected fastfetch lib $_ff_lib (platform-stamped for $_ld_platform)"
-  elif [ -n "${NIX_BUILD_TOP:-}" ]; then
-    echo "ERROR: NIX_BUILD_TOP set but no WAWONA_FF_LIB for ${TARGET_NAME:-}; inject via inject-xcode-backend-env.nix" >&2
-    exit 1
-  else
-    ff_out="$("$NIX" build --no-link --print-out-paths "${_nix_flags[@]}" "$FLAKE_REF#$_ff_attr")"
-    privatize_lib "$ff_out/lib/libfastfetch.a" "$derived/libfastfetch.a" \
-      "$_arch" "$_ld_platform" "$_min_ver" \
-      _fastfetch_main
-    echo "Privatized $derived/libfastfetch.a (from $ff_out)"
-  fi
-
-  # Apple mobile SSH CLI is libwwn-ssh-cli.a from wwn-ssh (force_loaded via
-  # xcodegen store path). Never libssh-inprocess.a / OpenSSH on App Store targets.
-
-  # foot / fuzzel / phoon: optional-software (not product-linked).
-fi
+privatize "$deps/zsh/lib/libwawona-zsh.a" "$derived/libwawona-zsh.a" _wawona_zsh_main
+privatize "$deps/fastfetch/lib/libfastfetch.a" "$derived/libfastfetch.a" _fastfetch_main

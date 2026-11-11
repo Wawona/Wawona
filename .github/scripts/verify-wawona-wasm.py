@@ -17,9 +17,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FLAKE = ROOT / "flake.nix"
 FLAKE_LOCK = ROOT / "flake.lock"
-XCODEGEN = ROOT / "dependencies/generators/xcodegen.nix"
+DEPS = ROOT / "dependencies/wawona/deps.nix"
 MOBILE_DEPS = ROOT / "dependencies/wawona/mobile-platform-deps.nix"
-IOS_ROOTFS = ROOT / "dependencies/wawona/ios-rootfs.nix"
 DAG = ROOT / "docs/wwn-repo-dag.md"
 WASM_DOC = ROOT / "docs/wasm-wasi.md"
 
@@ -54,32 +53,20 @@ def main() -> None:
         if locked.get("type") not in ("github", "tarball", "indirect"):
             errors.append(f"wwn-relay lock type unexpected: {locked.get('type')}")
 
-    xg = read(XCODEGEN)
-    for needle in ("wasmLdflags", "-lwawona_wasm", "_wawona_wasm_run"):
-        if needle not in xg:
-            errors.append(f"xcodegen.nix missing {needle}")
-    watch_linked = (
-        ("wasmLdflags watchosDeps" in xg or "productKeepLdflags watchosDeps" in xg)
-        and (
-            "wasmLdflags watchosSimDeps" in xg
-            or "productKeepLdflags watchosSimDeps" in xg
-        )
-    )
-    if not watch_linked:
-        errors.append(
-            "watchOS must link wawona-wasm (productKeepLdflags / wasmLdflags watchos*)"
-        )
+    deps = read(DEPS)
+    for needle in ("-lwawona_wasm", '"wawona_wasm_run"'):
+        if needle not in deps:
+            errors.append(f"deps.nix missing {needle}")
+    # Every Apple-mobile slice, watchOS included, links wasm; only Relay is
+    # skipped on the watch.
+    if "++ wasm d ++ lib.optionals (!watch) (relay d)" not in deps:
+        errors.append("deps.nix must link wawona-wasm on every mobile slice, watchOS included")
 
     mobile = read(MOBILE_DEPS)
     if 'buildFn "wawona-wasm"' not in mobile and '"wawona-wasm" = buildFn' not in mobile:
         errors.append('mobile-platform-deps.nix must build "wawona-wasm" on mobile/tv/watch/vision')
     if 'variant == "watch"' not in mobile or "wawona-wasm" not in mobile:
         errors.append("mobile-platform-deps.nix must include watch in the wawona-wasm optionalAttrs")
-
-    rootfs = read(IOS_ROOTFS)
-    for needle in ("help wawona wasm", "help()", "wawona-dispatch"):
-        if needle not in rootfs:
-            errors.append(f"ios-rootfs.nix missing catalog/stub marker: {needle}")
 
     dag = read(DAG)
     if "wwn-relay" not in dag:

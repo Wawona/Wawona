@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 CHECKS: list[tuple[Path, list[str], list[str]]] = [
     (
-        ROOT / "dependencies/generators/xcodegen.nix",
+        ROOT / "dependencies/wawona/deps.nix",
         ["libwwn-ssh-cli.a", "ssh-cli"],
         ["libssh-inprocess.a"],
     ),

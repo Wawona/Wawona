@@ -22,9 +22,8 @@ ROOT = Path(__file__).resolve().parents[2]
 FLAKE = ROOT / "flake.nix"
 FLAKE_LOCK = ROOT / "flake.lock"
 CARGO_TOML = ROOT / "Cargo.toml"
-XCODEGEN = ROOT / "dependencies/generators/xcodegen.nix"
+DEPS = ROOT / "dependencies/wawona/deps.nix"
 PREBUILD = ROOT / "scripts/xcode-prebuild.sh"
-IOS_ROOTFS = ROOT / "dependencies/wawona/ios-rootfs.nix"
 MOBILE_DEPS = ROOT / "dependencies/wawona/mobile-platform-deps.nix"
 
 # In-app fastfetch lives under repo.wawona.io (not a wwn-fastfetch flake input).
@@ -58,19 +57,6 @@ FORBIDDEN_FLAKE_OUTPUTS = (
     "openssh-ios-sim",
 )
 
-REQUIRED_INPROC_CLIENTS = {
-    "fastfetch",
-    "phoon",
-    "waypipe",
-    "waypipe-rs",
-    "ssh",
-    "ssh-keygen",
-    "scp",
-    "sh",
-    "zsh",
-    "bash",
-    "dash",
-}
 
 
 def read(path: Path) -> str:
@@ -94,22 +80,13 @@ def verify_flake_outputs(text: str) -> list[str]:
     return errors
 
 
-def verify_xcodegen(text: str) -> list[str]:
+def verify_deps(text: str) -> list[str]:
     errors = []
-    for needle in (
-        "libwawona-zsh.a",
-        "libfastfetch.a",
-        "libphoon_rs.a",
-        "fastfetchLdflags",
-        "phoonLdflags",
-        "sshCliLdflags",
-        "libwwn-ssh-cli.a",
-    ):
+    for needle in ("libwawona-zsh.a", "libfastfetch.a", "libwwn-ssh-cli.a"):
         if needle not in text:
-            errors.append(f"xcodegen.nix missing shell-tool wiring: {needle}")
-    for bad in ("libssh-inprocess.a", "opensshInprocessLdflags"):
-        if bad in text:
-            errors.append(f"xcodegen.nix must not reference forbidden {bad}")
+            errors.append(f"deps.nix missing shell-tool wiring: {needle}")
+    if "libssh-inprocess.a" in text:
+        errors.append("deps.nix must not reference forbidden libssh-inprocess.a")
     return errors
 
 
@@ -134,7 +111,6 @@ def verify_prebuild(text: str) -> list[str]:
     for needle in (
         "libwawona-zsh.a",
         "libfastfetch.a",
-            "fastfetch-ios",
     ):
         if needle not in text:
             errors.append(f"xcode-prebuild.sh missing: {needle}")
@@ -186,38 +162,6 @@ def verify_fastfetch_lock() -> list[str]:
     return errors
 
 
-def verify_inproc_clients(rootfs_text: str) -> list[str]:
-    errors = []
-    m = re.search(r"WAWONA_INPROC_CLIENTS=\((.*?)\)", rootfs_text, re.DOTALL)
-    if not m:
-        return ["ios-rootfs.nix: missing WAWONA_INPROC_CLIENTS"]
-    listed = set(re.findall(r"\b([a-z][a-z0-9-]+)\b", m.group(1)))
-    missing = REQUIRED_INPROC_CLIENTS - listed
-    if missing:
-        errors.append(
-            f"ios-rootfs.nix WAWONA_INPROC_CLIENTS missing: {sorted(missing)}"
-        )
-    return errors
-
-
-def verify_interpreter_placeholders(rootfs_text: str) -> list[str]:
-    """usr/bin/zsh and usr/bin/sh are comment stubs, never Mach-O."""
-    errors = []
-    for needle in (
-        "for name in sh zsh bash dash",
-        "chmod 755",
-        "Not a Mach-O. Do not source this file.",
-        "# Wawona iOS:",
-    ):
-        if needle not in rootfs_text:
-            errors.append(
-                f"ios-rootfs.nix interpreter placeholder missing: {needle!r}"
-            )
-    if "MH_MAGIC" in rootfs_text or "\\xcf\\xfa\\xed\\xfe" in rootfs_text:
-        errors.append("ios-rootfs.nix must not embed Mach-O magic in stubs")
-    return errors
-
-
 def verify_no_ssh_stubs() -> list[str]:
     errors = []
     for rel in (
@@ -235,7 +179,7 @@ def verify_no_ssh_stubs() -> list[str]:
                     continue
                 # A __attribute__((weak)) definition is a legitimate link-time
                 # seam, overridden by -force_load libwwn-ssh-cli.a + the
-                # matching -Wl,-u,_<sym> in sshCliLdflags (xcodegen.nix) on any
+                # matching -Wl,-u,_<sym> in deps.nix on any
                 # slice that links the real archive. watchOS's arm64_32 slice
                 # has no arm64_32 libwwn-ssh-cli.a build (ASC 90733 fat-slice
                 # requirement), so it keeps the weak fallback while arm64
@@ -377,19 +321,13 @@ def verify_no_swift_shell_backends() -> list[str]:
 def main() -> int:
     errors: list[str] = []
     errors.extend(verify_flake_outputs(read(FLAKE)))
-    errors.extend(verify_xcodegen(read(XCODEGEN)))
+    errors.extend(verify_deps(read(DEPS)))
     errors.extend(verify_ssh_cli_built(read(MOBILE_DEPS)))
     errors.extend(verify_prebuild(read(PREBUILD)))
     errors.extend(verify_fastfetch_lock())
     errors.extend(verify_no_ssh_stubs())
     errors.extend(verify_coreutils_safe_subset())
     errors.extend(verify_no_swift_shell_backends())
-    if IOS_ROOTFS.is_file():
-        rootfs = read(IOS_ROOTFS)
-        errors.extend(verify_inproc_clients(rootfs))
-        errors.extend(verify_interpreter_placeholders(rootfs))
-    else:
-        errors.append("dependencies/wawona/ios-rootfs.nix missing")
 
     if errors:
         print("iOS shell-tools wiring check FAILED:")

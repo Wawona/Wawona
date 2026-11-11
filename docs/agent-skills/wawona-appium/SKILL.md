@@ -196,7 +196,7 @@ evidence.
 The macOS catalog lane always builds a clean tip host app when no matching
 `Gate: products` artifact is supplied. Install the repository's
 `setup-nix-flakehub` action before catalog capture so `ensure-tip-wawona-macos`
-can generate XcodeGen and build the current checkout. The workflow needs
+can link `.deps/macosx` and build the current checkout. The workflow needs
 `id-token: write` for FlakeHub cache access. Keep the Colima guest launch and
 required screenshot check enabled.
 

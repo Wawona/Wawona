@@ -10,9 +10,8 @@ on:
     paths:
       - "flake.nix"
       - "flake.lock"
-      - "dependencies/generators/xcodegen.nix"
+      - "dependencies/wawona/deps.nix"
       - "dependencies/wawona/mobile-platform-deps.nix"
-      - "dependencies/wawona/ios-rootfs.nix"
       - "docs/wasm-wasi.md"
       - "docs/wwn-repo-dag.md"
       - ".github/workflows/wasm-wayland.yml"
@@ -25,9 +24,8 @@ on:
     paths:
       - "flake.nix"
       - "flake.lock"
-      - "dependencies/generators/xcodegen.nix"
+      - "dependencies/wawona/deps.nix"
       - "dependencies/wawona/mobile-platform-deps.nix"
-      - "dependencies/wawona/ios-rootfs.nix"
       - "docs/wasm-wasi.md"
       - "docs/wwn-repo-dag.md"
       - ".github/workflows/wasm-wayland.yml"

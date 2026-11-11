@@ -19,8 +19,7 @@ scanned `.m` files**. An empty allowlist file alone is not done if product
 
 Darwin CLI argv policy lives in Rust `src/domain/darwin_cli.rs`. Swift
 Lifecycle (`WawonaDarwinCLI`, `WawonaLaunchMode`, menubar Desktop row)
-applies host ops. Prefer Nix-staged UniFFI (`scripts/stage-uniffi-swift.sh`,
-`.nix-deps/uniffi`) and fall back to C trampolines (`WawonaDomainBridge`).
+applies host ops. Prefer Nix UniFFI (`.deps/<sdk>/uniffi`) and fall back to C trampolines (`WawonaDomainBridge`).
 
 ## Hard rejects
 
@@ -47,8 +46,8 @@ file is not an ObjC class (`@interface` / `@implementation` forbidden).
 | `Darwin/` | `@main` process entry on **macOS and Apple-mobile** app targets |
 | `src/platform/{macos,ios,watchos}` | Thin `.h` / plain `.c` stubs only |
 
-`Darwin/Sources/Main.swift` must be in `xcodegen` sources for iOS / iPadOS /
-tvOS / visionOS as well as macOS. Mobile uses `UIApplicationMain` (iOS 13
+`Darwin/Sources/Main.swift` must be in the project's `Darwin/Sources` folder for iOS / iPadOS /
+tvOS / visionOS as well as macOS. Mobile uses `UIApplicationMain` (iOS 15
 floor). Never leave LC_MAIN to a bundled client archive. Full gate:
 `wawona-ios-app-entry`.
 

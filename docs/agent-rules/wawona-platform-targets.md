@@ -209,7 +209,7 @@ forbidden while iPhone is planned for those features.
     Compose (Android), GTK (Linux). Shell: system login shell on
     macOS/Linux/Mode B; Wawona PTY on Mode A
     (`wawona-terminal-shell-backend`). Apple-mobile: **static** archive,
-    deployment target **13.0**. **No** product `.dylib`. **No** GhosttyKit.
+    deployment target **15.0**. **No** product `.dylib`. **No** GhosttyKit.
     Zig surface / `GhosttyGpu` atlas are retire targets. Credits: Ghostty
     MIT; libghostty-rs; Rootshell MIT (iOS UX ideas). Rule:
     `wawona-ghostty-host`. VM/container kinds forbidden on tvOS, watchOS,
@@ -217,12 +217,12 @@ forbidden while iPhone is planned for those features.
 
 ## Implementation checkpoints
 
-- Gate in `mobile-platform-deps.nix` variants, `xcodegen.nix` `OTHER_LDFLAGS`,
+- Gate in `mobile-platform-deps.nix` variants, `deps.nix` `WWN_LDFLAGS` (`Wawona.xcconfig`),
   Machines profile kinds, and platform UI. Not ad-hoc `#ifdef` sprawl.
 - tvOS/watchOS link flags must not pull `-framework IOKit`. watchOS must
   not pull ANGLE, MoltenVK, or Vulkan ICDs (no Metal). tvOS links ANGLE and
   MoltenVK when `WWN_TVOS_GPU=1`.
 - When adding a Machines feature: classify it (native / remote / VM /
   container) and refuse it on targets that forbid that class.
-- iOS / iPadOS Mach-O min OS is 13.0 against the latest iPhoneOS SDK only.
+- iOS / iPadOS Mach-O min OS is 15.0 against the latest iPhoneOS SDK (27) only.
   Never downgrade the SDK. One ANGLE, one MoltenVK. See `wawona-ios-min-os`.

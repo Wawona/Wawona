@@ -13,9 +13,9 @@ Flake rename cascade: skill `wawona-flake-consumer-rename`.
 
 | Goal | Attr / path | Notes |
 |------|-------------|--------|
-| Rust backend only | `.#wawona-ios-sim-backend` | Proves crate2nix + nativeDeps |
+| Rust backend only | `.#wawona-ios-sim-backend` | Proves the Cargo build + nativeDeps |
 | Full store-shaped app | `.#wawona-ios-app-sim` | Embeds **Watch** companion. Watch Ld red ≠ phone UI broken |
-| Phone UI tip (lab) | `WAWONA_BACKEND_OUT=…` + `xcodebuild -scheme Wawona-iOS` | After backend green; see traps below |
+| Phone UI tip | `nix run .#deps -- iphonesimulator` + `xcodebuild -scheme Wawona-iOS` | After Rust edits: `scripts/build-backend.sh iphonesimulator` |
 
 ```bash
 cd ~/Wawona/Wawona
@@ -34,7 +34,7 @@ be 0 while nix failed; terminal file shows only the last lines. Prefer
 ## nativeDeps: waypipe video needs ffmpeg (2026-10-12)
 
 Root `Cargo.toml` enables waypipe features `lz4` / `zstd` / `video`.
-crate2nix builds `waypipe-ffmpeg-wrapper`. That build.rs **unwraps**
+The backend build compiles `waypipe-ffmpeg-wrapper`. That build.rs **unwraps**
 `pkg-config libavutil`.
 
 Symptom:
@@ -66,15 +66,14 @@ referenced from WWNMiniWaylandServer.o
 That is a **Watch** link debt. Do not park machine-editor / Machines UI
 proof on it. Phone path:
 
-1. Green `.#wawona-ios-sim-backend`
-2. `export WAWONA_BACKEND_OUT=/tmp/wawona-ios-sim-backend`
-3. `xcodebuild -scheme Wawona-iOS …` (or XcodeBuildMCP) with tip Sources
-4. Install + agent-device
+1. `nix run .#deps -- iphonesimulator` (and `scripts/build-backend.sh
+   iphonesimulator` after Rust edits)
+2. `xcodebuild -scheme Wawona-iOS …` (or XcodeBuildMCP) with tip Sources
+3. Install + agent-device
 
-Stale local `Wawona.xcodeproj` may still `-force_load` `libfoot.a` /
+A stale `.deps/iphonesimulator` may still `-force_load` `libfoot.a` /
 `libfuzzel.a` after optional-software unbundle. Prebuild does **not**
-build those archives. Provide ios-sim stubs exporting `foot_main` /
-`fuzzel_main`, or regenerate xcodegen from tip Nix (skill
+build those archives. Re-run `nix run .#deps -- iphonesimulator` (skill
 `wawona-optional-software`).
 
 ## Install tip app

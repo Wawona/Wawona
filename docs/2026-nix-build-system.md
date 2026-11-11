@@ -1,7 +1,7 @@
 # Wawona Nix Build System
 
-How Nix compiles everything in this project, and how crate2nix provides
-per-crate caching for the Rust backend.
+How Nix compiles everything in this project and feeds the committed Xcode
+and Gradle projects.
 
 ---
 
@@ -9,20 +9,20 @@ per-crate caching for the Rust backend.
 
 Wawona is a cross-platform Wayland compositor. The Rust backend compiles for
 **macOS**, **iOS** (device + simulator), and **Android**. The Nix flake
-orchestrates every artifact: native C libraries, the Rust backend, Xcode
-project generation, and final app bundles.
+orchestrates every artifact: native C libraries, the Rust backend, the
+`.deps` slices the IDE projects read, and final app bundles.
 
 The build is split into three layers:
 
 ```
 ┌──────────────────────────────────────────────────┐
 │  Layer 3: App packaging                          │
-│  Xcode project (.xcodeproj), .app bundles,       │
-│  Gradle project, simulator automation            │
+│  Committed Xcode + Gradle projects over .deps,   │
+│  .app / .ipa / .apk bundles                      │
 ├──────────────────────────────────────────────────┤
-│  Layer 2: Rust backend (crate2nix)               │
-│  Per-crate Nix derivations for wawona + waypipe  │
-│  Cross-compiled via stdenv.hostPlatform override  │
+│  Layer 2: Rust backend                           │
+│  One Cargo build per slice (backend.nix and      │
+│  scripts/build-backend.sh)                       │
 ├──────────────────────────────────────────────────┤
 │  Layer 1: Native C/C++ libraries                 │
 │  libwayland, xkbcommon, ffmpeg, zstd, lz4,       │
@@ -45,7 +45,7 @@ Current flake inputs (see `flake.nix`; do not invent extra `wwn-*` edges):
 |-------|----------------|
 | `nixpkgs` | Base package set (unstable) |
 | `rust-overlay` | `rust-bin` with Apple/Android targets |
-| `crate2nix` | Per-crate Nix from `Cargo.lock` |
+| `crate2nix` | Followed by `wwn-toolchain` and Relay (not Wawona's backend) |
 | `microvm` | VM machine type (`wwn-vms`) |
 | `nix-appimage` | Linux AppImage packaging |
 | `wwn-toolchain` | L0 substrate (cairo, pango, wayland, openssl, …) |
@@ -97,7 +97,7 @@ Wawona keeps only the **integration layer** under `dependencies/`. Library recip
 ```
 dependencies/                 # Wawona integration (this repo)
 ├── wawona/                   # App derivations, Rust backends, devshells
-├── generators/               # xcodegen.nix, gradlegen.nix
+├── generators/               # uniffi-bindgen, Android icons
 ├── clients/                  # wawona-shell, wawona-tools
 └── gradle-deps.nix           # Gradle mirror for Android Studio
 
@@ -160,339 +160,92 @@ changing `zstd` does not rebuild `openssl`.
 
 ---
 
-## Layer 2: Rust backend with crate2nix
+## Layer 2: Rust backend
 
-### Why crate2nix?
+`dependencies/wawona/backend.nix` builds `libwawona` for one slice (an Xcode
+`PLATFORM_NAME`, `iphoneos-modeb`, `android` or `linux`). It is one
+derivation per slice that runs `scripts/build-backend.sh`: the crates come
+from `Cargo.lock` through `rustPlatform.importCargoLock`, the native libraries
+from `nativeDeps`, and the target triple, deployment floor and features from
+the slice. The derivation also writes the script's environment to `$out/env`.
 
-The previous approach used `buildRustPackage`, which treats the entire Cargo
-workspace as a single derivation. Any change to any Rust file or dependency
-forced a full rebuild of everything. Tens of minutes for a one-line change.
-
-**crate2nix** solves this by generating a separate Nix derivation for every
-crate in `Cargo.lock`. Nix's content-addressed store caches each crate
-individually. Changing one crate (e.g. `waypipe`) only rebuilds that crate
-and its reverse dependencies. Unchanged crates are served from cache.
-
-### The pipeline
-
-```
-Cargo.toml + Cargo.lock
-        │
-        ▼
-crate2nix.tools.generatedCargoNix    ← reads Cargo.lock, emits Cargo.nix
-        │
-        ▼
-import Cargo.nix { buildRustCrateForPkgs = ...; }
-        │
-        ▼
-cargoNix.rootCrate.build.override { crateOverrides = ...; features = ...; }
-        │
-        ▼
-Per-crate Nix derivations (each one is a separate /nix/store entry)
-        │
-        ▼
-Final libwawona.a / libwawona_core.so assembled in installPhase
-```
-
-### Workspace source assembly (`workspace-src.nix`)
-
-Before crate2nix can run, we need a Cargo workspace that includes both
-`wawona` (the root crate) and `waypipe` (an optional in-tree dependency).
-`workspace-src.nix` does this:
-
-1. Copies the filtered wawona source
-2. Injects pre-patched waypipe source at `./waypipe/`
-3. Patches `Cargo.toml` to set `autobins = false` and strip `[[bin]]`
-   sections (prevents cross-compilation linker errors for unused binaries)
-
-The waypipe source is patched separately per-platform via
-`waypipe-patched-src.nix` + `patch-waypipe-source.sh`. This means changing
-the patch script only invalidates the waypipe source derivation, not the
-entire Rust build.
-
-### `rust-backend-c2n.nix` in detail
-
-This is the core file. It accepts:
-
-| Parameter      | Type     | Description                                       |
-|----------------|----------|---------------------------------------------------|
-| `platform`     | string   | `"macos"`, `"ios"`, or `"android"`                |
-| `simulator`    | bool     | iOS only: target the simulator                    |
-| `workspaceSrc` | drv      | Assembled Cargo workspace (from workspace-src.nix)|
-| `nativeDeps`   | attrset  | Pre-built native libraries for the target platform|
-| `crate2nix`    | flake    | The crate2nix tools                               |
-| `nixpkgs`      | flake    | The nixpkgs source                                |
-
-#### Target triples
-
-| Platform          | Cargo target                 | Linker target                         |
-|-------------------|------------------------------|---------------------------------------|
-| macOS             | (native, no `--target`)      |.                                     |
-| iOS device        | `aarch64-apple-ios`          | `arm64-apple-ios26.0`                 |
-| iOS simulator     | `aarch64-apple-ios-sim`      | `arm64-apple-ios26.0-simulator`       |
-| Android           | `aarch64-linux-android`      | via NDK linker wrapper                |
-
-#### Cross-compilation strategy
-
-For macOS builds, `buildRustCrate` runs natively. No cross-compilation
-needed.
-
-For iOS and Android, we face a fundamental problem: nixpkgs'
-`buildRustCrate` uses `stdenv.hostPlatform` to set environment variables
-like `TARGET`, `CARGO_CFG_TARGET_OS`, and the `--target` flag for rustc.
-When building on macOS, `hostPlatform` is `aarch64-apple-darwin`, so
-everything gets compiled for macOS by default.
-
-The solution: **override `stdenv.hostPlatform`** in the cross
-`buildRustCrate`. This makes nixpkgs' internal `configure-crate.nix`
-correctly set:
-
-- `TARGET=aarch64-apple-ios-sim` (or `aarch64-apple-ios`)
-- `CARGO_CFG_TARGET_OS=ios`
-- `CARGO_CFG_TARGET_ARCH=aarch64`
-- `--target aarch64-apple-ios-sim` passed to rustc
-
-This produces correctly-tagged Mach-O objects from the start (platform 7 for
-iOS Simulator, platform 2 for iOS device). No binary patching required.
-
-The override is surgical. We only change the fields that `configure-crate.nix`
-and `build-crate.nix` actually read:
-
-```nix
-crossHostPlatform = base // {
-  config = "aarch64-apple-ios-simulator";
-  system = "aarch64-apple-ios-simulator";
-  parsed = base.parsed // {
-    kernel = base.parsed.kernel // { name = "ios"; };
-  };
-  rust = {
-    rustcTarget    = "aarch64-apple-ios-sim";
-    rustcTargetSpec = "aarch64-apple-ios-sim";
-    platform       = { arch = "aarch64"; os = "ios"; };
-  };
-};
-
-crossStdenv = pkgs.stdenv // { hostPlatform = crossHostPlatform; };
-
-crossBRC = pkgs.buildRustCrate.override {
-  stdenv = crossStdenv;
-  cargo  = pkgs.rustToolchain;
-  rustc  = pkgs.rustToolchain;
-};
-```
-
-#### Dual build: host + cross
-
-Each crate is lazily built twice via `mkCrossBRC`:
+`nix run .#deps -- <slice>` links that output into `.deps/<slice>/backend`, so
+the same script run in a checkout builds the working tree with the same
+toolchain, vendored crates and native libraries, incrementally in `target/`,
+and stages `.build/backend/<slice>` for Xcode or Gradle:
 
 ```
-┌─────────────────────────┐     ┌─────────────────────────┐
-│  hostBuild (macOS)      │     │  crossBuild (iOS)       │
-│  - proc-macro crates    │     │  - regular crates       │
-│  - build script deps    │     │  - extraRustcOpts for   │
-│  - rlibs for linking    │     │    native lib paths     │
-│    build scripts        │     │  - crossPreConfigure    │
-└─────────────────────────┘     └─────────────────────────┘
-         │                                │
-         └──── hostLib ◄──────────────────┘
-               (lazy: only evaluated when referenced)
+Cargo.lock ── importCargoLock ──┐
+nativeDeps (Layer 1) ───────────┼─► backend.nix ─► $out/lib/libwawona.a + $out/env
+slice (triple, floor, features) ┘          │
+                                           ▼
+             nix run .#deps ─► .deps/<slice>/backend ─► scripts/build-backend.sh
+                                                       ─► .build/backend/<slice>
 ```
 
-- **Proc-macro crates** (`procMacro = true`): built entirely for the host
-  (macOS). Proc-macro dylibs run at compile time on the build machine.
-- **Regular crates**: cross-built via `crossBRC`. Their build dependencies
-  are swapped to host versions (`.hostLib`) so build scripts can link and
-  run on macOS.
-- **Laziness**: Nix only evaluates `hostBuild` when `.hostLib` is actually
-  referenced. If a crate has no build script and isn't a proc-macro, the
-  host build is never computed.
-
-#### cc-rs and the Nix sandbox
-
-Many `-sys` crates (e.g. `libz-sys`, `libssh2-sys`) use the `cc-rs` crate
-to compile bundled C code. When `cc-rs` detects an iOS target, it tries to
-find the iOS SDK via `xcrun --show-sdk-path`. This fails in the Nix sandbox
-because Xcode isn't available.
-
-The workaround uses three environment variables set in `crossPreConfigure`:
-
-```nix
-crossPreConfigure = ''
-  unset MACOSX_DEPLOYMENT_TARGET
-  export IPHONEOS_DEPLOYMENT_TARGET="26.0"
-  export CC_aarch64_apple_ios_sim="${rawClang} -target arm64-apple-ios26.0-simulator"
-  export CFLAGS_aarch64_apple_ios_sim="-target arm64-apple-ios26.0-simulator -fPIC"
-  export CRATE_CC_NO_DEFAULTS="1"
-'';
-```
-
-- `unset MACOSX_DEPLOYMENT_TARGET`. Prevents cc-rs from injecting
-  `--target=arm64-apple-macosx`
-- `CC_<target>` / `CFLAGS_<target>`. Target-specific overrides that cc-rs
-  reads; provides clang with the correct `-target` flag
-- `CRATE_CC_NO_DEFAULTS=1`. Tells cc-rs to skip all default flag detection,
-  including the `xcrun` SDK lookup
-
-This works because the C sources bundled in `-sys` crates (zlib, libssh2,
-etc.) ship their own headers and don't need system SDK headers.
-
-#### Per-crate overrides
-
-Some crates need extra configuration beyond what `buildRustCrate` provides
-automatically. These are specified in `crateOverrides`:
-
-| Crate                    | Override reason                                     |
-|--------------------------|-----------------------------------------------------|
-| `wawona`                 | Root crate: pkg-config, buildInputs, crateType      |
-| `wayland-backend`        | Patches `target_os = "macos"` → `any(macos, ios)`   |
-| `wayland-sys`            | pkg-config path for libwayland                      |
-| `libssh2-sys`            | C_INCLUDE_PATH for zlib/openssl headers              |
-| `openssl-sys`            | OPENSSL_DIR, static linking config                  |
-| `waypipe-ffmpeg-wrapper` | pkg-config, rust-bindgen, vulkan-headers includes    |
-| `waypipe-lz4-wrapper`    | pkg-config for lz4                                  |
-| `waypipe-zstd-wrapper`   | pkg-config for zstd                                 |
-| `xkbcommon`              | Platform-conditional xkbcommon library               |
-
-#### Features
-
-| Platform | Enabled features | Why                                                      |
-|----------|------------------|----------------------------------------------------------|
-| macOS    | (none)           | No waypipe integration in the macOS backend              |
-| iOS      | `waypipe-ssh`    | In-process waypipe with static libssh2 (no subprocess)   |
-| Android  | `waypipe`        | In-process waypipe                                       |
-
-The `waypipe-ssh` feature enables `waypipe` + `waypipe/with_libssh2`, pulling
-in SSH transport support compiled into the static library.
-
-In `src/lib.rs`, `extern crate waypipe;` forces the linker to include
-waypipe's symbols in `libwawona.a` even though wawona's Rust code doesn't
-directly call them. Without this, rustc's dead code elimination would strip
-`waypipe_main` from the archive.
-
-#### Output
-
-The final derivation (`stdenvNoCC.mkDerivation`) assembles:
-
-- `$out/lib/libwawona.a`. Static library (iOS, macOS)
-- `$out/lib/libwawona_core.so`. Shared library (Android, macOS)
-- `$out/bin/`. CLI tools (macOS only)
-- `$out/uniffi/{swift,kotlin}`. UniFFI bindings from host `uniffi-bindgen`
-  (every backend). Store output only. Never commit.
+`workspace-src.nix` assembles the Cargo workspace the derivation builds: the
+filtered Wawona source with the patched waypipe source injected at
+`./waypipe/` and `[[bin]]` sections stripped, so cross builds do not link
+unused binaries.
 
 ---
 
 ## Layer 3: App packaging
 
-### iOS (`dependencies/wawona/ios.nix`)
+The committed `Wawona.xcodeproj` and root Gradle project are the only app
+projects; Nix products build them as an IDE does.
 
-The iOS app is built in two stages:
+- **Apple** (`dependencies/wawona/ios.nix`, `macos.nix`): links the slice
+  `deps.nix` makes for the SDK into `.deps`, then runs `xcodebuild` on the
+  target's scheme. `scripts/xcode-prebuild.sh` stages `libwawona.a`, zsh and
+  fastfetch; `scripts/xcode-embed.sh` copies the slice's `bundle/`. Signing
+  comes from `TEAM_ID` or the match profiles in `fastlane/`.
+- **Android** (`dependencies/wawona/android.nix`): runs the root Gradle
+  project offline over `android-deps.nix` (jniLibs, assets, `shader_spv.h`)
+  with `-Pwawona.maven=` pointing at the Nix Maven mirror.
 
-1. **Nix build** (`wawona-ios` derivation): compiles Obj-C source files with
-   Xcode's clang, links against `libwawona.a` and all native C libraries,
-   produces a `.app` bundle.
-
-2. **Simulator automation** (`passthru.automationScript`): generates an Xcode
-   project via `xcodegen.nix`, builds it with `xcodebuild` for the iOS
-   Simulator, installs the app, and launches it. Pass `--debug` to pause at
-   spawn and attach LLDB for crash/freeze debugging.
-
-The automation script is what `nix run .#wawona-ios` invokes.
-
-### Shared Apple wrapper layer (`wwn-toolchain/dependencies/apple/default.nix`)
-
-Apple host assumptions are centralized in the `wwn-toolchain` flake input:
-
-- Host Xcode discovery (`XCODE_APP`, `xcode-select`, newest `/Applications/Xcode*.app`)
-- Xcode wrapper command for PATH/DEVELOPER_DIR normalization
-- SDK verification helpers (`ensure-ios-sdk`, `ensure-ios-sim-sdk`, `ensure-macos-sdk`)
-- Simulator and provisioning scripts exported as flake apps
-
-This replaces scattered Xcode bootstrap logic and gives iOS/macOS one source of truth.
-
-### macOS (`dependencies/wawona/macos.nix`)
-
-Standard `mkDerivation` that compiles Obj-C sources and links against the
-macOS Rust backend. Produces a `.app` bundle that `nix run .#wawona` opens
-via `open -W`.
-
-### Android (`dependencies/wawona/android.nix`)
-
-Produces an Android project with the NDK-compiled native libraries and Rust
-backend. Uses Gradle for the final APK build.
-
-### Xcode project generation (`dependencies/generators/xcodegen.nix`)
-
-Generates a `project.yml` consumed by `xcodegen` to produce
-`Wawona.xcodeproj`. The generated project references Nix-built static
-libraries and headers from the Nix store. It can optionally include or
-exclude the macOS target (`includeMacOSTarget`).
-
----
-
-## CI Apple runner assumptions
-
-The Darwin workflow (`.github/workflows/nix.yml`) now treats host Xcode as explicit bootstrap state:
-
-- Select highest installed `Xcode*.app` with `sort -V | tail -1`
-- Export `XCODE_APP` and run `xcode-select -s "$XCODE_APP"` before Nix builds
-- Keep path coupling in CI/bootstrap only; build modules read normalized Apple env from `wwn-toolchain` (`dependencies/apple/`)
+Host Xcode is state outside Nix. `wwn-toolchain/dependencies/apple/` exports
+the Xcode wrapper and SDK checks; CI pins the app with
+`.github/scripts/select-xcode.sh` (Xcode 27 only, never "newest installed").
 
 ---
 
 ## Build commands
 
-| Command                              | What it builds                             |
-|--------------------------------------|--------------------------------------------|
-| `nix run .#wawona`                   | macOS app (build + launch)                 |
-| `nix run .#wawona-ios`               | iOS Simulator app (xcodegen + build + run) |
-| `nix run .#wawona-ios-trollstore` / `.#wawona-ios-ts` | TrollStore Mode B tipa on vphone (slim, install + launch) |
-| `nix run .#wawona-ios-jailbreak` / `.#wawona-ios-jb` | Sileo rootless Mode B `.deb` on vphone (install + launch) |
-| `nix run .#wawona-ios-modeb`         | Alias of `wawona-ios-trollstore` |
-| `nix run .#wawona-android`           | Android app                                |
-| `nix build .#wawona-macos-backend`   | Just the macOS Rust static library         |
-| `nix build .#wawona-ios-backend`     | Just the iOS device Rust static library    |
-| `nix build .#wawona-ios-sim-backend` | Just the iOS sim Rust static library       |
-| `nix build .#wawona-android-backend` | Just the Android Rust static/shared lib    |
-| `nix run .#xcodegen`                 | Generate Wawona.xcodeproj (iOS + macOS)    |
-| `nix run .#xcodegen-ios`             | Generate Wawona.xcodeproj (iOS only)       |
-| `nix run .#gradlegen`                | Generate Gradle project for Android        |
+| Command | What it builds |
+|---|---|
+| `nix run .#deps -- <sdk>...` | Links `.deps/<sdk>` for the IDE projects |
+| `nix run .#wawona-macos` | macOS app (build + launch) |
+| `nix build .#wawona-<ios,ipados,tvos,watchos,visionos>-app-sim` | Simulator apps |
+| `nix build .#wawona-ios-ipa` (and other platforms' `-ipa`) | Signed store IPAs |
+| `nix run .#wawona-ios-trollstore` / `.#wawona-ios-jailbreak` | Mode B tipa / Sileo `.deb` on vphone |
+| `nix build .#wawona-android` / `.#wawona-android-aab` | APK / AAB |
+| `nix build .#wawona-<platform>[-sim]-backend` | One slice's Rust static library |
 
 ---
 
 ## Caching behavior
 
-Because every crate is its own Nix derivation:
-
-- **Changing a Rust source file in `src/`** rebuilds only `wawona` (the root
-  crate) and the final assembly. All ~120 dependency crates are served from
-  `/nix/store` cache.
-- **Changing `waypipe` source** rebuilds the waypipe crate and `wawona` (which
-  depends on it). Other crates are cached.
-- **Changing a native C library** (e.g. bumping zstd) rebuilds only that
-  library derivation and any Rust crate that directly links it (e.g.
-  `waypipe-zstd-wrapper`, `wawona`).
-- **Changing `flake.nix`** or `rust-backend-c2n.nix` may invalidate the
-  crate2nix generation step, causing all Rust crates to rebuild.
-- **Switching between platforms** (e.g. iOS sim → iOS device) triggers a full
-  rebuild because the target triple changes.
+- A Rust source change rebuilds the slice's backend derivation; locally,
+  `scripts/build-backend.sh` rebuilds only what Cargo's incremental state
+  says changed.
+- A native library change rebuilds that library, then each backend that
+  links it.
+- Each slice is its own derivation: switching iOS simulator to device builds
+  the other slice, and the first stays cached.
 
 ---
 
 ## File reference
 
-| File                                          | Role                                          |
-|-----------------------------------------------|-----------------------------------------------|
-| `flake.nix`                                   | Top-level: inputs, overlays, all packages     |
-| `dependencies/wawona/rust-backend-c2n.nix`    | crate2nix Rust backend (this doc's focus)     |
-| `dependencies/wawona/workspace-src.nix`       | Cargo workspace assembly                      |
-| `dependencies/wawona/default.nix`             | Central app entry (ios/macos/android/generators) |
-| `dependencies/wawona/ios.nix`                 | iOS app bundle + simulator automation         |
-| `dependencies/wawona/macos.nix`               | macOS app bundle                              |
-| `dependencies/wawona/android.nix`             | Android project                               |
-| `wwn-toolchain/dependencies/toolchains/default.nix` | Platform dispatcher (buildForIOS/macOS/Android) |
-| `wwn-toolchain/dependencies/libs/*/`          | Per-library cross-compilation recipes (upstream) |
-| `wwn-weston`, `wwn-waypipe`, …                | Patched app ports + platform-specific ldflags   |
-| `dependencies/generators/xcodegen.nix`        | Xcode project generator                       |
-| `dependencies/generators/gradlegen.nix`       | Gradle project generator                      |
-| `Cargo.toml`                                  | Rust workspace manifest                       |
-| `src/lib.rs`                                  | Root lib (extern crate waypipe for FFI)       |
+| File | Role |
+|---|---|
+| `flake.nix` | Inputs, overlays, packages, the `deps` app |
+| `dependencies/wawona/backend.nix` | Rust backend per slice |
+| `scripts/build-backend.sh` | The backend build, in Nix and in a checkout |
+| `dependencies/wawona/deps.nix` | Apple slices behind `.deps/<sdk>` |
+| `dependencies/wawona/android-deps.nix` | Android slice behind `.deps/android` |
+| `dependencies/wawona/workspace-src.nix` | Cargo workspace assembly |
+| `dependencies/wawona/ios.nix`, `macos.nix`, `android.nix` | Product builds of the committed projects |
+| `Wawona.xcodeproj/project.xcproj`, `settings.gradle.kts` | The IDE projects |
+| `wwn-toolchain/dependencies/libs/*/` | Per-library cross-compilation recipes |

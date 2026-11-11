@@ -12,9 +12,9 @@
 # sets WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1 so build-app.nix skips
 # CDN `-downloadPlatform iOS` for every *simulator* SDK name.
 #
-# XcodeGen evaluates device Relay archives (iphoneos / appletvos / watchos /
-# xros) even for simulator product slices. Warm those device packs whenever
-# the caller asks for `all` or any tv/watch/vision platform.
+# The tv/watch/vision device packs (appletvos / watchos / xros) are separate
+# Xcode downloads. Warm them whenever the caller asks for `all` or any
+# tv/watch/vision platform.
 #
 # Bash 3.2-safe (macOS /bin/bash): no empty-array expansions under `set -u`.
 set -euo pipefail

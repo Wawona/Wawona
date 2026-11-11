@@ -23,7 +23,7 @@ Read these skills **in this order**, then edit:
    `~/.agents/skills/swiftui-expert-skill/SKILL.md`. Open only the reference
    files needed (state, lists, sheets, liquid-glass, latest-apis, performance).
 3. **Wawona product skills/rules** that always win on conflict:
-   - `wawona-swiftui-backports` (iOS **13.0** floor; `WawonaBackport`)
+   - `wawona-swiftui-backports` (iOS **15.0** floor; `WawonaBackport`)
    - `wawona-apple-swift-glue` (Rust + Swift only; no ObjC; 400-line file cap)
    - `wawona-ios-min-os`, `wawona-ios-app-entry`, `wawona-uniffi-domain`
    - `wawona-global-settings-exclusive` for Settings UI
@@ -42,7 +42,7 @@ Read these skills **in this order**, then edit:
 
 These beat upstream SwiftUI skill advice:
 
-- Deployment floor is **iOS 13.0** on the latest iPhoneOS SDK. Never raise the
+- Deployment floor is **iOS 15.0** on the latest iPhoneOS SDK. Never raise the
   floor to use a modern API. Use `WawonaBackport` or a functional fallback.
 - No product `.m` / `.mm`. No new Swift under `src/platform/{macos,ios,watchos}`.
 - Policy (prefs, profiles, launch, catalog, caps) stays in Rust / UniFFI, not

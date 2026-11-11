@@ -181,23 +181,24 @@ final class WatchNativeShellSession {
         }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             WatchShellABI.stopShellSession()
-            Self.queue.async {
-                guard let self else { return }
-                self.pump?.cancel()
-                self.pump = nil
-                if self.master >= 0 {
-                    WatchShellABI.clearMaster(self.master)
-                    self.master = -1
-                }
-                if let session = self.session {
-                    WatchShellABI.sessionDestroy(session)
-                    self.session = nil
-                }
-                if let term = self.term {
-                    WatchShellABI.termFree(term)
-                    self.term = nil
-                }
-            }
+            Self.queue.async { self?.teardownLocked() }
+        }
+    }
+
+    private func teardownLocked() {
+        pump?.cancel()
+        pump = nil
+        if master >= 0 {
+            WatchShellABI.clearMaster(master)
+            master = -1
+        }
+        if let session {
+            WatchShellABI.sessionDestroy(session)
+            self.session = nil
+        }
+        if let term {
+            WatchShellABI.termFree(term)
+            self.term = nil
         }
     }
 

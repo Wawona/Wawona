@@ -20,11 +20,6 @@
   platformName ? "watchOS",
   bundleId ? "com.aspauldingcode.Wawona.watch",
   applePath,
-  rustBackend ? null,
-  companionBackends ? { },
-  zshLib ? null,
-  fastfetchLib ? null,
-  companionShellLibs ? { },
   ...
 }:
 
@@ -94,14 +89,4 @@ in
       ''EXCLUDED_ARCHS="x86_64 i386"''
     ]
   );
-}).overrideAttrs (import ./inject-xcode-backend-env.nix {
-  inherit
-    lib
-    rustBackend
-    xcodeTarget
-    companionBackends
-    companionShellLibs
-    zshLib
-    fastfetchLib
-    ;
-})
+}).overrideAttrs (import ./match-host-signing-attrs.nix { inherit lib; })

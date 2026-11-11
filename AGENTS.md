@@ -55,8 +55,8 @@ for Wawona's own recipes/patches; use `nixos` for upstream nixpkgs.
 For **building/running/testing the Apple (iOS/macOS) Xcode projects**. Including
 simulators, devices, and log capture. Use the **`xcodebuild`** MCP server
 (getsentry/XcodeBuildMCP) instead of raw `xcodebuild` shell commands. It runs
-locally and requires **macOS + Xcode 16+**. Wawona's Xcode projects are
-generated (xcodegen via Nix), so regenerate before building.
+locally and requires **macOS 27 + Xcode 27**. `Wawona.xcodeproj` is
+committed; run `nix run .#deps -- <sdk>` once to link `.deps/<sdk>`.
 
 For **CI / prebuilt distribution** (Wawona v2.5+ Fastlane beta lanes), read
 `wwn-mcp/knowledge/wawona/fastlane.md` and use `scripts/sync-github-secrets.sh`
@@ -82,7 +82,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   paint (SwiftUI/AppKit/UIKit, SpriteKit, Compose, GTK). Shell backend:
   system login shell on macOS/Linux/Mode B; Wawona PTY on Mode A
   (`wawona-terminal-shell-backend`). No GhosttyKit, no product `.dylib` on
-  Apple-mobile, iOS 13 static. Zig `GhosttySurfaceHost` / `GhosttyGpu`
+  Apple-mobile, iOS 15 static. Zig `GhosttySurfaceHost` / `GhosttyGpu`
   atlas are retire targets. Credits: Ghostty MIT; libghostty-rs; Rootshell
   MIT iOS UX ideas. Toolbar keys: `github.com/Wawona/ToolbarKeys`. Rule:
   `wawona-ghostty-host`. Do not copy toolbar Swift back into
@@ -108,7 +108,7 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
 - **Apple Swift/SwiftUI skills (mandatory).** Before editing Apple host UI,
   load `swiftui-pro` and `swiftui-expert-skill` (plus concurrency/testing
   skills when relevant). Skill `wawona-apple-swift`; rule
-  `wawona-apple-swift-skills`. iOS 13 + `WawonaBackport` wins over upstream
+  `wawona-apple-swift-skills`. iOS 15 + `WawonaBackport` wins over upstream
   modernization advice.
 - **Android Compose skills (mandatory).** Before editing Kotlin/Compose host
   UI, load `compose-agent` and `modern-jetpack-compose` (plus Android topic
@@ -135,12 +135,13 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
     `wawona-mode-b-watchdog-safety`.
     Wawona Swinging Bridge is separate (`docs/swinging-bridge.md`, `wawona-swinging-bridge`).
   - Query `project=macos-internals` for Mach-O/dyld/Mach/XNU/launchd details.
-- **Rust backend builds via crate2nix** (per-crate Nix derivations, `Cargo.nix`)
-  for isolated/incremental rebuilds. Not a monolithic `buildRustPackage`. Query
-  `project=crate2nix` for `tools.nix`/`defaultCrateOverrides`/strategy questions.
-- **Apple = OS 26 / Liquid Glass**; **Material 3 Expressive = Android 16+ only**.
-- **iOS min OS vs SDK.** Mach-O min is iOS **13.0** through the latest iOS (26 now, 27 when the SDK ships). Never raise that floor to match a dependency (GhosttyKit 17 stays unlinked). Never downgrade the SDK. App Store IPAs do not ship a product `.dylib` (static archives; Apple `libswift*` is the exception). One ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo. Bundled clients (fastfetch, weston, and every other in-process archive) compile at that same 13.0 floor. CMake `CMAKE_C_FLAGS` and Meson `c_args` do not apply to `.m`. Set `CMAKE_OBJC_FLAGS` and `objc_args` or clang emits `_objc_release_xN` and dyld aborts on iOS 13-15. See `docs/agent-rules/wawona-ios-min-os.md`.
-- **Apple-mobile process entry.** `Darwin/Sources/Main.swift` on iOS/iPadOS/tvOS/visionOS (and macOS). Mobile uses `UIApplicationMain` (iOS 13 floor). Never leave LC_MAIN to a bundled client's C `_main` (`gbm_es2_demo`). Set `XDG_RUNTIME_DIR` to `preferredSharedRuntimeDir` before host compositor start. See `docs/agent-rules/wawona-ios-app-entry.md` and skill `wawona-ios-sim-runtime`.
+- **Rust backend is one Cargo build in the slice's Nix env.** Nix products
+  build it with `dependencies/wawona/backend.nix`; Xcode and Gradle rebuild
+  the working tree with `scripts/build-backend.sh <slice>` into
+  `.build/backend/<slice>`.
+- **Apple = OS 27 SDK / Liquid Glass**; **Material 3 Expressive = Android 16+ only**.
+- **iOS min OS vs SDK.** Mach-O min is iOS **15.0** on every channel, built with the iOS 27 SDK (Xcode 27 refuses lower). Never raise that floor to match a dependency (GhosttyKit 17 stays unlinked). Never downgrade the SDK. App Store IPAs do not ship a product `.dylib` (static archives; Apple `libswift*` is the exception). One ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo. Bundled clients (fastfetch, weston, and every other in-process archive) compile at 13.0 or higher and link into the 15.0 app. CMake `CMAKE_C_FLAGS` and Meson `c_args` do not apply to `.m`. Set `CMAKE_OBJC_FLAGS` and `objc_args` or clang emits `_objc_release_xN` and dyld aborts on iOS 13-15. See `docs/agent-rules/wawona-ios-min-os.md`.
+- **Apple-mobile process entry.** `Darwin/Sources/Main.swift` on iOS/iPadOS/tvOS/visionOS (and macOS). Mobile uses `UIApplicationMain` (iOS 15 floor). Never leave LC_MAIN to a bundled client's C `_main` (`gbm_es2_demo`). Set `XDG_RUNTIME_DIR` to `preferredSharedRuntimeDir` before host compositor start. See `docs/agent-rules/wawona-ios-app-entry.md` and skill `wawona-ios-sim-runtime`.
 - **Patched software lives in `wwn-*` repos or the catalog** (Wawona org): the
   cross-compile framework + common libraries + `wawona-pty` are in
   `wwn-toolchain`; zsh is `wwn-zsh`; graphics is `iLand`; waypipe is
@@ -356,8 +357,8 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
   bundle UTM-SE (#33). Do not size-gate watchOS wasm (#156). Store P1 is
   `catalog/wasm` with `abi = wasi-p1`. WASIX is the same tree with `abi = wasix`. VM engine is Relay. A live
   `Wawona/nixpkgs2wasi` GitHub repo is not a flake input.
-- **iOS min OS**. Phone and iPad min OS is **13.0** against the **latest**
-  iPhoneOS SDK only (26 now; 27 when it ships). Never downgrade the SDK. One
+- **iOS min OS**. Phone and iPad min OS is **15.0** on every channel against
+  the iPhoneOS 27 SDK. Never downgrade the SDK. One
   ANGLE, one MoltenVK, Wawona patches. App Store / TrollStore / Sileo.
   Bundled archives use that floor too. Objective-C needs its own deployment
   flag (`CMAKE_OBJC_FLAGS`, Meson `objc_args`). See
