@@ -18,7 +18,7 @@
 # vphone is lab-only. Gate: products must not use it as IOMFB/JIT proof.
 #
 # Terminal-as-Start zero-AI stack (no model credits):
-#   1) JVM: cd android && ./gradlew :Wawona:testDebugUnitTest --tests '*MachineStartCommandTest'
+#   1) JVM: ./gradlew :Wawona:testDebugUnitTest --tests '*MachineStartCommandTest'
 #   2) Espresso: ./gradlew :Wawona:connectedDebugAndroidTest --tests '*TerminalStartUiTest'
 #   3) This script: terminal / terminal-ios / terminal-android (.ad replay)
 #

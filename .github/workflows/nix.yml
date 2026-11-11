@@ -558,6 +558,5 @@ jobs:
             .#weston-ios --no-link
       - name: Gradle project assembleDebug
         run: |
-          nix run .#gradlegen
-          cd Wawona-gradle-project
+          nix run .#deps -- android
           ./gradlew :Wawona:assembleDebug --no-daemon

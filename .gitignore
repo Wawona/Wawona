@@ -52,7 +52,11 @@ test_xdg-shell-client-protocol.c
 
 # IDE
 .vscode/
-.idea/
+# Studio's Gradle JVM and run configuration are shared; the rest is per machine.
+.idea/*
+!.idea/gradle.xml
+!.idea/misc.xml
+!.idea/runConfigurations/
 *.swp
 *.swo
 *~
@@ -100,20 +104,13 @@ src/android/.gradle/
 build/
 .gradle-build/
 gradle-app.setting
-!android/gradle/wrapper/gradle-wrapper.jar
-!android/gradle/wrapper/gradle-wrapper.properties
+!gradle/wrapper/gradle-wrapper.jar
 
 # Gradle local configuration (contains local paths)
 local.properties
 .gradle-local.properties
 
-# Root-level Android Studio project files (legacy mistaken repo-root flatten)
-/gradlew
-/gradlew.bat
-/gradle/
-/build.gradle.kts
-/settings.gradle.kts
-/gradle.properties
+# Stray files from the retired flattened Android layout
 /AndroidManifest.xml
 /java/
 /jniLibs/

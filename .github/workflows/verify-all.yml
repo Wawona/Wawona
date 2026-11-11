@@ -166,7 +166,7 @@ jobs:
           test -d "$SDK_ROOT"
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "sdk.dir=$SDK_ROOT" > android/local.properties
+          echo "sdk.dir=$SDK_ROOT" > local.properties
           SM=""
           for cand in \
             "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \

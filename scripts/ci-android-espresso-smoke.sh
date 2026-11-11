@@ -63,15 +63,9 @@ echo "PASS: adb install + am start (process alive)"
 
 # Espresso/Compose instrumentation is opt-in (needs a full Gradle Android
 # project + matching debug variant). Gate default is adb + uiautomator.
-if [[ "${WAWONA_ANDROID_ESPRESSO:-0}" == "1" ]] && [[ -f android/gradlew || -f gradlew ]]; then
+if [[ "${WAWONA_ANDROID_ESPRESSO:-0}" == "1" ]]; then
   echo "== connectedDebugAndroidTest (Espresso / Compose UI Test) =="
-  if [[ -f android/gradlew ]]; then
-    (cd android && ./gradlew :app:connectedDebugAndroidTest --stacktrace) \
-      | tee "$OUT_DIR/espresso.log"
-  else
-    ./gradlew :app:connectedDebugAndroidTest --stacktrace \
-      | tee "$OUT_DIR/espresso.log"
-  fi
+  ./gradlew :Wawona:connectedDebugAndroidTest --stacktrace | tee "$OUT_DIR/espresso.log"
   echo "PASS: connectedDebugAndroidTest"
 elif [[ -f "$OUT_DIR/wawona-ui.xml" ]] && grep -Eq 'wwn\.machines\.|wwn\.welcome\.' "$OUT_DIR/wawona-ui.xml"; then
   echo "PASS: uiautomator dump shows Wawona a11y tags"

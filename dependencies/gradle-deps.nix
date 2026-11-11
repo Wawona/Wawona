@@ -14,17 +14,10 @@ let
     inherit lib androidSDK;
     system = stdenv.buildPlatform.system;
   };
-  androidIconAssets =
-    if builtins.pathExists ./generators/android-icon-assets.nix then
-      pkgs.callPackage ./generators/android-icon-assets.nix {
-        inherit wawonaSrc;
-      }
-    else
-      null;
   sdkRoot = androidConfig.sdkRoot;
   # jdk17 slot is the Android Gradle JVM. Linux Nix passes JBR 21.
   # Darwin sandbox still receives OpenJDK because nixpkgs JBR is Linux-only.
-  # Local Studio / gradlegen pin embedded JBR 21 instead of this path.
+  # Local Studio uses its embedded JBR 21 instead of this path.
   commonGradleFlags = [
     "-Dorg.gradle.java.home=${jdk17}"
     "-Dorg.gradle.project.android.aapt2FromMavenOverride=${sdkRoot}/build-tools/${androidConfig.buildToolsVersion}/aapt2"
@@ -36,18 +29,6 @@ let
     export ANDROID_HOME="$ANDROID_SDK_ROOT"
     export ANDROID_USER_HOME="$(pwd)/.android-home"
     mkdir -p "$ANDROID_USER_HOME"
-  '';
-  prepareProjectScript = ''
-    chmod -R u+w .
-    cp -r android/* .
-    chmod -R u+w .
-
-    if [ -n "${if androidIconAssets != null then toString androidIconAssets else ""}" ] && [ -d "${if androidIconAssets != null then toString androidIconAssets else ""}/res" ]; then
-      mkdir -p app/src/main/res
-      cp -r ${if androidIconAssets != null then "${androidIconAssets}/res/." else "/dev/null"} app/src/main/res/
-      chmod -R u+w app/src/main/res
-      echo "Merged Wawona launcher icon assets"
-    fi
   '';
   depsPackage = stdenv.mkDerivation {
     pname = "wawona-android-gradle-deps";
@@ -65,21 +46,10 @@ let
     gradleFlags = commonGradleFlags;
 
     preBuild = ''
-      ${prepareProjectScript}
       ${prepareEnvironmentScript}
       ndk_root="$ANDROID_SDK_ROOT/ndk/${androidConfig.ndkVersion}"
       export ANDROID_NDK_ROOT="$ndk_root"
       export ANDROID_NDK_HOME="$ndk_root"
-
-      # Normalize daemon/jvmargs so --no-daemon stays in-process (no single-use
-      # daemon TCP). Heap must match GRADLE_OPTS in gradleUpdateScript.
-      if [ -f gradle.properties ]; then
-        grep -v -E '^org\.gradle\.(jvmargs|daemon)=' gradle.properties > gradle.properties.nix
-        mv gradle.properties.nix gradle.properties
-        echo 'org.gradle.daemon=false' >> gradle.properties
-        # Include -Xms64m so Wanted matches the gradle launcher client JVM.
-        echo 'org.gradle.jvmargs=-Xms64m -Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' >> gradle.properties
-      fi
     '';
 
     gradleUpdateScript = ''
@@ -89,8 +59,8 @@ let
       # Download all resolvable configuration artifacts without compiling app
       # sources (compileDebugKotlin needs anowaw bindings unavailable here).
       # Metadata-only `:dependencies` is not enough. Mitm lockfile would drop AARs.
-      # Match org.gradle.jvmargs + mitm trustStore so --no-daemon stays
-      # in-process (no localhost single-use daemon in the Nix sandbox).
+      # Match org.gradle.jvmargs (gradle.properties) + mitm trustStore so --no-daemon
+      # stays in-process (no localhost single-use daemon in the Nix sandbox).
       GRADLE_OPTS="-Xms64m -Xmx6144m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
       if [ -n "''${MITM_CACHE_KEYSTORE-}" ] && [ -n "''${MITM_CACHE_KS_PWD-}" ]; then
         GRADLE_OPTS="''${GRADLE_OPTS} -Djavax.net.ssl.trustStore=''${MITM_CACHE_KEYSTORE} -Djavax.net.ssl.trustStorePassword=''${MITM_CACHE_KS_PWD}"
@@ -192,5 +162,4 @@ in
   gradleFlags = commonGradleFlags;
 
   prepareEnvironment = prepareEnvironmentScript;
-  prepareProject = prepareProjectScript;
 }

@@ -349,6 +349,9 @@
             "/Cargo"
             "/build.rs"
             "/flake"
+            "/settings.gradle.kts"
+            "/build.gradle.kts"
+            "/gradle"
           ];
           isIgnored = pkgs.lib.any (p: pkgs.lib.hasInfix p relPath) [
             "/.git"
@@ -572,7 +575,7 @@
       };
       # Android Gradle JVM. Linux Nix: JBR 21 (no JCEF). Darwin Nix
       # sandbox cannot use nixpkgs JBR (Linux-only platforms). Local
-      # Android Studio / gradlegen pin the embedded Studio JBR 21.
+      # Android Studio uses its embedded JBR 21.
       androidJdk =
         if isLinuxHost
         then androidPkgs.jetbrains.jdk-no-jcef-21
@@ -683,31 +686,28 @@
           CXXFLAGS_aarch64_linux_android = "${flags} -fPIC";
           BINDGEN_EXTRA_CLANG_ARGS = flags;
           WAWONA_ANDROID_XKBCOMMON_LIBDIR = "${dep "xkbcommon"}/lib";
-          WWN_RUSTFLAGS = "-l xkbcommon -l wayland-client -C link-arg=-fuse-ld=mold";
+          WWN_RUSTFLAGS = "-l xkbcommon -l wayland-client";
         };
       };
-      wawonaAndroidPkg = import ./dependencies/wawona/android.nix {
+      depsAndroid = import ./dependencies/wawona/android-deps.nix {
         pkgs = androidPkgs;
+        inherit (androidPkgs) lib;
         buildModule = toolchainsAndroid;
-        inherit (androidPkgs) lib stdenv clang pkg-config unzip zip patchelf file util-linux glslang mesa;
-        inherit gradle jdk17 wawonaSrc androidSDK androidUtils;
-        srcFiltered = src;
-        androidToolchain = toolchainsAndroid.androidToolchain;
+        wawonaSrc = rustSrc;
         rustBackend = backend-android;
+        androidCC = toolchainsAndroid.androidToolchain.androidCC;
         coreutilsAndroid = coreutils-multicall-android;
+        inherit westonSimpleShmPatchedSrcNix westonAndroidSignalPolyfill westonToytoolkitLdflagsNix
+          westonCompositorLdflagsNix ilandGlAndroidLdflagsNix;
+      };
+      androidApp = releaseArtifact: import ./dependencies/wawona/android.nix {
+        pkgs = androidPkgs;
+        inherit (androidPkgs) lib;
+        wawonaSrc = src;
+        inherit depsAndroid wawonaVersion androidSDK androidUtils androidConfigNix gradle jdk17 releaseArtifact;
+        androidToolchain = toolchainsAndroid.androidToolchain;
         terminalSrc = inputs.terminal;
         toolbarKeysSrc = inputs."toolbar-keys";
-        targetPkgs = pkgsAndroidCross;
-        waypipe = toolchainsAndroid.buildForAndroid "waypipe" {};
-        inherit
-          androidToolchainNix
-          westonSimpleShmPatchedSrcNix
-          westonAndroidSignalPolyfill
-          androidConfigNix
-          westonToytoolkitLdflagsNix
-          westonCompositorLdflagsNix
-          ilandGlAndroidLdflagsNix
-          ;
       };
 
       androidToolchainSanity = import androidToolchainSanityNix {
@@ -715,127 +715,36 @@
         androidToolchain = toolchainsAndroid.androidToolchain;
       };
 
-      westonSimpleShmPatched = androidPkgs.callPackage westonSimpleShmPatchedSrcNix {};
-      # weston toytoolkit (cairo/pango) closure cross-compiled via the NDK; feeds
-      # the APK native build so libweston-13.a and demo *_main symbols can link.
-      mobileToytoolkitDepsAndroid = import ./dependencies/wawona/mobile-toytoolkit-deps.nix {
-        buildFn = toolchainsAndroid.buildForAndroid;
-      };
-      studioAndroidDeps =
-        [
-          (toolchainsAndroid.buildForAndroid "swiftshader" {})
-          (toolchainsAndroid.buildForAndroid "pixman" {})
-          (toolchainsAndroid.buildForAndroid "libwayland" {})
-          (toolchainsAndroid.buildForAndroid "expat" {})
-          (toolchainsAndroid.buildForAndroid "libffi" {})
-          (toolchainsAndroid.buildForAndroid "libxml2" {})
-          (toolchainsAndroid.buildForAndroid "xkbcommon" {})
-          (toolchainsAndroid.buildForAndroid "openssl" {})
-          (toolchainsAndroid.buildForAndroid "zstd" {})
-          (toolchainsAndroid.buildForAndroid "lz4" {})
-          # anowaW C ABI header + libanowaw.so for Gradle/CMake parity builds
-          (toolchainsAndroid.buildForAndroid "anowaw" {})
-        ]
-        ++ (pkgs.lib.attrValues mobileToytoolkitDepsAndroid)
-        ++ [
-          (toolchainsAndroid.buildForAndroid "weston" {enableGlClients = true;})
-          (toolchainsAndroid.buildForAndroid "weston-compositor" {})
-          (toolchainsAndroid.buildForAndroid "libintl" {})
-          (toolchainsAndroid.buildForAndroid "iland" {})
-          (toolchainsAndroid.buildForAndroid "angle" {})
-          (toolchainsAndroid.buildForAndroid "kmscube" {})
-          (toolchainsAndroid.buildForAndroid "gbm-es2-demo" {})
-          (toolchainsAndroid.buildForAndroid "opengl-cube" {})
-          (toolchainsAndroid.buildForAndroid "vkcube" {})
-        ];
-      studioIlandGlLdflags = import ilandGlAndroidLdflagsNix {
-        inherit (pkgs) lib;
-        deps = {
-          iland = toolchainsAndroid.buildForAndroid "iland" {};
-          angle = toolchainsAndroid.buildForAndroid "angle" {};
-          kmscube = toolchainsAndroid.buildForAndroid "kmscube" {};
-          "iland-gl-clients" = toolchainsAndroid.buildForAndroid "kmscube" {};
-          "gbm-es2-demo" = toolchainsAndroid.buildForAndroid "gbm-es2-demo" {};
-          "opengl-cube" = toolchainsAndroid.buildForAndroid "opengl-cube" {};
-          vkcube = toolchainsAndroid.buildForAndroid "vkcube" {};
-        };
-      };
-      studioWestonToytoolkitLdflags = import westonToytoolkitLdflagsNix {
-        inherit (pkgs) lib;
-        deps =
-          mobileToytoolkitDepsAndroid
-          // {
-            weston = toolchainsAndroid.buildForAndroid "weston" {};
-            libintl = toolchainsAndroid.buildForAndroid "libintl" {};
-          };
-        forceLoadWeston = true;
-        linkMode = "whole_archive";
-      };
-      studioWestonCompositorLdflags = import westonCompositorLdflagsNix {
-        inherit (pkgs) lib;
-        deps = {
-          weston-compositor = toolchainsAndroid.buildForAndroid "weston-compositor" {};
-          libwayland = toolchainsAndroid.buildForAndroid "libwayland" {};
-          expat = toolchainsAndroid.buildForAndroid "expat" {};
-        };
-        forceLoadCompositor = false;
-        linkMode = "whole_archive";
-      };
-      studioNixDepIncludes =
-        (pkgs.lib.concatMapStringsSep " " (d: "-I${d}/include") studioAndroidDeps)
-        + " -I${toolchainsAndroid.buildForAndroid "pixman" {}}/include/pixman-1"
-        + " -I${toolchainsAndroid.buildForAndroid "weston" {}}/include/weston-gen";
-      studioNixDepLibs =
-        (pkgs.lib.concatMapStringsSep " " (d: "-L${d}/lib") studioAndroidDeps)
-        + " ${pkgs.lib.concatStringsSep " " (studioWestonToytoolkitLdflags ++ studioWestonCompositorLdflags ++ studioIlandGlLdflags)}";
-      studioRuntimeLibDirs =
-        pkgs.lib.concatMapStringsSep ":" (d: "${d}/lib") studioAndroidDeps;
-      studioRustBackendLib = "${backend-android}/lib/libwawona.a";
-      studioRustBackendSharedLib = "${backend-android}/lib/libwawona_core.so";
-      studioOpenSSHBin = "${toolchainsAndroid.buildForAndroid "openssh" {}}/bin/ssh";
-      studioSshpassBin = "${toolchainsAndroid.buildForAndroid "sshpass" {}}/bin/sshpass";
-      studioZshPkg = toolchainsAndroid.buildForAndroid "zsh" {};
-      studioZshBin = "${studioZshPkg}/bin/zsh";
-      studioZshShare = "${studioZshPkg}/share/zsh";
-      studioFastfetchBin = "${toolchainsAndroid.buildForAndroid "fastfetch" {}}/bin/fastfetch";
-      studioPhoonBin = "${toolchainsAndroid.buildForAndroid "phoon" {}}/bin/phoon";
-      # waypipe ships a real ELF binary as `waypipe.real` plus a Vulkan-wrapper
-      # script named `waypipe`; gradlegen.nix picks whichever exists at build
-      # time (same fallback android-shell-tools.nix uses for the release APK).
-      studioWaypipePkg = toolchainsAndroid.buildForAndroid "waypipe" {};
-      studioWaypipeBin = "${studioWaypipePkg}/bin/waypipe.real";
-      studioWaypipeBinFallback = "${studioWaypipePkg}/bin/waypipe";
-
-      gradlegenPkg = pkgs.callPackage ./dependencies/generators/gradlegen.nix {
-        wawonaSrc =
-          if isLinuxHost
-          then ./.
-          else src;
-        inherit wawonaVersion westonAndroidSignalPolyfill;
-        androidSdkRoot = androidSDK.sdkRoot;
-        westonSimpleShmSrc = westonSimpleShmPatched;
-        iconAssets = "AUTO";
-        nixDepIncludes = studioNixDepIncludes;
-        nixDepLibs = studioNixDepLibs;
-        rustBackendLib = studioRustBackendLib;
-        rustBackendSharedLib = studioRustBackendSharedLib;
-        runtimeLibDirs = studioRuntimeLibDirs;
-        opensshBinaryPath = studioOpenSSHBin;
-        sshpassBinaryPath = studioSshpassBin;
-        zshBinaryPath = studioZshBin;
-        zshSharePath = studioZshShare;
-        fastfetchBinaryPath = studioFastfetchBin;
-        phoonBinaryPath = studioPhoonBin;
-        waypipeBinaryPath = studioWaypipeBin;
-        waypipeBinaryPathFallback = studioWaypipeBinFallback;
-        anowawAndroid = toolchainsAndroid.buildForAndroid "anowaw" {};
-        terminalSrc = inputs.terminal;
-        toolbarKeysSrc = inputs."toolbar-keys";
-      };
-
       # ── Cross-Platform Packages ───────────────────────────────────────
       commonPackages =
         rec {
+          deps = pkgs.writeShellScriptBin "deps" ''
+            # Links .deps/<sdk> for each SDK named (Xcode PLATFORM_NAME, or android),
+            # the Terminal and ToolbarKeys sources, and DEVELOPMENT_TEAM from TEAM_ID.
+            set -eu
+            [ $# -gt 0 ] || { echo "usage: nix run .#deps -- <sdk>... (macosx iphoneos iphonesimulator ... android)" >&2; exit 2; }
+            root=$(git rev-parse --show-toplevel)
+            mkdir -p "$root/.deps"
+            sdks=""
+            for sdk in "$@"; do
+              case $sdk in
+                iphoneos|iphoneos-modeb) sdks="$sdks $sdk watchos" ;;
+                iphonesimulator) sdks="$sdks $sdk watchsimulator" ;;
+                *) sdks="$sdks $sdk" ;;
+              esac
+            done
+            for sdk in $sdks; do
+              nix build "$root#deps-$sdk" --out-link "$root/.deps/$sdk"
+              rm -rf "$root/.build/backend/$sdk"
+            done
+            if [ -e "$root/.deps/$1/uniffi" ]; then ln -sfn "$1/uniffi" "$root/.deps/uniffi"; fi
+            for src in terminal=${inputs.terminal} toolbar-keys=${inputs."toolbar-keys"}; do
+              nix-store --realise "''${src#*=}" --add-root "$root/.deps/''${src%%=*}" >/dev/null
+            done
+            if [ -n "''${TEAM_ID:-}" ]; then
+              echo "DEVELOPMENT_TEAM = $TEAM_ID" > "$root/.deps/signing.xcconfig"
+            fi
+          '';
           nom = pkgs.nix-output-monitor;
           local-runner = pkgs.callPackage ./scripts/local-runner.nix {};
           wawona-shell = pkgs.callPackage ./dependencies/clients/wawona-shell {};
@@ -969,7 +878,8 @@
           }
         ))
         // (pkgs.lib.optionalAttrs (isLinuxHost || androidSDK != null) {
-          wawona-android = wawonaAndroidPkg;
+          wawona-android = androidApp "debug";
+          deps-android = depsAndroid;
           wawona-android-backend = backend-android;
           # Exposed so the CI reproducibility gate (repro-rebuild) can --rebuild
           # the filtered-source assembly and byte-compare it across hosts.
@@ -990,36 +900,8 @@
             pkgs.writeShellScriptBin "gradle-deps-update" ''
               exec ${updateScript} "$@"
             '';
-          gradlegen = gradlegenPkg.generateScript;
-          wawona-android-project = gradlegenPkg.generateScript;
           wawona-android-provision = androidUtils.provisionAndroidScript;
-          wawona-android-aab = import ./dependencies/wawona/android.nix {
-            pkgs = androidPkgs;
-            buildModule = toolchainsAndroid;
-            inherit (androidPkgs) lib stdenv clang pkg-config unzip zip patchelf file util-linux glslang mesa;
-            inherit gradle jdk17 wawonaSrc androidSDK androidUtils;
-            srcFiltered = src;
-            androidToolchain = toolchainsAndroid.androidToolchain;
-            rustBackend = backend-android;
-            coreutilsAndroid = coreutils-multicall-android;
-            targetPkgs = pkgsAndroidCross;
-            waypipe = toolchainsAndroid.buildForAndroid "waypipe" {};
-            # Same Terminal / ToolbarKeys Compose overlays as wawona-android
-            # (Nix sandbox cannot follow the gitignored sibling; MainActivity
-            # needs these).
-            terminalSrc = inputs.terminal;
-            toolbarKeysSrc = inputs."toolbar-keys";
-            inherit
-              androidToolchainNix
-              westonSimpleShmPatchedSrcNix
-              westonAndroidSignalPolyfill
-              androidConfigNix
-              westonToytoolkitLdflagsNix
-              westonCompositorLdflagsNix
-              ilandGlAndroidLdflagsNix
-              ;
-            releaseArtifact = "release-aab";
-          };
+          wawona-android-aab = androidApp "release-aab";
           coreutils-multicall-android = coreutils-multicall-android;
           angle-android = toolchainsAndroid.buildForAndroid "angle" {};
           weston-android = toolchainsAndroid.buildForAndroid "weston" {};
@@ -2296,33 +2178,6 @@
             wawona-watchos-sim-backend = backend-watchos-sim;
             wawona-ios-provision = apple.provisionXcodeScript;
             wawona-ios-xcode-wrapper = apple.xcodeWrapperDrv;
-            deps = pkgs.writeShellScriptBin "deps" ''
-              # Links .deps/<sdk> for each SDK named (Xcode PLATFORM_NAME), the
-              # Swift sources the project shares, and DEVELOPMENT_TEAM from TEAM_ID.
-              set -eu
-              [ $# -gt 0 ] || { echo "usage: nix run .#deps -- <sdk>... (${pkgs.lib.concatStringsSep " " (builtins.attrNames depsPackages)})" >&2; exit 2; }
-              root=$(git rev-parse --show-toplevel)
-              mkdir -p "$root/.deps"
-              sdks=""
-              for sdk in "$@"; do
-                case $sdk in
-                  iphoneos|iphoneos-modeb) sdks="$sdks $sdk watchos" ;;
-                  iphonesimulator) sdks="$sdks $sdk watchsimulator" ;;
-                  *) sdks="$sdks $sdk" ;;
-                esac
-              done
-              for sdk in $sdks; do
-                nix build "$root#deps-$sdk" --out-link "$root/.deps/$sdk"
-                rm -rf "$root/.build/backend/$sdk"
-              done
-              if [ -e "$root/.deps/$1/uniffi" ]; then ln -sfn "$1/uniffi" "$root/.deps/uniffi"; fi
-              for src in terminal=${inputs.terminal} toolbar-keys=${inputs."toolbar-keys"}; do
-                nix-store --realise "''${src#*=}" --add-root "$root/.deps/''${src%%=*}" >/dev/null
-              done
-              if [ -n "''${TEAM_ID:-}" ]; then
-                echo "DEVELOPMENT_TEAM = $TEAM_ID" > "$root/.deps/signing.xcconfig"
-              fi
-            '';
             weston-debug = toolchains.buildForMacOS "weston" {debug = true;};
             weston-simple-shm = toolchains.buildForMacOS "weston-simple-shm" {};
             weston-terminal = weston-terminal-pkg;
@@ -2868,10 +2723,6 @@
         wawona-android-provision = {
           type = "app";
           program = "${systemPackages.wawona-android-provision}/bin/provision-android";
-        };
-        wawona-android-project = {
-          type = "app";
-          program = "${systemPackages.gradlegen}/bin/gradlegen";
         };
         wawona-android = {
           type = "app";

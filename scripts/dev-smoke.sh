@@ -123,8 +123,8 @@ smoke_android() {
     return 1
   fi
   if [[ "$DO_BUILD" == "1" ]]; then
-    log "generating Android Studio project + jniLibs (.#gradlegen)"
-    ( cd "$ROOT" && nix run .#gradlegen )
+    log "building and installing the debug APK"
+    ( cd "$ROOT" && nix run .#deps -- android && ./gradlew :Wawona:installDebug )
   fi
   if [[ "$DO_REPLAY" == "1" ]]; then
     log "Android batch replay (serial=$serial)"
