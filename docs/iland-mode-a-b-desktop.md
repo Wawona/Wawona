@@ -227,7 +227,7 @@ repo: [`iLand/docs/mode-b/baremetal-display-spi-25F80.md`](../../iLand/docs/mode
 1. Settings stores `DesktopReplacementMachineId` (weston, niri, or custom
    compositor). Demo clients (`kmscube`, `weston-terminal`, `foot`) are not
    eligible.
-2. `nix run .#install` syncs the Mode B helper, `libwayland-mac.dylib`,
+2. `cargo xtask install` syncs the Mode B helper, `libwayland-mac.dylib`,
    `wwn-iowatchdog`, and a root-owned helper
    (`/Library/Application Support/Wawona/run-modeb.sh`) and installs
    `/etc/sudoers.d/wawona-modeb` (`NOPASSWD` for that helper and
@@ -248,7 +248,7 @@ repo: [`iLand/docs/mode-b/baremetal-display-spi-25F80.md`](../../iLand/docs/mode
    and Enable / Replace now runs bundled `claim-install` doctor, heal if
    needed, then `--path-b` plus native Restart. KEEP_WS
    `--mode-b-probe` may still inject while WindowServer and watchdogd
-   stay up. Opening desktop-host Wawona or `nix run .#install` syncs the Mode B
+   stay up. Opening desktop-host Wawona or `cargo xtask install` syncs the Mode B
    helper and dylib for this build. Never `export
    DYLD_INSERT_LIBRARIES`. Insert on the niri/weston exec only.
    `ws-guard` may restore WindowServer only.

@@ -6,7 +6,7 @@ Global Settings exclusivity (`wawona-global-settings-exclusive`): the sole host
 is the **in-app** Machines sidebar catalog. Do not rebuild `Wawona.prefPane`,
 `Settings.bundle`, or a PrefPane suite.
 
-Install / pkg / `nix run .#install` **delete** any leftover
+Install / pkg / `cargo xtask install` **delete** any leftover
 `~/Library/PreferencePanes/Wawona.prefPane` and
 `/Library/PreferencePanes/Wawona.prefPane`.
 

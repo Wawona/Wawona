@@ -2,7 +2,7 @@
 
 use crate::util::*;
 use anyhow::{bail, Result};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(clap::Subcommand)]
 pub enum Cmd {
@@ -23,9 +23,16 @@ pub enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// shader_spv.h for renderer_android.c: the quad shaders under `src`
+    /// compiled to SPIR-V (glslc or glslangValidator on PATH) as byte arrays.
+    /// Runs in the Android deps derivation, so it reads no checkout.
+    AndroidShaders { src: PathBuf, out: PathBuf },
 }
 
 pub fn main(c: Cmd) -> Result<()> {
+    if let Cmd::AndroidShaders { src, out } = &c {
+        return android_shaders(src, out);
+    }
     std::env::set_current_dir(root())?;
     match c {
         Cmd::ProtocolStatus => {
@@ -57,6 +64,7 @@ pub fn main(c: Cmd) -> Result<()> {
         }
         Cmd::ProtocolMilestones => milestones(),
         Cmd::SettingsDeps => settings_deps(),
+        Cmd::AndroidShaders { .. } => unreachable!(),
         Cmd::Licenses { json } => {
             if try_output(cmd("cargo").args(["license", "--version"])).is_none() {
                 bail!("cargo-license is not installed: cargo install cargo-license");
@@ -153,4 +161,33 @@ fn ascii_json(v: &serde_json::Value) -> Result<String> {
         }
     }
     Ok(out)
+}
+
+fn android_shaders(src: &Path, out: &Path) -> Result<()> {
+    let shaders = src.join("src/platform/android/rendering/shaders");
+    let (compiler, flag) = if have("glslc") {
+        ("glslc", None)
+    } else if have("glslangValidator") {
+        ("glslangValidator", Some("-V"))
+    } else {
+        bail!("glslc or glslangValidator is not on PATH (nix: pkgs.glslang)");
+    };
+    std::fs::create_dir_all(out)?;
+    let mut header = String::from(
+        "/* Auto-generated - do not edit */\n#pragma once\n\n#include <stddef.h>\n#include <stdint.h>\n\n",
+    );
+    for (stage, name) in [("vert", "g_quad_vert_spv"), ("frag", "g_quad_frag_spv")] {
+        let spv = out.join(format!("quad.{stage}.spv"));
+        run(cmd(compiler).args(flag).arg(shaders.join(format!("android_quad.{stage}"))).arg("-o").arg(&spv))?;
+        let bytes = std::fs::read(&spv)?;
+        header += &format!("static const unsigned char {name}[] = {{\n");
+        for row in bytes.chunks(12) {
+            let hex: Vec<String> = row.iter().map(|b| format!("0x{b:02x}")).collect();
+            header += &format!("  {},\n", hex.join(", "));
+        }
+        header += &format!("}};\nstatic const size_t {name}_len = sizeof({name});\n\n");
+        eprintln!("embedded {} ({} bytes)", spv.display(), bytes.len());
+    }
+    std::fs::write(out.join("shader_spv.h"), header)?;
+    Ok(())
 }

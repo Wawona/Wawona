@@ -75,45 +75,18 @@ local signing values live in ignored `.envrc.local`.
 
 > For build targets and Nix pipeline details, see [Compilation Guide](docs/compilation.md) and [Nix Build System](docs/2026-nix-build-system.md). Cross-compiled libraries and toolchains live in upstream [`wwn-toolchain`](https://github.com/Wawona/wwn-toolchain) and sibling `wwn-*` repos; Wawona's flake wires them in as inputs.
 
-### How do I install Wawona from my macOS flake?
+### How do I install Wawona on macOS?
 
-Use Wawona as a flake input, add its overlay so `pkgs.wawona` behaves like a normal nixpkgs package, and run Wawona's installer during activation. The installer step is important: `pkgs.wawona` puts the app wrapper in your profile, while the installer performs the same extra setup as `nix run .#install`, including the compositor and menubar LaunchAgents.
+Download `Wawona-{calver}-macOS-arm64.dmg` from the [GitHub Releases](https://github.com/Wawona/Wawona/releases) and drag Wawona.app to Applications.
 
-Example `flake.nix` with `nix-darwin`:
+From a checkout, build the Release app and install it with its compositor and menubar LaunchAgents, the Desktop Replacement helper and the CLI wrappers (see [macOS CLI](docs/macos-cli.md)):
 
-```nix
-{
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    nix-darwin.url = "github:LnL7/nix-darwin";
-    nix-darwin.inputs.nixpkgs.follows = "nixpkgs";
-
-    wawona.url = "github:Wawona/Wawona/development";
-    wawona.inputs.nixpkgs.follows = "nixpkgs";
-  };
-
-  outputs = inputs@{ nix-darwin, wawona, ... }: {
-    darwinConfigurations.my-mac = nix-darwin.lib.darwinSystem {
-      system = "aarch64-darwin";
-      modules = [
-        ({ pkgs, ... }: {
-          nixpkgs.overlays = [ wawona.overlays.default ];
-
-          environment.systemPackages = [
-            pkgs.wawona
-          ];
-
-          system.activationScripts.postActivation.text = ''
-            ${wawona.packages.${pkgs.stdenv.hostPlatform.system}.install}/bin/install
-          '';
-        })
-      ];
-    };
-  };
-}
+```sh
+cargo xtask build macos --release
+cargo xtask install
 ```
 
-After applying your flake, Wawona is available as `pkgs.wawona`, and the activation hook writes and loads the Wawona LaunchAgents for the current macOS user. To remove those LaunchAgents later, run `nix run github:Wawona/Wawona/development#wawona-uninstall`.
+`cargo xtask uninstall` removes all of it. `nix run .#install` and `nix run .#uninstall` forward to the same commands. The flake overlay's `pkgs.wawona` is the Linux build.
 
 ### How do I run Weston or Waypipe?
 

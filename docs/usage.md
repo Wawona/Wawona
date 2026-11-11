@@ -38,7 +38,7 @@ nix run .
 Install into the user profile:
 
 ```bash
-nix run .#install
+cargo xtask install
 # equivalent:
 nix profile install .#wawona
 ```
@@ -95,7 +95,7 @@ Launches the full Weston compositor as a nested client. Weston runs natively on 
 
 ### Weston Terminal
 
-After `nix run .#install`, bundled clients are on PATH (see
+After `cargo xtask install`, bundled clients are on PATH (see
 [`macos-cli.md`](./macos-cli.md)):
 
 ```bash

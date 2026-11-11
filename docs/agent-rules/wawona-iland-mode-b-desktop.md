@@ -66,7 +66,7 @@ only**. Not Linux. Not App Store iOS family.
  **and** the user chooses Replace now → Mode B via
  `WWNDesktopReplacementController` (privileged insert of bundled dylib).
  First enable installs `/etc/sudoers.d/wawona-modeb`.
- `nix run .#install` always syncs helper + dylib + `wwn-iowatchdog` +
+ `cargo xtask install` always syncs helper + dylib + `wwn-iowatchdog` +
  sudoers for this store (administrator once) and
  fails if the helper still points at a previous nix store. It does **not**
  take over the screen. It does **not** install

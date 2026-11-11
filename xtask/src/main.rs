@@ -6,6 +6,7 @@ mod backend;
 mod ci;
 mod deps;
 mod gen;
+mod install;
 mod lab;
 mod macho;
 mod package;
@@ -82,6 +83,20 @@ enum Cmd {
     /// Release secrets: check, run a command with them, sync to GitHub, fastlane match, rulesets.
     #[command(subcommand)]
     Secrets(secrets::Cmd),
+    /// Install the Release macOS build to /Applications with its launch agents, Mode B helper and CLI wrappers.
+    Install {
+        /// The Wawona.app to install (default: this checkout's Release build).
+        #[arg(long)]
+        app: Option<std::path::PathBuf>,
+    },
+    /// Remove what `install` put on this Mac and restore Aqua.
+    Uninstall {
+        #[arg(long, hide = true)]
+        privileged: bool,
+    },
+    /// The host-PATH wrappers for the executables bundled in Wawona.app.
+    #[command(subcommand)]
+    Cli(install::Cli),
     /// Build (when stale), check and clean-launch the tip app every UI proof uses.
     Tip(tip::Args),
     /// Wawona.xcodeproj build phases.
@@ -110,6 +125,9 @@ fn main() -> Result<()> {
         Cmd::Prove(a) => prove::main(a),
         Cmd::Lab(c) => lab::main(c),
         Cmd::Secrets(c) => secrets::main(c),
+        Cmd::Install { app } => install::install(app),
+        Cmd::Uninstall { privileged } => install::uninstall(privileged),
+        Cmd::Cli(c) => install::cli(c),
         Cmd::Tip(a) => tip::main(a),
         Cmd::Xcode(c) => xcode::main(c),
     }

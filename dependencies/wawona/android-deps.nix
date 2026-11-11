@@ -17,6 +17,7 @@
   westonToytoolkitLdflagsNix,
   westonCompositorLdflagsNix,
   ilandGlAndroidLdflagsNix,
+  xtask ? pkgs.buildPackages.callPackage ./xtask.nix { },
 }:
 let
   dep = name: buildModule.buildForAndroid name { };
@@ -140,7 +141,7 @@ pkgs.runCommand "wawona-deps-android" { nativeBuildInputs = [ pkgs.glslang ]; } 
   chmod -R u+w $out/cpp
   ${lib.optionalString (westonAndroidSignalPolyfill != null) "cp ${westonAndroidSignalPolyfill} $out/cpp/weston-simple-shm/wwn-android-signal-polyfill.h"}
   ${bundledClients.preBuildFragment}
-  NIX_GLSLANG_BIN=${pkgs.glslang}/bin bash ${../../scripts/embed-android-shaders.sh} ${lib.fileset.toSource {
+  PATH=${pkgs.buildPackages.glslang}/bin:$PATH ${xtask}/bin/xtask gen android-shaders ${lib.fileset.toSource {
     root = ../..;
     fileset = ../../src/platform/android/rendering/shaders;
   }} $TMPDIR/shaders

@@ -15,7 +15,7 @@ Wawona machines show sway
 
 ## Bundled software on PATH
 
-`nix run .#install` copies Wawona.app to `/Applications` and also drops
+`cargo xtask install` copies Wawona.app to `/Applications` and also drops
 wrappers in `~/.local/bin` (and `/usr/local/bin` when that directory is
 writable) for every bundled CLI that does not shadow Apple `/bin` or
 `/usr/bin`:
@@ -35,7 +35,7 @@ Wayland socket is missing, and set `WESTON_*` / `FONTCONFIG_FILE` /
 
 Apple names (`ssh`, `zsh`, `vi`, `login`) stay in
 `/Applications/Wawona.app/Contents/Resources/bin/` so host OpenSSH and zsh
-are not replaced. `nix run .#uninstall` removes the wrappers and PATH
+are not replaced. `cargo xtask uninstall` removes the wrappers and PATH
 hooks.
 
 PATH is prepended in `~/.zprofile` (login shells: Terminal.app) and, when
@@ -43,6 +43,8 @@ administrator authorization is available, in `/etc/zshenv.local`. nix-darwin
 sources that file from `/etc/zshenv` for **every** zsh, including Cursor and
 a nested `zsh` (those are not login shells, so `.zprofile` never runs).
 home-manager `~/.zshrc` is a nix-store symlink and is left alone.
+`cargo xtask cli register <Wawona.app>` rewrites only the wrappers;
+`--user-only` skips `/etc/zshenv.local` and its administrator prompt.
 
 A shell that was already open still needs:
 
@@ -120,7 +122,7 @@ window. Logs to stdout plus `/tmp/wawona-modeb-cli.log` and
 | `--mode-b-engage` | `takeover-now`: take over now. `reboot`: open the native macOS Restart sheet (`kAERestart` / QA1134, 60-second countdown). `blocked`: print the exact reason and exit 3 |
 | `--mode-b-disengage` | Full teardown: restore WindowServer, kill root compositor, remove helper / sudoers / login agent / dylib / ws-guard |
 
-`nix run .#install` syncs `/Library/Application Support/Wawona/run-modeb.sh`,
+`cargo xtask install` syncs `/Library/Application Support/Wawona/run-modeb.sh`,
 copies this build's `libwayland-mac.dylib`, refreshes sudoers, and clears a
 stale `modeb.lock`.
 It prompts for administrator authorization once and fails if the helper

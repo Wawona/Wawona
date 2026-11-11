@@ -63,7 +63,7 @@ ACK comes from Path B (`claim-ok` / sock) or Path A claim. Soft-inject
    arm. **Replace now** (Settings and menubar) is the only Classic activate.
    Replace now stays blocked until Path B `claim-ok` **and** live Disable.
    Never Take Over from Enable. Never dump CLI paths as the only instruction.
-4. Probe-only path (Aqua stays up): `nix run .#install`, then
+4. Probe-only path (Aqua stays up): `cargo xtask install`, then
    `Wawona --mode-b-probe` (KEEP_WS). Still never unload `watchdogd`
    without Path B ACK.
 
