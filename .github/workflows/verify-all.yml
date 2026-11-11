@@ -121,7 +121,7 @@ jobs:
     name: "Check: Swift matches Rust policy"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
-    runs-on: macos-latest
+    runs-on: macos-27
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5

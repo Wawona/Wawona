@@ -800,13 +800,6 @@
             if pkgs.stdenv.hostPlatform.isDarwin
             then toolchains.buildForMacOS "angle" {}
             else pkgs.angle;
-
-          # Linux. Darwin's `wawona` wraps wawona-macos (packages below).
-          wawona = pkgs.callPackage ./dependencies/wawona/linux.nix {
-            inherit wawonaVersion;
-            waypipeSrc = waypipe-src;
-            coreutilsSrc = coreutils-src;
-          };
         }
         // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           # ANGLE companion: iland userland graphics core (GBM/EGL/DRM over IOSurface).

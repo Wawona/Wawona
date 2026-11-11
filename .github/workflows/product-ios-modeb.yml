@@ -38,7 +38,7 @@ env:
 jobs:
   ios-modeb:
     name: "iOS Mode B channel artifacts"
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v5

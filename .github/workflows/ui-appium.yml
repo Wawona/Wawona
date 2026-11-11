@@ -332,7 +332,7 @@ jobs:
   apple:
     name: "Apple Appium (${{ matrix.job_name || matrix.platform }})"
     needs: unit
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 120
     strategy:
       fail-fast: false

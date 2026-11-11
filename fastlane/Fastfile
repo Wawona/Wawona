@@ -63,14 +63,14 @@ end
 # watchOS is a companion (WKCompanionAppBundleIdentifier → com.aspauldingcode.Wawona).
 # A bare watchOS archive has no App Store export method on Xcode 26
 # (`expected one {} but found app-store`). Ship watch by embedding into
-# Wawona-iOS under XcodeGen's own default Watch/ location — see
-# xcodegen.nix's #ITMS-90426-watch comment for why PlugIns/ was tried and
-# reverted (breaks `xcrun altool` upload). Never gym Wawona-watchOS alone.
+# Wawona-iOS under Watch/ (the project's Embed Watch Content phase). PlugIns/
+# was tried and reverted: it breaks `xcrun altool` upload. Never gym
+# Wawona-watchOS alone.
 APPLE_BETA_TARGETS = [
   {
     # Universal (phone+iPad). Do not also upload Wawona-iPadOS — same bundle id
     # and CFBundleVersion would collide on the IOS App Store Connect platform.
-    # Watch companion rides inside this IPA (xcodegen embed + gym_ipa signing).
+    # Watch companion rides inside this IPA (Embed Watch Content + gym_ipa signing).
     # Never gym Wawona-watchOS standalone for TF (#136).
     scheme: "Wawona-iOS",
     name: "iPhone + iPad (iOS)",
@@ -279,7 +279,7 @@ end
 # dylib flips its validator into that legacy mode → rotating ITMS-90426/
 # 90429/90433 no matter what SwiftSupport content is shipped. ANGLE must be
 # embedded ONLY as libEGL.framework / libGLESv2.framework on device
-# (xcodegen.nix keeps flat copies simulator-only; iLand's EGL shim
+# (the project's Embed Frameworks phases; iLand's EGL shim
 # probes the framework paths first).
 def assert_no_loose_dylibs!(ipa)
   require "open3"
@@ -300,7 +300,7 @@ def assert_no_loose_dylibs!(ipa)
       "#{File.basename(ipa)}: loose non-Swift dylib(s) under Frameworks/ — forbidden in App " \
       "Store bundles (TN2435) and the proven trigger of the ITMS-90426/90429/90433 rejection " \
       "loop (builds 60-120):\n  - #{offenders.join("\n  - ")}\n" \
-      "Wrap them in .framework bundles (see xcodegen.nix ANGLE embed) or drop them from device builds."
+      "Wrap them in .framework bundles (see the project's Embed Frameworks phases) or drop them from device builds."
     )
   end
   UI.success("#{File.basename(ipa)}: no loose non-Swift dylibs in Frameworks/ (TN2435 OK)")
@@ -349,9 +349,8 @@ def assert_legacy_swift_support!(ipa)
 end
 
 # #136 / #ITMS-90426-watch: iOS App Store IPA must carry the watch companion
-# under Watch/ — XcodeGen's own unpatched default embed location. See
-# dependencies/generators/xcodegen.nix's #ITMS-90426-watch comment for the
-# full history of why PlugIns/ (dstSubfolderSpec=13) was tried and reverted.
+# under Watch/ (Embed Watch Content). PlugIns/ (dstSubfolderSpec=13) was
+# tried and reverted.
 def assert_ipa_has_watch_companion!(ipa)
   if ENV["WAWONA_SKIP_WATCH"].to_s == "1"
     UI.important("WAWONA_SKIP_WATCH=1 — skipping Watch/ companion assert")
@@ -362,9 +361,8 @@ def assert_ipa_has_watch_companion!(ipa)
   UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
   # #ITMS-90426-watch (2026-08-08): PlugIns/ (dstSubfolderSpec=13) archives
   # and exports fine but breaks `xcrun altool`/`upload_to_testflight` outright
-  # ("Cannot determine the 'platform' from the info.plist.") — see
-  # dependencies/generators/xcodegen.nix for the full history. Back to
-  # XcodeGen's own default Watch/ (dstSubfolderSpec=16), which every build
+  # ("Cannot determine the 'platform' from the info.plist."). Watch/
+  # (dstSubfolderSpec=16) is what every build
   # 89-110 uploaded successfully; only SwiftSupport content ever caused a
   # real ASC rejection for this app, never the embed directory.
   watch_app = listing.lines.any? do |l|
@@ -642,7 +640,7 @@ def embed_swift_runtime_into_archive!(archive_path)
     # this shape alone does NOT satisfy ASC (90429 with perfect parity and
     # signatures) — the actual root cause of the 60-120 rejection streak was
     # loose non-Swift dylibs (ANGLE libEGL.dylib/libGLESv2.dylib) in the
-    # device Frameworks/ (TN2435), now fixed in xcodegen.nix. Keep this
+    # device Frameworks/ (TN2435), now embedded as frameworks. Keep this
     # branch only as an escape hatch if a future canonical-shape upload is
     # rejected again.
     #
@@ -1031,15 +1029,10 @@ def nix_impure_build_cmd(attr)
     "--print-out-paths --print-build-logs"
 end
 
-def ensure_xcodegen!
-  project = File.expand_path("../Wawona.xcodeproj", __dir__)
-  if ENV["WAWONA_SKIP_XCODEGEN"].to_s == "1" && Dir.exist?(project)
-    UI.message("Skipping xcodegen (WAWONA_SKIP_XCODEGEN=1)")
-    return
-  end
-  UI.message("Generating Xcode project (nix run .#xcodegen)...")
-  sh("nix", "run", ".#xcodegen")
-  UI.user_error!("Wawona.xcodeproj missing after xcodegen") unless Dir.exist?(project)
+def ensure_deps!(target)
+  sdk = target[:app_platform] == "ios" ? "iphoneos" : target[:app_platform]
+  UI.message("Linking .deps/#{sdk} (nix run .#deps -- #{sdk})...")
+  sh("nix", "run", ".#deps", "--", sdk)
 end
 
 # nix develop exports CC/CXX/LD/NIX_LDFLAGS and clang-wrapper on PATH;
@@ -1113,12 +1106,13 @@ def gym_output_dir
   end
 end
 
-# Nix owns xcodegen + Rust prebuild (Xcode build phase -> xcode-prebuild.sh).
+# Nix owns the dependency slices and Rust backend (.deps, linked by ensure_deps!).
 # Fastlane owns match keychain, gym archive/export, and TestFlight upload.
 #
 # Do NOT pass PROVISIONING_PROFILE_SPECIFIER via global xcargs — it applies to
 # every target (WawonaModel / WawonaUIContracts frameworks cannot take profiles).
 def gym_ipa(target)
+  ensure_deps!(target)
   team_id = ENV.fetch("TEAM_ID")
   profile = target[:profile_name]
   identity = ENV.fetch("WAWONA_CODE_SIGN_IDENTITY", "Apple Distribution")
@@ -1158,7 +1152,7 @@ def gym_ipa(target)
     "CURRENT_PROJECT_VERSION=#{wawona_build_number}",
     "MARKETING_VERSION=#{wawona_version}"
     # ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES is a per-target project setting
-    # (xcodegen.nix: YES on Wawona-iOS/Wawona-watchOS app targets, NO on
+    # (project.xcproj: YES on Wawona-iOS/Wawona-watchOS app targets, NO on
     # WawonaModel/WawonaUIContracts framework targets). A global xcarg here
     # would force YES onto the framework targets too and reproduce ASC
     # ITMS-90429/90427 (Frameworks/libswift* only expected on app targets).
@@ -1255,7 +1249,7 @@ def gym_ipa(target)
   # DTPlatformName/DTSDKName, which were both correctly appletvos/xros in the
   # affected archives — to decide "current platform", so it rejected the
   # (correctly platform-scoped) provisioning profile. Fixed at the source in
-  # `dependencies/generators/xcodegen.nix` (`stripIOSOnlyInfoPlistKeysPhase`
+  # `scripts/xcode-embed.sh` (deletes the iOS-only keys
   # on the tvOS/macOS/visionOS app targets); verified locally end-to-end for
   # both Wawona-tvOS and Wawona-visionOS via `fastlane ios debug_export`.
   # Keep exporting in a minimal, explicit environment regardless — it is a
@@ -1317,7 +1311,6 @@ platform :ios do
   lane :debug_export do
     validate_env
     setup_ci if ENV["CI"]
-    ensure_xcodegen!
     prefer_xcode_toolchain!
     api_key = asc_api_key
     install_testflight_profiles!(api_key)
@@ -1341,7 +1334,6 @@ platform :ios do
   lane :beta do
     validate_env
     setup_ci if ENV["CI"]
-    ensure_xcodegen!
     prefer_xcode_toolchain!
     api_key = asc_api_key
     install_testflight_profiles!(api_key)
@@ -1383,7 +1375,6 @@ platform :ios do
   lane :github_ipa do
     validate_env
     setup_ci if ENV["CI"]
-    ensure_xcodegen!
     prefer_xcode_toolchain!
     api_key = asc_api_key
     install_testflight_profiles!(api_key)
@@ -1427,7 +1418,6 @@ platform :ios do
   lane :release do
     validate_env
     setup_ci if ENV["CI"]
-    ensure_xcodegen!
     prefer_xcode_toolchain!
     api_key = asc_api_key
     install_testflight_profiles!(api_key)

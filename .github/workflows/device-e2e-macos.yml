@@ -41,9 +41,9 @@ concurrency:
 jobs:
   catalog-and-macos-fuzzel:
     name: "macOS: catalog + compositor-host smoke"
-    # Must match product-build macos-app runner: macos-26 builds are
-    # min-version 26 and abort on macos-15 ("newer than running OS").
-    runs-on: macos-26
+    # Must match product-build macos-app runner: macos-27 builds are
+    # min-version 27 and abort on an older macOS ("newer than running OS").
+    runs-on: macos-27
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5

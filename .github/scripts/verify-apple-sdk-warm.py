@@ -5,8 +5,7 @@ Host Xcode platform SDKs are warmed by warm-ios-simulator-sdk.sh so impure
 xcodebuild / build-app.nix can skip -downloadPlatform. This check fails if:
 
   1. The warm or select-xcode scripts fail `bash -n`,
-  2. product-build apple-family / ios-sim, device-e2e, or Gate: packages
-     frontend-syntax-check drop the warm step,
+  2. product-build apple-family / ios-sim or device-e2e drop the warm step,
   3. select-xcode.sh loses the fail-closed pin, or a workflow reintroduces
      "newest Xcode" selection (`sort -V | tail -1`).
 """
@@ -41,16 +40,6 @@ def bash_n(path: Path) -> str | None:
     return None
 
 
-def job_block(text: str, job: str) -> str:
-    """Return the YAML body of `jobs.<job>` until the next top-level job."""
-    m = re.search(rf"(?m)^  {re.escape(job)}:\s*\n", text)
-    if not m:
-        return ""
-    start = m.end()
-    nxt = re.search(r"(?m)^  [A-Za-z0-9_-]+:\s*\n", text[start:])
-    return text[start : start + nxt.start()] if nxt else text[start:]
-
-
 def main() -> int:
     errors: list[str] = []
 
@@ -79,7 +68,7 @@ def main() -> int:
             "product-apple-family.yml: missing warm-ios-simulator-sdk.sh "
             "(watch/tv/vision sim builds still hit -downloadPlatform iOS without the skip flag)"
         )
-    # Per-job platform args or a single `all` (XcodeGen needs every Apple SDK).
+    # Per-job platform args or a single `all`.
     if "warm-ios-simulator-sdk.sh all" not in apple_family_wf:
         for plat in ("ipados", "tvos", "watchos", "visionos"):
             if f"warm-ios-simulator-sdk.sh {plat}" not in apple_family_wf:
@@ -91,18 +80,6 @@ def main() -> int:
     e2e_ios = (WORKFLOWS / "device-e2e-ios.yml").read_text(encoding="utf-8")
     if WARM_REF not in e2e_ios:
         errors.append("device-e2e-ios.yml: missing warm-ios-simulator-sdk.sh")
-
-    nix = (WORKFLOWS / "nix.yml").read_text(encoding="utf-8")
-    frontend = job_block(nix, "frontend-syntax-check")
-    if WARM_REF not in frontend:
-        errors.append(
-            "nix.yml job frontend-syntax-check: missing warm-ios-simulator-sdk.sh all "
-            "(iOS/tvOS/watchOS/visionOS simulator destinations)"
-        )
-    if "warm-ios-simulator-sdk.sh all" not in frontend and WARM_REF in frontend:
-        errors.append(
-            "nix.yml job frontend-syntax-check: warm script should be invoked with `all`"
-        )
 
     for wf_name in (
         "product-ios-sim.yml",

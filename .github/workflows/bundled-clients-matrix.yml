@@ -74,7 +74,7 @@ jobs:
     name: Matrix iOS
     needs: product-ios
     if: always() && !cancelled() && needs.product-ios.result == 'success'
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v5
@@ -155,7 +155,7 @@ jobs:
     name: Matrix macOS
     needs: product-macos
     if: always() && !cancelled() && needs.product-macos.result == 'success'
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v5

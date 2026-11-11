@@ -42,7 +42,7 @@ jobs:
   android-apk:
     name: "Android: Wawona.apk"
     if: ${{ !inputs.products_ready }}
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
