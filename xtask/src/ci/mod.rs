@@ -6,6 +6,8 @@ use regex::Regex;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+pub mod runner;
+
 #[derive(clap::Subcommand)]
 pub enum Cmd {
     /// Classify the failed jobs of recent runs by known signatures.
@@ -45,6 +47,34 @@ pub enum Cmd {
         #[arg(long, default_value_t = 30)]
         timeout: u64,
     },
+    /// Soft supersede: is_tip=false when a newer commit is on the branch
+    /// (always exits 0; wawona-ci-no-cancel).
+    Tip {
+        #[arg(long)]
+        force: bool,
+    },
+    /// Select the pinned Xcode 27 and export DEVELOPER_DIR to the job.
+    SelectXcode,
+    /// Make the platform SDKs of these targets visible (ios, ipados, tvos,
+    /// watchos, visionos, all), downloading missing platform packs.
+    WarmSdk { platforms: Vec<String> },
+    /// Download a product artifact a successful run built for SHA.
+    FetchProduct {
+        sha: String,
+        artifact: String,
+        dest: String,
+        #[arg(default_value_t = 5400)]
+        wait: u64,
+    },
+    /// Run a command up to three times, retrying transient network failures.
+    Retry {
+        #[arg(last = true, required = true)]
+        cmd: Vec<String>,
+    },
+    /// Clone wwn-toolchain and repo.wawona.io at their flake.lock revisions.
+    FlakeInputs,
+    /// A Nix producer gate: shell-tools or android-meson.
+    NixGate { group: String },
     /// Run a command, echoing its output, until a line contains MARKER; exit
     /// 124 after --timeout seconds without it.
     Until {
@@ -103,6 +133,13 @@ pub fn main(c: Cmd) -> Result<()> {
         Cmd::WlcsGrade(a) => crate::wlcs::grade(a),
         Cmd::Testflight(a) => crate::testflight::main(a),
         Cmd::UiParity(a) => crate::parity::main(a),
+        Cmd::Tip { force } => runner::tip(force),
+        Cmd::SelectXcode => runner::select_xcode(),
+        Cmd::WarmSdk { platforms } => runner::warm_sdk(&platforms),
+        Cmd::FetchProduct { sha, artifact, dest, wait } => runner::fetch_product(&sha, &artifact, &dest, wait),
+        Cmd::Retry { cmd } => runner::retry(&cmd),
+        Cmd::FlakeInputs => runner::flake_inputs(),
+        Cmd::NixGate { group } => runner::nix_gate(&group),
         Cmd::Until { marker, timeout, cmd } => until(&marker, timeout, &cmd),
         Cmd::Detach { log, pid_file, env, unset, cmd } => detach(&log, pid_file, env, unset, &cmd),
         Cmd::WaitSocket { path, timeout } => {

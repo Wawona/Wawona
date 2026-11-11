@@ -206,7 +206,7 @@ projects; Nix products build them as an IDE does.
 
 Host Xcode is state outside Nix. `wwn-toolchain/dependencies/apple/` exports
 the Xcode wrapper and SDK checks; CI pins the app with
-`.github/scripts/select-xcode.sh` (Xcode 27 only, never "newest installed").
+`cargo xtask ci select-xcode` (Xcode 27 only, never "newest installed").
 
 ---
 

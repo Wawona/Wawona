@@ -47,7 +47,7 @@ jobs:
           SDK: ${{ matrix.sdk }}
         run: |
           set -euo pipefail
-          ./.github/scripts/nix-retry.sh nix build ".#deps-$SDK" --print-build-logs --out-link "result-$SDK"
+          nix build ".#deps-$SDK" --print-build-logs --out-link "result-$SDK"
           out=$(readlink "result-$SDK")
           nar=$(nix path-info --json --json-format 1 "$out" | jq -r '.[0].narHash')
           if [ "$(cargo xtask deps nar "$SDK")" = "$nar" ]; then

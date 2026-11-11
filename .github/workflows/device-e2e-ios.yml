@@ -55,7 +55,7 @@ jobs:
       - name: Build Wawona.app (iOS simulator)
         if: ${{ !inputs.products_ready }}
         run: |
-          ./.github/scripts/warm-ios-simulator-sdk.sh ios watchos
+          cargo xtask ci warm-sdk ios watchos
           cargo xtask build ios --release
           mkdir -p result-ios
           ditto .build/xcode/ios/Build/Products/Release-iphonesimulator/Wawona.app result-ios/Wawona.app

@@ -110,7 +110,7 @@ forbidden while iPhone is planned for those features.
      `CAMetalLayer` is available since tvOS 9. ANGLE (OpenGL ES to Metal,
      `target_platform=tvos`) and MoltenVK (Vulkan to Metal) link when
      `WWN_TVOS_GPU_BUNDLED`. Gate: `WWN_TVOS_GPU=1` in
-     `verify-iland-graphics-bundle.sh` requires both. The Vulkan **loader** does not
+     `cargo xtask artifact graphics` requires both. The Vulkan **loader** does not
      work on tvOS: dispatch straight into the ICD, as `WWN_VULKAN_LIBRARY`
      already does. Rendered-frame PROPER is still pending. Never drop tvOS
      from the graphics roadmap.

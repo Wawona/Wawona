@@ -29,5 +29,5 @@ iOS recipes, `@available` / weak-link on iOS, a bundled client recipe
 
 ```bash
 otool -l Wawona.app/Wawona | grep -A4 LC_BUILD_VERSION   # minos 15.0
-bash .github/scripts/verify-ios-modeb-artifacts.sh <tipa-or-app>
+cargo xtask artifact ios mode-b <tipa>   # or: mode-a <app>
 ```

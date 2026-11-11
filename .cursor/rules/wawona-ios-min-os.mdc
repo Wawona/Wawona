@@ -32,7 +32,7 @@ SwiftUI APIs newer than iOS 15 need guards or `WawonaBackport`.
 
 ## Channels
 
-All iOS binaries target 15.0; `verify-ios-modeb-artifacts.sh` requires it on
+All iOS binaries target 15.0; `cargo xtask artifact ios` requires it on
 tipa and Sileo. Mode A firewall unchanged (no Cranelift, `MAP_JIT`,
 Hypervisor, private Metal/IOMFB, QEMU). A deployment target does not extend
 TrollStore's installer window or the iOS Hypervisor window. Store IPAs ship

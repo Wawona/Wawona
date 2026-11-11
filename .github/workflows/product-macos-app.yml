@@ -74,8 +74,8 @@ jobs:
           APP=.build/xcode/macos/Build/Products/Release/Wawona.app
           test -x "$APP/Contents/MacOS/Wawona"
           test -d "$APP/Contents/Resources/share/X11/xkb/rules"
-          ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos "$APP"
-          ./.github/scripts/verify-iland-graphics-bundle.sh --platform macos-desktop "$APP"
+          cargo xtask artifact graphics --platform macos "$APP"
+          cargo xtask artifact graphics --platform macos-desktop "$APP"
           for a in macos-app macos-desktop-host; do
             mkdir -p "dist/$a"
             ditto "$APP" "dist/$a/Wawona.app"

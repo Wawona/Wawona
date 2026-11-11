@@ -96,8 +96,8 @@ After landing cache wiring on `development` / `main`:
 FlakeHub does **not** reduce Nix **eval** / crate2nix IFD cost, and it does
 **not** ship Apple platform SDKs. Runner speedups for those:
 
-- Pin host Xcode ([`select-xcode.sh`](../.github/scripts/select-xcode.sh); see [`ci.md`](./ci.md))
-- Warm host simulator SDKs before Apple `xcodebuild` ([`warm-ios-simulator-sdk.sh`](../.github/scripts/warm-ios-simulator-sdk.sh) on ios-sim, apple-family, and frontend-syntax)
+- Pin host Xcode (`cargo xtask ci select-xcode`; see [`ci.md`](./ci.md))
+- Warm host simulator SDKs before Apple `xcodebuild` (`cargo xtask ci warm-sdk` on ios-sim, apple-family, and frontend-syntax)
 - Path-filter Darwin Gate: packages cells on docs-only tips
 - Hoist `generatedCargoNix` per `workspace-src-*` (ios / macos / watchos)
 - CI installer `extra-conf` `max-jobs` + `cores` (not flake `nixConfig`; that

@@ -50,7 +50,7 @@ All iOS binaries target 15.0. App Store Mode A stays no Cranelift, no
 Mode A Wasm may use Wasmer WASIX in WebKit. TrollStore and Sileo retain their
 separate installation and entitlement contracts. A deployment target does not
 extend TrollStore's installer window or the iOS Hypervisor window.
-`.github/scripts/verify-ios-modeb-artifacts.sh` requires 15.0 on the tipa and
+`cargo xtask artifact ios` requires 15.0 on the tipa and
 Sileo executables.
 
 Compile success, device operation, App Store processing and review are

@@ -16,7 +16,7 @@ while iterating with AI, **VERSION must equal today's date** in
 
 ## Gate
 
-`.github/scripts/verify-calver-today.sh`
+`cargo xtask verify calver`
 
 Wired into:
 

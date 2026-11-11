@@ -78,9 +78,9 @@ jobs:
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v5
-      - name: Select Xcode
-        id: xcode
-        run: ./.github/scripts/select-xcode.sh
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: bundled-clients
       - uses: actions/download-artifact@v8
         with:
           name: product-ios-sim

@@ -56,7 +56,7 @@ jobs:
         run: |
           mkdir -p dist/ios-modeb
           cp dist/*.tipa dist/*-rootless.deb dist/ios-modeb/
-          bash ./.github/scripts/verify-ios-modeb-artifacts.sh --mode-b dist/ios-modeb/*.tipa
+          cargo xtask artifact ios mode-b dist/ios-modeb/*.tipa
           dpkg-deb -f dist/ios-modeb/*.deb Depends | grep -Fx 'firmware (>= 13.0)'
           printf '{"tipa_min_ios":"14.0","sileo_min_ios":"13.0","sha":"%s"}\n' "${{ github.sha }}" \
             > dist/ios-modeb/product-manifest.json

@@ -75,7 +75,7 @@ Android's executable multicall must build from `wwn-uutils-rs.lib.coreutilsSrc` 
 
 OSV exceptions belong in the root `osv-scanner.toml`, with a specific affected path, a dated expiry, and a removal or reevaluation trigger. Do not suppress a finding solely to make CI green. The current temporary exceptions cover optional lockfile-only `basic-toml` and two `cgmath` advisories inherited from pinned Smithay 0.7. Recheck before expiry and remove each exception when its dependency path changes.
 
-**Soft supersede:** WIP workflows use `cancel-in-progress: false` and [`.github/scripts/ci-require-branch-tip.sh`](../.github/scripts/ci-require-branch-tip.sh). Obsolete SHAs exit success as `superseded` (not Cancelled). The live tip runs the full gates. Agents must never `gh run cancel` to clear the queue.
+**Soft supersede:** WIP workflows use `cancel-in-progress: false` and `cargo xtask ci tip`. Obsolete SHAs exit success as `superseded` (not Cancelled). The live tip runs the full gates. Agents must never `gh run cancel` to clear the queue.
 
 Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). Filenames stay as before (`nix.yml`, `device-gate.yml`, â¦).
 
@@ -140,7 +140,7 @@ Removed: **publish-ios** (use Ship: beta `workflow_dispatch`) and standalone **A
 
 ### Soft supersede (no Cancelled spam)
 
-Gate: products / packages / Verification / Build: products share tip concurrency groups with **`cancel-in-progress: false`**. A tip gate job runs [`.github/scripts/ci-require-branch-tip.sh`](../.github/scripts/ci-require-branch-tip.sh):
+Gate: products / packages / Verification / Build: products share tip concurrency groups with **`cancel-in-progress: false`**. A tip gate job runs `cargo xtask ci tip`:
 
 - **Tip SHA:** full matrix runs to real green or red.
 - **Obsolete SHA:** jobs skip; rollup exits success as `superseded` (not Cancelled).
@@ -201,10 +201,10 @@ Pure ship/test binaries are built **once per SHA** by [`product-build.yml`](../.
 | `product-ios-sim` | `.#wawona-ios` | Build: GUI smoke, Watch: idle memory |
 | `product-android-apk` | `.#wawona-android` | Build: GUI smoke (android-emu downloads it directly. No `wawona-apk` hop), Watch: idle memory, Ship: GitHub assets |
 | `product-macos-app` | `.#wawona-macos` | Build: GUI smoke, Watch: idle memory, Ship: GitHub assets (DMG wrap). Mode A only. **must not** ship `libwayland-mac.dylib` |
-| `wawona-macos-desktop-host` | `.#wawona-macos-desktop-host` | Developer ID / Desktop Replacement Mode B. Assert dylib present via [`.github/scripts/verify-iland-mode-b-bundle.sh`](../.github/scripts/verify-iland-mode-b-bundle.sh) |
+| `wawona-macos-desktop-host` | `.#wawona-macos-desktop-host` | Developer ID / Desktop Replacement Mode B. Assert dylib present via `cargo xtask artifact mode-b` |
 | `product-appimage-<system>` | `.#wawona-appimage` | Ship: beta AppImages (reused cross-run via `workflow_run`, not rebuilt), Ship: GitHub assets |
 
-Helpers: [`.github/scripts/resolve-product-artifacts.sh`](../.github/scripts/resolve-product-artifacts.sh).
+Helpers: `cargo xtask ci fetch-product`.
 
 Signed IPA/AAB remain **impure** Fastlane/Release steps (secrets; match + gym for Apple IPAs); they reuse FlakeHub-warmed pure intermediates (Rust via `xcode-prebuild.sh`).
 
@@ -238,7 +238,7 @@ Push/PR **Gate: packages** builds only [`.github/ci-package-matrix.json`](../.gi
 
 ## Host Xcode pin (impure Apple builds)
 
-Runners use [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.sh). **pinned**, not ânewestâ.
+Runners use `cargo xtask ci select-xcode`. **pinned**, not ânewestâ.
 
 | | |
 |--|--|
@@ -246,18 +246,18 @@ Runners use [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.
 | Override | `WAWONA_XCODE_APP` or `WAWONA_XCODE_VERSION` |
 | Missing pin | Fail closed (lists installed `Xcode*.app`) |
 
-**Bump procedure:** update `DEFAULT_XCODE_APP` in `select-xcode.sh` in a reviewed PR after confirming the GHA image ships that app. Expect impure weston/backend/product hash churn + XCTest cache misses. That is intentional.
+**Bump procedure:** update `XCODE_APP` in `xtask/src/ci/runner.rs` in a reviewed PR after confirming the GHA image ships that app. Expect impure weston/backend/product hash churn + XCTest cache misses. That is intentional.
 
 **Runner OS:** all macOS jobs (Apple products, Android APK/AAB, Android Gradle gate, macOS e2e) run on **`macos-27`**, org-wide. Wawona requires the SDK 27 toolchain, and Android, which needs a macOS host (Linux fails `zsh-android` configure) but no particular version, shares the image.
 
-FlakeHub caches **Nix store paths** only. It does **not** ship Apple platform SDKs (`iphoneos` / `iphonesimulator` / `appletvsimulator` / `watchsimulator` / `xrsimulator`). Keep `warm-ios-simulator-sdk.sh` + host Xcode.
+FlakeHub caches **Nix store paths** only. It does **not** ship Apple platform SDKs (`iphoneos` / `iphonesimulator` / `appletvsimulator` / `watchsimulator` / `xrsimulator`). Keep `cargo xtask ci warm-sdk` + host Xcode.
 
-`warm-ios-simulator-sdk.sh` runs on every Apple `xcodebuild` lane that can hit `-downloadPlatform`:
+`cargo xtask ci warm-sdk` runs on every Apple `xcodebuild` lane that can hit `-downloadPlatform`:
 
 | Lane | Invocation |
 |--|--|
-| `product-build` ios-sim / `device-e2e` (in-job build) | `warm-ios-simulator-sdk.sh ios` |
-| `product-build` apple-family | `warm-ios-simulator-sdk.sh <target>` (`ipados` / `tvos` / `watchos` / `visionos`) |
+| `product-build` ios-sim / `device-e2e` (in-job build) | `cargo xtask ci warm-sdk ios` |
+| `product-build` apple-family | `cargo xtask ci warm-sdk <target>` (`ipados` / `tvos` / `watchos` / `visionos`) |
 
 When the requested simulator SDK is already on the runner, the script sets `WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1`. That skip is also required for **non-iOS** sim products: `wwn-toolchain` `build-app.nix` currently runs `-downloadPlatform iOS` for any SDK whose name ends in `simulator` (the watchOS flake noted in `release.yml`). Wiring is guarded by `cargo xtask verify apple-sdk-warm`.
 
@@ -320,7 +320,7 @@ Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,â¦`.
 - iOS CI lane: `agent-device-smoke.sh ios-ci` (one prepare for smoke; fuzzel reuses
   warm XCTest derived data; skipped on `pull_request` via `WAWONA_SKIP_FUZZEL`).
 - iOS Mode B: Gate: packages runs
-  `.github/scripts/verify-ios-modeb-ci.sh` (scanner + vphone `.ad` contract).
+  `cargo xtask artifact ios-contract` (scanner + vphone `.ad` contract).
   Gate: products' `ios-modeb` job builds both channel artifacts on macOS:
   TrollStore `.tipa` and Sileo `.deb` are both checked at Mach-O iOS
   **15.0** (the `.deb` also declares `firmware (>= 15.0)`).
@@ -334,6 +334,6 @@ Summary prints `MATRIX_FAIL cells=ios/niri,android/vkcube,â¦`.
   even with `continue-on-error`). Run `scripts/niri-fuzzel-smoke-macos.sh` locally
   or via Watch: graphics nightly. Catalog smoke remains hard on the macOS lane.
 - Same-session `prepare ios-runner` + `open` (do not kill prepare daemon before open).
-- XCTest runner cache key includes Xcode version (via `select-xcode.sh` outputs); hit/miss is logged.
+- XCTest runner cache key includes Xcode version (via `cargo xtask ci select-xcode` outputs); hit/miss is logged.
 - Product iOS sim builds only the simulator slices, so it does not force
   device or macOS native closures.

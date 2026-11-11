@@ -162,7 +162,7 @@ implementation side.
 Implementation is real: `.#wawona-macos-desktop-host` ships
 `libwayland-mac.dylib` + helpers; product `.#wawona-macos` sets
 `ilandBaremetal = null` and fails the build if the dylib sneaks in;
-`verify-iland-mode-b-bundle.sh` + `verify-iland-graphics-bundle.sh` assert
+`cargo xtask artifact mode-b` + `cargo xtask artifact graphics` assert
 present vs absent per artifact; Apple mobile / Play hard-fail on Dobby /
 Mode B daemons / private frameworks. Engage path:
 `WWNSipStatus` → Settings Desktop toggle →
@@ -194,7 +194,7 @@ loader-owned and must stay that way. Selecting `VulkanDriver=swiftshader` now
 absolute `library_path`, then points `VK_ICD_FILENAMES` / `VK_DRIVER_FILES` at
 it. The opposite of the previous clear. The APK also stages the upstream
 manifest under `assets/vulkan/icd.d/` (the jniLibs `*.so`-only copy loop had
-dropped it). `verify-iland-graphics-bundle.sh --platform android` now fails if
+dropped it). `cargo xtask artifact graphics --platform android` now fails if
 the ICD JSON or a Mode B artifact is present. Remaining under `p3-android`: a
 headless→`ANativeWindow` present adapter if the *host* compositor itself should
 render through SwiftShader (today the host stays on system Vulkan; SwiftShader
@@ -323,7 +323,7 @@ failing the build. Verified by rebuilding every `iland-*` archive, all of which
 now resolve the symbol.
 
 **2026-07-25 bundle policy verified against real artifacts:** running
-`verify-iland-graphics-bundle.sh` on built bundles corrected two wrong
+`cargo xtask artifact graphics` on built bundles corrected two wrong
 assumptions. First, iOS ships ANGLE as **embedded dynamic frameworks**
 (`Frameworks/libEGL.dylib`, `libGLESv2.framework`) while visionOS links the
 static archives, so "drivers must be static" was wrong; the check now requires
@@ -357,7 +357,7 @@ of the built archives:
 | `iland-baremetal-macos` | macOS dylib | `libwayland-mac.dylib`, `libwwn-iland.dylib` |
 
 The empty tvOS/watchOS archives are the enforced no-GPU contract, not a
-regression. `verify-iland-graphics-bundle.sh` now asserts this positively for
+regression. `cargo xtask artifact graphics` now asserts this positively for
 iOS/iPadOS/visionOS (statically linked MoltenVK + ANGLE markers, and no dynamic
 `libvulkan`/`libEGL`/`libGLESv2` link) and negatively for tvOS/watchOS
 (no statically embedded MoltenVK/ANGLE/SwiftShader).
@@ -410,7 +410,7 @@ them against static MoltenVK.
 
 Result: `_vkcube_main` is defined in macOS, iOS, iPadOS, and visionOS binaries
 and absent from tvOS/watchOS, which still define 0 Vulkan/EGL entry points. All
-seven Apple bundles pass `verify-iland-graphics-bundle.sh`. Runtime Start of the
+seven Apple bundles pass `cargo xtask artifact graphics`. Runtime Start of the
 `vkcube` machine is the remaining acceptance step.
 
 **2026-07-25 macOS Mode A kmscube: duplicate ANGLE image crash (FUCKUP → fixed):**
@@ -909,7 +909,7 @@ GPU-composited with SpriteKit (`WatchSpritePresentView`, `SKTexture` from SHM
 `WWN_WATCHOS_METAL=1` is a research flag (never TestFlight / ASC Watch IPA).
 Vulkan/OpenGL Watch remain a follow-up until the SDK ships public Metal.
 
-Enforcement: `verify-iland-graphics-bundle.sh` requires both MoltenVK and ANGLE
+Enforcement: `cargo xtask artifact graphics` requires both MoltenVK and ANGLE
 when `WWN_TVOS_GPU=1`. watchOS forbids those drivers unconditionally, requires
 SpriteKit, and fails if the Watch Mach-O links Metal unless `WWN_WATCHOS_METAL=1`.
 
@@ -1045,7 +1045,7 @@ Engage path is **real and gated** but not a CI-proven finished product.
 - **Remaining gaps:** flip completion still signals when the Mach surface message
   is accepted rather than at a display-vblank (`drm_linux.c` page-flip); **no CI
   job builds/runs `wawona-macos-desktop-host`**; and
-  `verify-iland-mode-b-bundle.sh` is **not invoked by any workflow** (only an
+  `cargo xtask artifact mode-b` is **not invoked by any workflow** (only an
   inline Nix assert), while `docs/ci.md:51-52` overstates coverage. Tracked by
   #87.
 
@@ -1083,7 +1083,7 @@ after repairing the recipe's coherent Xcode compiler/SDK selection, ANGLE header
 path, and `codesign` invocation without leaking BSD `find`/`cut` into Nix
 fixup. The artifact is an ad-hoc-signed arm64
 `libwayland-mac.dylib`, exports `drmModePageFlip` and `wayland_mac_init`, and
-passes both `verify-iland-mode-b-bundle.sh --mode present` (desktop-host-shaped
+passes both `cargo xtask artifact mode-b --mode present` (desktop-host-shaped
 fixture) and `--mode absent` (store-shaped fixture). This verifies packaging
 and compile/link ownership; it does **not** claim a SIP/root live desktop smoke
 or vblank-correct flips. Grade remains **WIRED**, not PROPER.
@@ -1207,7 +1207,7 @@ dylib; sharing iOS GPU post-build phases onto tv/watch; adding IOKit ldflags to
 tv/watch; linking OpenSSH into mobile OTHER_LDFLAGS; shared Settings sections
 without `#if` platform guards; enabling `desktopHost` on the wrong flake attr.
 
-**Asserted per build, not just described.** `verify-iland-graphics-bundle.sh` runs
+**Asserted per build, not just described.** `cargo xtask artifact graphics` runs
 in `product-build.yml` for iOS, iPadOS, visionOS, tvOS, watchOS, Android, macOS
 product, and macOS desktop-host. The "verify script not in CI" caveat above is
 stale. It now also enforces store-safety on the whole Apple mobile family

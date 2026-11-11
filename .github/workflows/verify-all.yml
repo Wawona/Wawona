@@ -30,10 +30,13 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: tip
       - id: tip
         env:
           WAWONA_CI_FORCE_TIP: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
-        run: bash .github/scripts/ci-require-branch-tip.sh
+        run: cargo xtask ci tip
 
   formal:
     name: "Check: Rust proofs (Kani / Verus / Miri)"

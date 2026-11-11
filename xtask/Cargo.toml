@@ -32,6 +32,7 @@ toml_edit = "0.25.19"
 roxmltree = "0.21.2"
 base64 = "0.22"
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }
+plist = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 
 [profile.dev]

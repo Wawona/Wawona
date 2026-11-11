@@ -57,13 +57,13 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 - **Path filters.** `device-gate.yml`, Gate: packages `ci-scope` (skips Darwin matrix /
   frontend-syntax / cargo-macos on docs-only tips), and `android-gradle-gate` so
   non-native pushes stop burning macos-26 minutes. `workflow_dispatch` stays full.
-- **Host Xcode pin.** [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.sh)
+- **Host Xcode pin.** `cargo xtask ci select-xcode`
   pins `Xcode_26.6.0.app` (not newest). Bump deliberately. See [`ci.md`](./ci.md).
   Do **not** chase `apple-sdks.nix` / FlakeHub Apple frameworks for product SDKs.
   nixpkgs `apple-sdk_15` (ANGLE Darwin) and `apple-sdk_26` (FFmpeg last-resort)
   are the only packaged-framework uses; they are macOS-lib recipes, not product
   `SDKROOT`.
-- **Host simulator SDK warm.** [`.github/scripts/warm-ios-simulator-sdk.sh`](../.github/scripts/warm-ios-simulator-sdk.sh)
+- **Host simulator SDK warm.** `cargo xtask ci warm-sdk`
   is the Apple platform-SDK cache (`ios` / `ipados` / `tvos` / `watchos` /
   `visionos` / `all`). Product ios-sim, apple-family, device-e2e in-job builds,
   run it before `xcodebuild`.

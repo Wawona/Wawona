@@ -275,7 +275,7 @@ missing patch anchors, meson version floors, or `Cargo.lock` skew.
   tip (`.#zsh-ios`, `.#fontconfig-android`, …).
 - CalVer bumps → sync `Cargo.lock` (and any linux-ui `cargoLock` consumers)
   before push. Product builds fail closed unless `VERSION` is **today's**
-  `YY.M.D` (`wawona-calver-today`, `.github/scripts/verify-calver-today.sh`).
+  `YY.M.D` (`wawona-calver-today`, `cargo xtask verify calver`).
   Escape: `WAWONA_ALLOW_STALE_CALVER=1`.
 - Nix source assembly can expand injected workspaces (for example, uutils
   coreutils) and add a dependency edge that checkout-only `cargo metadata`
@@ -369,7 +369,7 @@ is on (`wawona-nested-compositor-cursor`). Full rule:
   until a ship boundary. See `docs/ci.md`, `docs/agent-rules/wawona-release-assets.md`,
   rule `wawona-release-assets`.
 - Mode B **iland** dylib presence: assert with
-  `.github/scripts/verify-iland-mode-b-bundle.sh`.
+  `cargo xtask artifact mode-b`.
 
 ## Product map (agents)
 

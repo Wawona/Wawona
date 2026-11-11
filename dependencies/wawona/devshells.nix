@@ -30,7 +30,7 @@ builtins.listToAttrs (map (system: let
   '';
 
   # Fastlane match and xcodebuild need DEVELOPER_DIR and xcodebuild on PATH inside
-  # nix develop. CI exports these via select-xcode.sh; local dev uses find-xcode.
+  # nix develop. CI exports these via `cargo xtask ci select-xcode`; local dev uses find-xcode.
   darwinXcodeShellHook = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
     XCODE_APP=""
     if [ -n "''${DEVELOPER_DIR:-}" ]; then

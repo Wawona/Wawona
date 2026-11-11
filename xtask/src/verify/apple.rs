@@ -6,41 +6,27 @@ use regex::Regex;
 
 const WORKFLOWS: &str = ".github/workflows";
 
-/// Apple jobs select the pinned Xcode (select-xcode.sh, directly or through
+/// Apple jobs select the pinned Xcode (`ci select-xcode`, directly or through
 /// setup-xtask) and warm the platform SDKs so xcodebuild skips -downloadPlatform.
 pub fn sdk_warm(c: &mut Check, _: &Opts) -> Result<String> {
-    let warm = ".github/scripts/warm-ios-simulator-sdk.sh";
-    let select = ".github/scripts/select-xcode.sh";
-    for s in [warm, select] {
-        if !c.path(s).is_file() {
-            c.fail(format!("missing {s}"));
-        } else if try_output(cmd("bash").arg("-n").arg(c.path(s))).is_none() {
-            c.fail(format!("{s}: bash -n failed"));
-        }
-    }
+    let (warm, select) = ("cargo xtask ci warm-sdk", "cargo xtask ci select-xcode");
     let newest = Regex::new(r"sort\s+-V\s*\|\s*tail\s+-1")?;
-    if let Some(t) = c.text(select) {
-        for n in ["DEFAULT_XCODE_APP=", "Pinned Xcode not found"] {
-            if !t.contains(n) {
-                c.fail(format!("select-xcode.sh: missing {n:?} (the fail-closed pin)"));
-            }
-        }
-        if newest.is_match(&t) {
-            c.fail("select-xcode.sh: reintroduced newest-Xcode selection");
-        }
+    match c.text("xtask/src/ci/runner.rs") {
+        Some(t) if t.contains("const XCODE_APP: &str = \"/Applications/Xcode_") && t.contains("not found") => {}
+        _ => c.fail("ci/runner.rs: the Xcode pin (XCODE_APP) and its fail-closed lookup are missing"),
     }
     let action = c.text(".github/actions/setup-xtask/action.yml").unwrap_or_default();
     if !action.contains(select) {
-        c.fail("setup-xtask must run select-xcode.sh");
+        c.fail("setup-xtask must run `cargo xtask ci select-xcode`");
     }
     for wf in ["product-ios-sim.yml", "product-apple-family.yml", "device-e2e-ios.yml"] {
         c.need(&format!("{WORKFLOWS}/{wf}"), &[warm], "warm the simulator SDKs");
     }
     if let Some(t) = c.text(&format!("{WORKFLOWS}/product-apple-family.yml")) {
-        if !t.contains("warm-ios-simulator-sdk.sh all") {
+        if !t.contains("ci warm-sdk all") {
             for p in ["ipados", "tvos", "watchos", "visionos"] {
-                if !Regex::new(&format!(r"warm-ios-simulator-sdk\.sh[^\n]*\b{p}\b"))?.is_match(&t) {
-                    c.fail(format!("product-apple-family.yml: the warm script must be passed {p} or all"));
+                if !Regex::new(&format!(r"ci warm-sdk[^\n]*\b{p}\b"))?.is_match(&t) {
+                    c.fail(format!("product-apple-family.yml: warm-sdk must be passed {p} or all"));
                 }
             }
         }
@@ -60,7 +46,7 @@ pub fn sdk_warm(c: &mut Check, _: &Opts) -> Result<String> {
             c.fail(format!("{name}: reintroduced newest-Xcode selection (sort -V | tail -1)"));
         }
         if pinned.contains(&name.as_str()) && !t.contains(select) && !t.contains("./.github/actions/setup-xtask") {
-            c.fail(format!("{name}: must select the pinned Xcode (setup-xtask or select-xcode.sh)"));
+            c.fail(format!("{name}: must select the pinned Xcode (setup-xtask or `ci select-xcode`)"));
         }
     }
     Ok("pinned Xcode, warmed SDKs".into())

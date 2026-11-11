@@ -48,7 +48,7 @@ jobs:
 
       # The iOS app embeds the watch companion, so both SDKs are needed.
       - name: Ensure Apple simulator SDKs
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh ios watchos
+        run: cargo xtask ci warm-sdk ios watchos
 
       - name: Build Wawona-iOS for the simulator
         run: cargo xtask build ios --release
@@ -72,13 +72,13 @@ jobs:
             > dist/ios-sim/product-manifest.json
 
       - name: Verify store-safe iOS graphics bundle
-        run: ./.github/scripts/verify-iland-graphics-bundle.sh --platform ios --simulator dist/ios-sim/Wawona.app
+        run: cargo xtask artifact graphics --platform ios --simulator dist/ios-sim/Wawona.app
 
       - name: Verify iOS Mode A firewall
-        run: bash ./.github/scripts/verify-ios-modeb-artifacts.sh --mode-a-simulator dist/ios-sim/Wawona.app
+        run: cargo xtask artifact ios mode-a-simulator dist/ios-sim/Wawona.app
 
       - name: Verify iOS Mode B replay contract
-        run: bash ./.github/scripts/verify-ios-modeb-ci.sh
+        run: cargo xtask artifact ios-contract
 
       - uses: actions/upload-artifact@v7
         with:

@@ -1,6 +1,7 @@
 //! Wawona's build and repository tasks: `cargo xtask <command>`.
 
 mod appium;
+mod artifact;
 mod backend;
 mod ci;
 mod deps;
@@ -56,6 +57,9 @@ enum Cmd {
     /// The Appium UI suite and its offline checks.
     #[command(subcommand)]
     Appium(appium::Cmd),
+    /// Policy gates on built apps and archives (graphics matrix, Mode A/B firewall, size).
+    #[command(subcommand)]
+    Artifact(artifact::Cmd),
     /// GitHub Actions bookkeeping.
     #[command(subcommand)]
     Ci(ci::Cmd),
@@ -81,6 +85,7 @@ fn main() -> Result<()> {
         Cmd::Verify(a) => verify::main(a),
         Cmd::Report(c) => verify::report::main(c),
         Cmd::Appium(c) => appium::main(c),
+        Cmd::Artifact(c) => artifact::main(c),
         Cmd::Ci(c) => ci::main(c),
         Cmd::Workspace(c) => workspace::main(c),
         Cmd::Xcode(c) => xcode::main(c),

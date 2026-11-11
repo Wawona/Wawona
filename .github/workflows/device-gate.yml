@@ -66,10 +66,7 @@ on:
       - ".github/workflows/product-android-apk.yml"
       - ".github/workflows/product-macos-app.yml"
       - ".github/workflows/product-appimage.yml"
-      - ".github/scripts/resolve-product-artifacts.sh"
-      - ".github/scripts/select-xcode.sh"
-      - ".github/scripts/warm-ios-simulator-sdk.sh"
-      - ".github/scripts/ci-require-branch-tip.sh"
+      - "xtask/src/ci/**"
       - ".github/ci-package-matrix.json"
 
 concurrency:
@@ -93,11 +90,14 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: tip
       - id: tip
         env:
           WAWONA_CI_FORCE_TIP: ${{ github.event_name == 'workflow_dispatch' && '1' || (inputs.checkout_ref != '' && inputs.checkout_ref != github.sha && '1' || '') }}
           WAWONA_CI_INTENDED_REF: ${{ inputs.checkout_ref }}
-        run: bash .github/scripts/ci-require-branch-tip.sh
+        run: cargo xtask ci tip
 
   product-ios:
     name: "Build: iOS"

@@ -4,7 +4,7 @@ Agents must not clear the Actions queue with `gh run cancel`.
 
 ## Why
 
-WIP workflows use **soft supersede** ([`ci-require-branch-tip.sh`](../../.github/scripts/ci-require-branch-tip.sh)): obsolete SHAs skip expensive jobs and exit success. Cancelling Gate: packages, Gate: products, or Verification creates grey Cancelled noise and can leave the tip without a completed promote signal.
+WIP workflows use **soft supersede** (`cargo xtask ci tip`): obsolete SHAs skip expensive jobs and exit success. Cancelling Gate: packages, Gate: products, or Verification creates grey Cancelled noise and can leave the tip without a completed promote signal.
 
 ## Do
 

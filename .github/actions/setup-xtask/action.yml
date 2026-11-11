@@ -16,11 +16,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Select Xcode
-      if: runner.os == 'macOS'
-      shell: bash
-      run: ./.github/scripts/select-xcode.sh
-
     - name: Cache Cargo and prebuilt dependencies
       uses: actions/cache@v4
       with:
@@ -40,6 +35,11 @@ runs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
         fi
         echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+    - name: Select Xcode
+      if: runner.os == 'macOS'
+      shell: bash
+      run: cargo xtask ci select-xcode
 
     # Gradle runs on JBR 21, as Android Studio does (wawona-android-jbr).
     - if: inputs.android == 'true'

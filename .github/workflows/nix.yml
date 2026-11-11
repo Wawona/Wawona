@@ -38,10 +38,13 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: tip
       - id: tip
         env:
           WAWONA_CI_FORCE_TIP: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
-        run: bash .github/scripts/ci-require-branch-tip.sh
+        run: cargo xtask ci tip
 
   # Always-on scope probe so docs-only tips skip Darwin minutes but keep L0.
   ci-scope:
@@ -72,7 +75,7 @@ jobs:
               - 'secretspec.toml'
               - '.github/workflows/nix.yml'
               - '.github/ci-package-matrix.json'
-              - '.github/scripts/**'
+              - 'xtask/**'
               - 'scripts/**'
 
   prepare-matrix:
@@ -127,7 +130,7 @@ jobs:
           wayland-no-equivalent-closure wayland-profile-smoke linux-machines-parity
           linux-bundled-clients linux-shell-tools waypipe-remote-sway-env nixpkgs-lineage apple-sdk-warm
       - name: Verify iOS Mode B scanner and vphone replay contract
-        run: bash ./.github/scripts/verify-ios-modeb-ci.sh
+        run: cargo xtask artifact ios-contract
       - name: Upload Wayland ownership inventory artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
@@ -142,7 +145,7 @@ jobs:
           path: docs/compliance/generated/wayland-no-equivalent-closure.json
 
       - name: Pre-validate Flake
-        run: ./.github/scripts/nix-retry.sh nix flake check --print-build-logs
+        run: nix flake check --print-build-logs
 
   cargo-test-linux:
     name: "Linux (x86_64): cargo test"
@@ -197,8 +200,9 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || needs.ci-scope.outputs.native == 'true' }}
     steps:
       - uses: actions/checkout@v5
-      - name: Select pinned Xcode
-        run: ./.github/scripts/select-xcode.sh
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: nix-darwin
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
         with:
@@ -225,8 +229,9 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || needs.ci-scope.outputs.native == 'true' }}
     steps:
       - uses: actions/checkout@v5
-      - name: Select pinned Xcode
-        run: ./.github/scripts/select-xcode.sh
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: nix-darwin
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
         with:
@@ -261,9 +266,10 @@ jobs:
           docker image prune -af || true
           df -h
 
-      - name: Select pinned Xcode
-        if: runner.os == 'macOS'
-        run: ./.github/scripts/select-xcode.sh
+      - uses: ./.github/actions/setup-xtask
+        if: runner.os == 'macOS' || matrix.target == 'wawona-appimage'
+        with:
+          key: nix-matrix
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
@@ -279,7 +285,7 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@v3
 
       - name: Build Target
-        run: ./.github/scripts/nix-retry.sh nix build ".#packages.${{ matrix.system }}.${{ matrix.target }}" --print-build-logs
+        run: nix build ".#packages.${{ matrix.system }}.${{ matrix.target }}" --print-build-logs
 
       - name: FlakeHub hit summary
         if: success()
@@ -301,7 +307,7 @@ jobs:
 
       - name: AppImage smoke (type-2 magic + non-FUSE extract)
         if: ${{ matrix.target == 'wawona-appimage' }}
-        run: ./.github/scripts/appimage-smoke.sh result "${{ matrix.system }}"
+        run: cargo xtask artifact appimage result "${{ matrix.system }}"
 
       - name: Upload AppImage artifact
         if: ${{ matrix.target == 'wawona-appimage' }}
@@ -335,8 +341,7 @@ jobs:
               - 'flake.nix'
               - 'flake.lock'
               - 'xtask/src/verify/**'
-              - '.github/scripts/nix-build-shell-tools.sh'
-              - '.github/scripts/nix-build-android-meson-sandbox-gate.sh'
+              - 'xtask/src/ci/**'
               - '.github/workflows/nix.yml'
 
   android-gradle-gate:
@@ -362,11 +367,11 @@ jobs:
       - name: Verify Android shell-tool wiring
         run: cargo xtask verify android-shell-tools
       - name: Checkout flake inputs for meson verify
-        run: ./.github/scripts/checkout-flake-inputs.sh
+        run: cargo xtask ci flake-inputs
       - name: Verify Android meson sandbox hooks
         run: cargo xtask verify android-meson-sandbox
       - name: Build weston + compositor + bundled shell tools
-        run: ./.github/scripts/nix-build-android-meson-sandbox-gate.sh
+        run: cargo xtask ci nix-gate android-meson
       - name: Build bundled shell tools + weston-ios
         run: |
           nix build .#zsh-android .#fastfetch-android .#phoon-android \

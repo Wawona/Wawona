@@ -57,8 +57,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Tip soft-supersede
-        run: ./.github/scripts/ci-require-branch-tip.sh || true
       - name: "Validate Gate: products artifact source"
         if: ${{ inputs.products_ready }}
         env:
@@ -93,8 +91,6 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Tip soft-supersede
-        run: ./.github/scripts/ci-require-branch-tip.sh || true
       - name: Prepare Appium artifact dir
         run: |
           chmod +x scripts/appium/ci-prepare-artifacts.sh
@@ -158,8 +154,6 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Tip soft-supersede
-        run: ./.github/scripts/ci-require-branch-tip.sh || true
       - name: Prepare Appium artifact dir
         run: |
           chmod +x scripts/appium/ci-prepare-artifacts.sh
@@ -342,8 +336,6 @@ jobs:
             watch_pair: true
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Tip soft-supersede
-        run: ./.github/scripts/ci-require-branch-tip.sh || true
       - name: Prepare Appium artifact dir
         run: |
           chmod +x scripts/appium/ci-prepare-artifacts.sh
