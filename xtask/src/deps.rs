@@ -63,6 +63,9 @@ pub enum Cmd {
     Push { sdk: String, archive: PathBuf, #[arg(long)] nar: String },
     /// Print the narHash deps.lock records for a slice.
     Nar { sdk: String },
+    /// Fold the entries of other deps.lock files into this one (CI: one
+    /// matrix job publishes each slice).
+    Merge { locks: Vec<PathBuf> },
 }
 
 #[derive(clap::Args)]
@@ -81,6 +84,19 @@ pub fn main(c: Cmd) -> Result<()> {
         Cmd::Nar { sdk } => {
             println!("{}", Lock::load()?.slices.get(&sdk).map(|e| e.nar.as_str()).unwrap_or(""));
             Ok(())
+        }
+        Cmd::Merge { locks } => {
+            let mut lock = Lock::load()?;
+            let base = lock.slices.clone();
+            for p in locks {
+                let other: Lock = toml::from_str(&read(&p)?)?;
+                for (k, v) in other.slices {
+                    if base.get(&k).map(|e| &e.sha256) != Some(&v.sha256) {
+                        lock.slices.insert(k, v);
+                    }
+                }
+            }
+            lock.save()
         }
     }
 }
