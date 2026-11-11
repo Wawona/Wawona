@@ -273,7 +273,7 @@
           "children": [
             {
               "kind": "group",
-              "path": "src/platform/macos/ui/Machines",
+              "path": "Machines",
               "children": [
                 {
                   "path": "wawona_relay_copy_frame_stub.c",
@@ -311,7 +311,7 @@
               ],
             }, {
               "kind": "group",
-              "path": "src/platform/macos/ui/Settings",
+              "path": "Settings",
               "children": [
                 { "path": "WWNSettingsDefines.h" },
               ],

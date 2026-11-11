@@ -300,7 +300,7 @@
       }).extend (_final: _prev: {
         # Inject the extracted-repo store paths into the package scope so that
         # `pkgs.callPackage`-based Wawona integration recipes (ios/ipados/macos/
-        # watchos, rust-backend-c2n, linux) auto-resolve them through their
+        # watchos, backend, linux) auto-resolve them through their
         # function signatures instead of via now-deleted in-tree relative paths.
         inherit
           applePath
@@ -366,6 +366,22 @@
           (relPath == "") || (isImportant && !isIgnored);
       };
 
+    # What the cargo backend compiles: a Swift, Kotlin or script edit must not
+    # rebuild libwawona.
+    rustSrcFor = pkgs:
+      pkgs.lib.cleanSourceWith {
+        src = srcFor pkgs;
+        filter = path: type: let
+          relPath = pkgs.lib.removePrefix (toString ./.) (toString path);
+          hasAny = pkgs.lib.any (p: pkgs.lib.hasPrefix p relPath);
+        in
+          !(hasAny [ "/Sources" "/Darwin" "/android" "/scripts" "/flake"
+                     "/src/platform/android" "/src/platform/cproof" "/src/platform/ios"
+                     "/src/platform/macos" "/src/platform/watchos" ])
+          && (!(pkgs.lib.hasPrefix "/src/resources/" relPath)
+              || hasAny [ "/src/resources/Wawona.icon" ]);
+      };
+
     # Xcode project generation needs the complete source tree, unlike the Rust
     # workspace filter above. Exclude local caches before Nix descends into
     # them: they may be root-owned and are never product inputs.
@@ -379,9 +395,7 @@
     # Use a minimal pkgs for version lookup to avoid recursion
     bootstrapPkgs = import nixpkgs {system = "x86_64-linux";};
     wawonaVersion = bootstrapPkgs.lib.removeSuffix "\n" (builtins.readFile (./. + "/VERSION"));
-    # Same rev as Cargo.toml optional libghostty-vt pins. Path-staged in
-    # workspace-src so crate2nix does not vendor broken workspace members
-    # (`edition.workspace` with no workspace root).
+    # Same rev as Cargo.toml optional libghostty-vt pins (linux-ui-bin).
     libghosttyRsSrc = builtins.fetchTree {
       type = "git";
       url = "https://github.com/uzaaft/libghostty-rs";
@@ -415,7 +429,7 @@
         registry = mergedRegistry;
         # Flake crate2nix (has .tools.generatedCargoNix). Without this,
         # callPackage fills recipes from pkgs.crate2nix (CLI drv, no .tools)
-        # and relay-crate2nix / rust-backend-c2n fail at eval.
+        # and relay-crate2nix fails at eval.
         extraArgs = {
           ilandSrc = iland;
           inherit crate2nix;
@@ -544,6 +558,7 @@
       };
 
       src = srcFor pkgs;
+      rustSrc = rustSrcFor pkgs;
       wawonaSrc = wawonaFullSrc;
 
       toolchains = mkWawonaToolchains {
@@ -635,34 +650,40 @@
         };
 
       workspace-src-android = androidPkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-        wawonaSrc = src;
+        wawonaSrc = rustSrc;
         waypipeSrc = waypipe-patched-android;
         coreutilsSrc = coreutils-patched-android;
         terminalSrc = inputs.terminal;
-        inherit libghosttyRsSrc;
         platform = "android";
         inherit wawonaVersion;
       };
 
-      backend-android = androidPkgs.callPackage ./dependencies/wawona/rust-backend-android-brp.nix {
-        inherit wawonaVersion androidSDK androidToolchainNix;
-        backendName = "wawona-android-backend";
-        androidToolchain =
-          if isLinuxHost
-          then toolchainsAndroid.androidToolchain
-          else toolchains.androidToolchain;
+      backend-android = let
+        tc = if isLinuxHost then toolchainsAndroid.androidToolchain else toolchains.androidToolchain;
+        sys = tc.androidNdkSysroot;
+        flags = "--target=${tc.androidTarget} --sysroot=${sys} -isystem ${sys}/usr/include -isystem ${sys}/usr/include/aarch64-linux-android ${tc.androidNdkCflags}";
+        dep = n: toolchainsAndroid.buildForAndroid n {};
+      in androidPkgs.callPackage ./dependencies/wawona/backend.nix {
+        inherit wawonaVersion;
+        slice = "android";
         workspaceSrc = workspace-src-android;
-        nativeDeps = {
-          xkbcommon = toolchainsAndroid.buildForAndroid "xkbcommon" {};
-          libwayland = toolchainsAndroid.buildForAndroid "libwayland" {};
-          zstd = toolchainsAndroid.buildForAndroid "zstd" {};
-          lz4 = toolchainsAndroid.buildForAndroid "lz4" {};
-          pixman = toolchainsAndroid.buildForAndroid "pixman" {};
-          openssl = toolchainsAndroid.buildForAndroid "openssl" {};
-          libffi = toolchainsAndroid.buildForAndroid "libffi" {};
-          expat = toolchainsAndroid.buildForAndroid "expat" {};
-          libxml2 = toolchainsAndroid.buildForAndroid "libxml2" {};
-          ffmpeg = toolchainsAndroid.buildForAndroid "ffmpeg" {};
+        rustToolchain = androidPkgs.rustToolchainAndroid or androidPkgs.rustToolchain;
+        nativeDeps = androidPkgs.lib.genAttrs [
+          "xkbcommon" "libwayland" "zstd" "lz4" "pixman" "openssl" "libffi" "expat" "libxml2" "ffmpeg"
+        ] dep;
+        features = [ "waypipe" "smithay-protocols" "coreutils" ];
+        extraEnv = {
+          CC_aarch64_linux_android = tc.androidCC;
+          CXX_aarch64_linux_android = tc.androidCXX;
+          AR_aarch64_linux_android = tc.androidAR;
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = "${androidPkgs.writeShellScript "android-linker" ''
+            exec ${tc.androidCC} -L${tc.androidNdkAbiLibDir} -L${tc.androidNdkAbiLibDirFallback} "$@"
+          ''}";
+          CFLAGS_aarch64_linux_android = "${flags} -fPIC";
+          CXXFLAGS_aarch64_linux_android = "${flags} -fPIC";
+          BINDGEN_EXTRA_CLANG_ARGS = flags;
+          WAWONA_ANDROID_XKBCOMMON_LIBDIR = "${dep "xkbcommon"}/lib";
+          WWN_RUSTFLAGS = "-l xkbcommon -l wayland-client -C link-arg=-fuse-ld=mold";
         };
       };
       wawonaAndroidPkg = import ./dependencies/wawona/android.nix {
@@ -920,33 +941,26 @@
         // (pkgs.lib.optionalAttrs (isLinuxHost && builtins.pathExists ./dependencies/tests/wlcs.nix) (
           let
             workspace-src-linux-wlcs = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-              wawonaSrc = src;
+              wawonaSrc = rustSrc;
               waypipeSrc = waypipe-src;
               coreutilsSrc = coreutils-src;
               # Committed src/term/{cell,engine,ffi_surface}.rs are symlinks
               # into Terminal/; sandbox needs the flake input copies.
               terminalSrc = inputs.terminal;
-              inherit libghosttyRsSrc;
               platform = "linux";
               inherit wawonaVersion;
             };
-            sharedLinuxCargoNixWlcs = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
-              name = "wawona-linux-workspace-wlcs";
-              src = workspace-src-linux-wlcs;
-            };
-            backend-linux-wlcs = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-              inherit crate2nix wawonaVersion toolchains nixpkgs;
+            backend-linux-wlcs = pkgs.callPackage ./dependencies/wawona/backend.nix {
+              inherit wawonaVersion;
+              slice = "linux";
               workspaceSrc = workspace-src-linux-wlcs;
-              platform = "linux";
-              cargoNixDrv = sharedLinuxCargoNixWlcs;
               nativeDeps = {
                 libwayland = pkgs.wayland;
                 xkbcommon = pkgs.libxkbcommon;
-                pixman = pkgs.pixman;
-                libffi = pkgs.libffi;
-                openssl = pkgs.openssl;
+                inherit (pkgs) pixman libffi openssl;
+                ghostty-vt = inputs.ghostty.packages.${system}.libghostty-vt;
               };
-              libghosttyVt = inputs.ghostty.packages.${system}.libghostty-vt;
+              features = [ "smithay-protocols" "desktop-protocols" "nix-ghostty-vt" ];
             };
           in {
             wawona-wlcs-run = pkgs.callPackage ./dependencies/tests/wlcs.nix {
@@ -1135,38 +1149,34 @@
             inherit coreutils-src;
           };
           workspace-src-macos = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-            wawonaSrc = src;
+            wawonaSrc = rustSrc;
             waypipeSrc = waypipe-patched-macos;
             coreutilsSrc = coreutils-patched-macos;
             terminalSrc = inputs.terminal;
-            inherit libghosttyRsSrc;
             platform = "macos";
             inherit wawonaVersion;
           };
           workspace-src-linux = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-            wawonaSrc = src;
+            wawonaSrc = rustSrc;
             waypipeSrc = waypipe-src;
             coreutilsSrc = coreutils-src;
             terminalSrc = inputs.terminal;
-            inherit libghosttyRsSrc;
             platform = "linux";
             inherit wawonaVersion;
           };
           workspace-src-ios = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-            wawonaSrc = src;
+            wawonaSrc = rustSrc;
             waypipeSrc = waypipe-patched-ios;
             coreutilsSrc = coreutils-patched-ios;
             terminalSrc = inputs.terminal;
-            inherit libghosttyRsSrc;
             platform = "ios";
             inherit wawonaVersion;
           };
           workspace-src-watchos = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-            wawonaSrc = src;
+            wawonaSrc = rustSrc;
             waypipeSrc = waypipe-patched-watchos;
             coreutilsSrc = coreutils-patched-ios;
             terminalSrc = inputs.terminal;
-            inherit libghosttyRsSrc;
             platform = "watchos";
             inherit wawonaVersion;
           };
@@ -1377,146 +1387,57 @@
               };
             };
           };
-          # One generatedCargoNix IFD per distinct workspaceSrc (#68 / runner speedups).
-          sharedIosCargoNix = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
-            name = "wawona-ios-workspace";
-            src = workspace-src-ios;
-          };
-          sharedMacosCargoNix = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
-            name = "wawona-macos-workspace";
-            src = workspace-src-macos;
-          };
-          sharedLinuxCargoNix = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
-            name = "wawona-linux-workspace";
-            src = workspace-src-linux;
-          };
-          sharedWatchosCargoNix = crate2nix.tools.${pkgs.stdenv.hostPlatform.system}.generatedCargoNix {
-            name = "wawona-watchos-workspace";
-            src = workspace-src-watchos;
-          };
-          appleHostCrates = pkgs.callPackage ./dependencies/wawona/apple-host-crates.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs;
-            workspaceSrc = workspace-src-ios;
-            nativeDeps = iosDeps;
-            cargoNixDrv = sharedIosCargoNix;
-          };
           uniffi-bindgen = pkgs.callPackage ./dependencies/generators/uniffi-bindgen.nix {};
-          backend-macos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs;
-            workspaceSrc = workspace-src-macos;
-            platform = "macos";
-            nativeDeps = macosDeps;
-            cargoNixDrv = sharedMacosCargoNix;
-            desktopHost = true;
-            # Real libghostty-vt in product path (engine.rs, not engine_stub).
-            libghosttyVt = inputs.ghostty.packages.${system}.libghostty-vt;
+          # Each slice's backend links only the libraries its crates name.
+          backendLibs = d: pkgs.lib.filterAttrs (n: _: builtins.elem n [
+            "xkbcommon" "libffi" "libwayland" "pixman" "zstd" "lz4" "libssh2"
+            "mbedtls" "openssl" "kosmickrisp" "ffmpeg" "epoll-shim" "zlib"
+          ]) d;
+          mkBackend = slice: workspaceSrc: deps: args: pkgs.callPackage ./dependencies/wawona/backend.nix ({
+            inherit wawonaVersion slice workspaceSrc;
+            nativeDeps = backendLibs deps;
+            # waypipe-ssh: in-process waypipe over libssh2, never OpenSSH.
+            features = [ "waypipe-ssh" "smithay-protocols" "coreutils" ];
+          } // args);
+          backend-macos = mkBackend "macosx" workspace-src-macos {} {
+            nativeDeps = {
+              xkbcommon = pkgs.libxkbcommon;
+              inherit (pkgs) libffi openssl vulkan-loader;
+              libwayland = macosDeps.libwayland or toolchains.macos.libwayland;
+              pixman = macosDeps.pixman or pkgs.pixman;
+              ghostty-vt = inputs.ghostty.packages.${system}.libghostty-vt;
+            };
+            minOS = "14.0";
+            # desktop-protocols: DRM, session lock, capture and XWayland globals.
+            # Mode B gates compile in; macos.nix gates the dylib separately.
+            features = [ "smithay-protocols" "desktop-protocols" "profile-desktop-host" "iland-baremetal" "nix-ghostty-vt" ];
           };
-          backend-linux = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs;
-            workspaceSrc = workspace-src-linux;
-            platform = "linux";
-            cargoNixDrv = sharedLinuxCargoNix;
+          backend-linux = mkBackend "linux" workspace-src-linux {} {
             nativeDeps = {
               libwayland = pkgs.wayland;
               xkbcommon = pkgs.libxkbcommon;
-              pixman = pkgs.pixman;
-              libffi = pkgs.libffi;
-              openssl = pkgs.openssl;
+              inherit (pkgs) pixman libffi openssl;
+              ghostty-vt = inputs.ghostty.packages.${system}.libghostty-vt;
             };
-            libghosttyVt = inputs.ghostty.packages.${system}.libghostty-vt;
+            features = [ "smithay-protocols" "desktop-protocols" "nix-ghostty-vt" ];
           };
-          backend-ios = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "ios";
-            nativeDeps = iosDeps;
-            cargoNixDrv = sharedIosCargoNix;
-            iosDeploymentTarget = "13.0";
+          # Sileo is the jailbroken iOS 13+ product. TrollStore is a separate
+          # iOS 14+ product; never let a .tipa inherit the Sileo floor.
+          backend-ios = mkBackend "iphoneos" workspace-src-ios iosDeps { minOS = "13.0"; };
+          backend-ios-modeb-sileo = mkBackend "iphoneos-modeb" workspace-src-ios iosDeps {
+            minOS = "13.0";
+            features = [ "waypipe-ssh" "smithay-protocols" "coreutils" "profile-ios-mode-b" ];
           };
-          # Sileo is the jailbroken iOS 13+ product.  TrollStore is a separate
-          # iOS 14+ product; never let a .tipa silently inherit this floor.
-          backend-ios-modeb-sileo = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "ios";
-            nativeDeps = iosDeps;
-            cargoNixDrv = sharedIosCargoNix;
-            iosModeB = true;
-            iosDeploymentTarget = "13.0";
-          };
-          backend-ios-modeb-tipa = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "ios";
-            nativeDeps = iosDeps;
-            cargoNixDrv = sharedIosCargoNix;
-            iosModeB = true;
-            iosDeploymentTarget = "14.0";
-          };
-          # Compatibility alias: Mode B backend means the Sileo iOS 13+ lane.
+          backend-ios-modeb-tipa = backend-ios-modeb-sileo.override { minOS = "14.0"; };
           backend-ios-modeb = backend-ios-modeb-sileo;
-          backend-ios-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "ios";
-            simulator = true;
-            nativeDeps = iosSimDeps;
-            cargoNixDrv = sharedIosCargoNix;
-            # Product-sim CI: skip thin LTO / O3 on the Rust backend (Xcode stays Debug).
-            release = false;
-          };
-
-          backend-tvos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "tvos";
-            nativeDeps = tvosDeps;
-            cargoNixDrv = sharedIosCargoNix;
-          };
-          backend-tvos-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "tvos";
-            simulator = true;
-            nativeDeps = tvosSimDeps;
-            cargoNixDrv = sharedIosCargoNix;
-            # Product-sim CI: skip thin LTO / O3 on the Rust backend (Xcode stays Debug).
-            release = false;
-          };
-          backend-visionos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "visionos";
-            nativeDeps = visionosDeps;
-            cargoNixDrv = sharedIosCargoNix;
-          };
-          backend-visionos-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-ios;
-            platform = "visionos";
-            simulator = true;
-            nativeDeps = visionosSimDeps;
-            cargoNixDrv = sharedIosCargoNix;
-            # Product-sim CI: skip thin LTO / O3 (Xcode stays Debug).
-            release = false;
-          };
-          backend-watchos = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-watchos;
-            platform = "watchos";
-            nativeDeps = watchosDeps;
-            cargoNixDrv = sharedWatchosCargoNix;
-          };
-          backend-watchos-sim = pkgs.callPackage ./dependencies/wawona/rust-backend-c2n.nix {
-            inherit crate2nix wawonaVersion toolchains nixpkgs appleHostCrates;
-            workspaceSrc = workspace-src-watchos;
-            platform = "watchos";
-            simulator = true;
-            nativeDeps = watchosSimDeps;
-            cargoNixDrv = sharedWatchosCargoNix;
-            # Product-sim + iOS-embedded watch companion: skip thin LTO / O3.
-            release = false;
-          };
+          # Simulator backends skip thin LTO; Xcode builds them Debug.
+          backend-ios-sim = mkBackend "iphonesimulator" workspace-src-ios iosSimDeps { minOS = "13.0"; release = false; };
+          backend-tvos = mkBackend "appletvos" workspace-src-ios tvosDeps { minOS = "17.0"; };
+          backend-tvos-sim = mkBackend "appletvsimulator" workspace-src-ios tvosSimDeps { minOS = "17.0"; release = false; };
+          backend-visionos = mkBackend "xros" workspace-src-ios visionosDeps { minOS = "26.0"; };
+          backend-visionos-sim = mkBackend "xrsimulator" workspace-src-ios visionosSimDeps { minOS = "26.0"; release = false; };
+          backend-watchos = mkBackend "watchos" workspace-src-watchos watchosDeps { minOS = "10.0"; };
+          backend-watchos-sim = mkBackend "watchsimulator" workspace-src-watchos watchosSimDeps { minOS = "10.0"; release = false; };
           wawonaDeps = import ./dependencies/wawona/deps.nix {
             inherit (pkgs) lib;
             inherit pkgs wawonaVersion wawonaSrc ilandGlLdflagsNix;
@@ -2392,8 +2313,9 @@
               done
               for sdk in $sdks; do
                 nix build "$root#deps-$sdk" --out-link "$root/.deps/$sdk"
-                if [ -e "$root/.deps/$sdk/uniffi" ]; then ln -sfn "$sdk/uniffi" "$root/.deps/uniffi"; fi
+                rm -rf "$root/.build/backend/$sdk"
               done
+              if [ -e "$root/.deps/$1/uniffi" ]; then ln -sfn "$1/uniffi" "$root/.deps/uniffi"; fi
               for src in terminal=${inputs.terminal} toolbar-keys=${inputs."toolbar-keys"}; do
                 nix-store --realise "''${src#*=}" --add-root "$root/.deps/''${src%%=*}" >/dev/null
               done

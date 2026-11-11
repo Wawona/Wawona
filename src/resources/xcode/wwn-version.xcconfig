@@ -1,20 +1,21 @@
 // Project configuration file. Everything Nix provides (store paths, link
 // flags, MARKETING_VERSION, dependency versions) is in the per-SDK file that
 // `nix run .#deps -- <sdk>` links, named by Xcode's PLATFORM_NAME. An SDK
-// without one fails at link time, never at project open.
+// without one fails at link time, never at project open. Include paths are
+// relative to this file: Xcode does not expand build settings in them.
 CURRENT_PROJECT_VERSION = 1
-#include? "$(SRCROOT)/.deps/macosx/Wawona.xcconfig"
-#include? "$(SRCROOT)/.deps/iphoneos/Wawona.xcconfig"
-#include? "$(SRCROOT)/.deps/iphonesimulator/Wawona.xcconfig"
-#include? "$(SRCROOT)/.deps/iphoneos-modeb/Wawona.xcconfig"
-#include? "$(SRCROOT)/.deps/appletvos/Wawona.xcconfig"
-#include? "$(SRCROOT)/.deps/appletvsimulator/Wawona.xcconfig"
-#include? "$(SRCROOT)/.deps/xros/Wawona.xcconfig"
-#include? "$(SRCROOT)/.deps/xrsimulator/Wawona.xcconfig"
-#include? "$(SRCROOT)/.deps/watchos/Wawona.xcconfig"
-#include? "$(SRCROOT)/.deps/watchsimulator/Wawona.xcconfig"
+#include? "../../../.deps/macosx/Wawona.xcconfig"
+#include? "../../../.deps/iphoneos/Wawona.xcconfig"
+#include? "../../../.deps/iphonesimulator/Wawona.xcconfig"
+#include? "../../../.deps/iphoneos-modeb/Wawona.xcconfig"
+#include? "../../../.deps/appletvos/Wawona.xcconfig"
+#include? "../../../.deps/appletvsimulator/Wawona.xcconfig"
+#include? "../../../.deps/xros/Wawona.xcconfig"
+#include? "../../../.deps/xrsimulator/Wawona.xcconfig"
+#include? "../../../.deps/watchos/Wawona.xcconfig"
+#include? "../../../.deps/watchsimulator/Wawona.xcconfig"
 // DEVELOPMENT_TEAM, untracked.
-#include? "$(SRCROOT)/.deps/signing.xcconfig"
+#include? "../../../.deps/signing.xcconfig"
 // Stamped before compile by scripts/xcode-stamp-build-number.sh.
-#include? "$(SRCROOT)/.build/wwn-build-number.xcconfig"
-#include? "$(SRCROOT)/.build/wwn-libghostty-link.xcconfig"
+#include? "../../../.build/wwn-build-number.xcconfig"
+#include? "../../../.build/wwn-libghostty-link.xcconfig"

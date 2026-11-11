@@ -183,11 +183,10 @@ mesa/
 scripts/setup_inspiration.sh
 Inspiration/
 
-# waypipe Rust sources (populate with: ./scripts/ensure-waypipe.sh — same pin as flake.nix)
-/waypipe/
-
-# uutils coreutils sources (populate with: ./scripts/ensure-coreutils.sh — same pin as flake.nix)
-/coreutils/
+# waypipe and uutils coreutils path crates
+# (scripts/build-backend.sh symlinks both from the Nix workspace source.)
+/waypipe
+/coreutils
 
 # SwiftPM (local)
 .build/

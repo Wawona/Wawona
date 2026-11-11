@@ -19,8 +19,11 @@ if [ ! -d "$deps" ]; then
   exit 1
 fi
 mkdir -p "$derived"
+# scripts/build-backend.sh stages a working-tree backend in .build/backend.
+backend="$SRCROOT/.build/backend/$slice"
+[ -f "$backend/lib/libwawona.a" ] || backend="$deps/backend"
 # Copy, never link: the store path can be collected before the link step.
-cp -f "$deps/backend/lib/libwawona.a" "$derived/libwawona.a"
+cp -f "$backend/lib/libwawona.a" "$derived/libwawona.a"
 
 if [ "$slice" = macosx ]; then
   # TerminalMetalPresent paints unless WAWONA_LINK_LIBGHOSTTY=1 and

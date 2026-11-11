@@ -1,4 +1,4 @@
-# Assembles a complete Cargo workspace source tree for crate2nix.
+# Assembles a complete Cargo workspace source tree for the cargo backend.
 #
 # Combines:
 # 1. Filtered wawona source (no .git, target/, Inspiration/, etc.)
@@ -8,11 +8,11 @@
 # The Cargo.lock regeneration is critical: the original lockfile doesn't
 # include waypipe's internal path dependencies (wrap-ffmpeg, wrap-lz4, etc.)
 # Since those paths only appear after injecting waypipe, we must regenerate
-# the lock file to satisfy `cargo metadata --locked` in crate2nix.
+# the lock file to satisfy `cargo --locked`.
 #
 { pkgs, wawonaSrc, waypipeSrc, wawonaVersion, platform ? "ios", coreutilsSrc ? null, terminalSrc ? null
   # Full uzaaft/libghostty-rs checkout (same rev as Cargo.toml). When set,
-  # stage expanded path crates under vendor/ so crate2nix does not hit
+  # stage expanded path crates under vendor/ so cargo does not hit
   # `edition.workspace` after git cargo-vendor of a workspace member.
 , libghosttyRsSrc ? null
 , expandUutilsScript ? ../../scripts/lib/expand_uutils_workspace_deps.py
@@ -25,7 +25,7 @@ pkgs.stdenvNoCC.mkDerivation {
   src = wawonaSrc;
 
   nativeBuildInputs = [ pkgs.python3 ];
-  # Keep the expand helper out of the filtered wawonaSrc so AppImage / crate2nix
+  # Keep the expand helper out of the filtered wawonaSrc so AppImage / cargo
   # always see the same script as scripts/prepare-cargo-path-deps.sh.
   passAsFile = [ ];
   expandUutilsScript = expandUutilsScript;
