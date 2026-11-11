@@ -22,7 +22,17 @@ fn token(scope: &str, basic: Option<String>) -> Result<String> {
     Ok(v["token"].as_str().context("GHCR token response")?.to_string())
 }
 
-pub fn blob(sha256: &str) -> Result<impl Read> {
+/// A directory of blobs named by sha256 that stands in for GHCR (an offline
+/// mirror, or a CI cache).
+fn mirror() -> Option<std::path::PathBuf> {
+    std::env::var_os("WAWONA_DEPS_MIRROR").filter(|v| !v.is_empty()).map(Into::into)
+}
+
+pub fn blob(sha256: &str) -> Result<Box<dyn Read>> {
+    if let Some(m) = mirror() {
+        let p = m.join(sha256);
+        return Ok(Box::new(std::fs::File::open(&p).with_context(|| format!("open {}", p.display()))?));
+    }
     let t = token("pull", None)?;
     let url = format!("https://{REGISTRY}/v2/{REPOSITORY}/blobs/sha256:{sha256}");
     let res = ureq::get(&url)
@@ -32,7 +42,7 @@ pub fn blob(sha256: &str) -> Result<impl Read> {
         .build()
         .call()
         .with_context(|| format!("GET {url}"))?;
-    Ok(res.into_body().into_reader())
+    Ok(Box::new(res.into_body().into_reader()))
 }
 
 fn push_token() -> Result<String> {
@@ -92,6 +102,11 @@ fn upload(t: &str, digest: &str, mut data: impl Read) -> Result<()> {
 }
 
 pub fn push(sdk: &str, archive: &Path, sha256: &str, size: u64) -> Result<()> {
+    if let Some(m) = mirror() {
+        std::fs::create_dir_all(&m)?;
+        std::fs::copy(archive, m.join(sha256))?;
+        return Ok(());
+    }
     let t = push_token()?;
     upload(&t, EMPTY_DIGEST, EMPTY)?;
     upload(&t, sha256, std::fs::File::open(archive)?)?;
