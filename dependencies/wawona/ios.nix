@@ -16,6 +16,8 @@
   codeSignIdentity ? null,
   signMethod ? null,
   automaticProvisioning ? false,
+  # Release build signed ad hoc without entitlements (the macOS product).
+  adHoc ? false,
   # Per-platform overrides
   # target: Xcode scheme/target name
   xcodeTarget ? "Wawona-iOS",
@@ -73,7 +75,7 @@ in
   scheme = xcodeTarget;
   inherit sdk;
   __noChroot = true;
-  configuration = if releaseBuild then "Release" else "Debug";
+  configuration = if releaseBuild || adHoc then "Release" else "Debug";
   # Mode B uses the Release Xcode configuration but remains an unsigned app
   # build. Its executable receives the TrollStore ldid signature afterward.
   release = releaseBuild && !modeB;
@@ -100,11 +102,19 @@ in
       # "Any iOS Simulator Device" when no named runtime is visible in the
       # builder. ARCHS=arm64 below still pins the slice.
       ''-destination "generic/platform=${destinationPlatform}"''
+      # The macro plugin sandbox cannot read a build under /nix/var/nix/builds,
+      # so SwiftUI's macros (@State, Xcode 27) fail to expand there.
+      ''SWIFTC_DISABLE_SANDBOX=YES''
     ]
-    ++ lib.optionals (!releaseBuild || modeB) [
+    ++ (if adHoc then [
+      ''CODE_SIGN_IDENTITY=-''
+      ''CODE_SIGN_STYLE=Manual''
+      ''CODE_SIGN_ENTITLEMENTS=''
+      ''DEVELOPMENT_TEAM=''
+    ] else lib.optionals (!releaseBuild || modeB) [
       ''CODE_SIGNING_ALLOWED=NO''
       ''CODE_SIGNING_REQUIRED=NO''
-    ]
+    ])
     ++ lib.optionals modeB [
       # Command-line scope reaches WawonaModel as well as the app target, so
       # Swift capability gates are compiled for this immutable product flavor.
@@ -122,7 +132,7 @@ in
     ]
     # build-app.nix forces ONLY_ACTIVE_ARCH=NO; generic/platform without arch=
     # still compiles x86_64+arm64 Swift (WawonaUIContracts on macos-26).
-    ++ lib.optionals simulator [
+    ++ lib.optionals (simulator || nativeSdk == "macosx") [
       ''ONLY_ACTIVE_ARCH=YES''
       ''ARCHS=arm64''
       ''EXCLUDED_ARCHS="x86_64 i386"''

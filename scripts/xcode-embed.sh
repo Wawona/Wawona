@@ -60,24 +60,30 @@ case $PLATFORM_NAME in
   *) exit 0 ;;
 esac
 
-# macOS: helpers link Nix store dylibs by absolute path. Copy each into
-# Frameworks, point the load commands at @rpath, and re-sign, since the app's
-# CodeSign phase refuses an unsigned nested Mach-O.
+# macOS: the app and its helpers link Nix store dylibs by absolute path. Copy
+# each into Frameworks, point the load commands at @rpath, and re-sign the
+# helpers, since the app's CodeSign phase refuses an unsigned nested Mach-O.
+# The app itself is signed by that phase, which runs after this one.
 fw="$contents/Frameworks"
+main="$contents/MacOS/$EXECUTABLE_NAME"
 sign() {
-  [ "${CODE_SIGNING_ALLOWED:-YES}" = YES ] || return 0
+  [ "${CODE_SIGNING_ALLOWED:-YES}" = YES ] && [ "$1" != "$main" ] || return 0
   codesign --force --timestamp=none --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" "$1"
 }
 machos() {
-  find "$contents/MacOS" "$contents/Resources/bin" "$fw" -maxdepth 1 -type f |
+  find "$contents/MacOS" "$contents/Resources/bin" "$contents/Resources/lib"/* "$fw" -maxdepth 1 -type f |
     while IFS= read -r f; do
-      [ "$f" != "$contents/MacOS/$EXECUTABLE_NAME" ] && file "$f" | grep -q Mach-O && echo "$f"
+      file "$f" | grep -q Mach-O && echo "$f"
     done
 }
-store_deps() { otool -L "$1" | awk 'NR > 1 && $1 ~ /^\/nix\/store\/.*\.dylib$/ { print $1 }'; }
+store_deps() {
+  otool -l "$1" | awk '/cmd LC_(LOAD|LOAD_WEAK|REEXPORT)_DYLIB$/ { getline; getline; if ($2 ~ /^\/nix\/store\//) print $2 }'
+}
 
-for d in "$fw"/*.dylib; do
-  install_name_tool -id "@rpath/$(basename "$d")" "$d"
+for d in $(machos); do
+  case $(otool -D "$d" | sed -n 2p) in
+    /nix/store/*) install_name_tool -id "@rpath/$(basename "$d")" "$d" ;;
+  esac
 done
 added=1
 while [ "$added" = 1 ]; do
@@ -98,12 +104,14 @@ for m in $(machos); do
     install_name_tool -change "$d" "@rpath/$(basename "$d")" "$m"
   done
   for rp in $(otool -l "$m" | awk '/cmd LC_RPATH/ { getline; getline; print $2 }'); do
-    case $rp in @*) ;; *) install_name_tool -delete_rpath "$rp" "$m" ;; esac
+    case $rp in /nix/store/*) install_name_tool -delete_rpath "$rp" "$m" ;; esac
   done
   case $m in
-    */Resources/bin/*) rp=@executable_path/../../Frameworks ;;
+    */Resources/*) rp=@executable_path/../../Frameworks ;;
     *) rp=@executable_path/../Frameworks ;;
   esac
-  otool -l "$m" | grep -q "path $rp " || install_name_tool -add_rpath "$rp" "$m"
+  if otool -L "$m" | grep -q '@rpath/' && ! otool -l "$m" | grep -q "path $rp "; then
+    install_name_tool -add_rpath "$rp" "$m"
+  fi
   sign "$m"
 done

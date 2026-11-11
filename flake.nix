@@ -454,7 +454,6 @@
     westonSimpleShmLinuxNix = "${repo-wawona-io}/catalog/deb/gui/weston/in-app/dependencies/libs/weston-simple-shm/linux.nix";
     kmscubeMacosNix = "${repo-wawona-io}/catalog/deb/gui/kmscube/in-app/dependencies/clients/kmscube/macos.nix";
     kmscubeIosNix = "${repo-wawona-io}/catalog/deb/gui/kmscube/in-app/dependencies/clients/kmscube/apple-mobile.nix";
-    kmscubeLdflagsNix = "${repo-wawona-io}/catalog/deb/gui/kmscube/in-app/dependencies/generators/kmscube-ldflags.nix";
     fastfetchMacosNix = "${repo-wawona-io}/catalog/deb/cli/fastfetch/in-app/dependencies/clients/fastfetch/macos.nix";
     fastfetchIosNix = "${repo-wawona-io}/catalog/deb/cli/fastfetch/in-app/dependencies/clients/fastfetch/apple-mobile.nix";
     fastfetchLdflagsNix = "${repo-wawona-io}/catalog/deb/cli/fastfetch/in-app/dependencies/generators/fastfetch-ldflags.nix";
@@ -568,10 +567,6 @@
         inherit pkgs wawonaSrc androidSDK androidAllowExperimentalFallback;
         pkgsAndroid = pkgsAndroidCross;
         pkgsIos = pkgsIos;
-      };
-      appleToolchain = import applePath {
-        inherit (pkgs) lib pkgs;
-        nixXcodeenvtests = inputs."nix-xcodeenvtests";
       };
       # Android Gradle JVM. Linux Nix: JBR 21 (no JCEF). Darwin Nix
       # sandbox cannot use nixpkgs JBR (Linux-only platforms). Local
@@ -1038,14 +1033,6 @@
             platform = "macos";
             inherit wawonaVersion;
           };
-          workspace-src-linux = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
-            wawonaSrc = rustSrc;
-            waypipeSrc = waypipe-src;
-            coreutilsSrc = coreutils-src;
-            terminalSrc = inputs.terminal;
-            platform = "linux";
-            inherit wawonaVersion;
-          };
           workspace-src-ios = pkgs.callPackage ./dependencies/wawona/workspace-src.nix {
             wawonaSrc = rustSrc;
             waypipeSrc = waypipe-patched-ios;
@@ -1291,17 +1278,8 @@
             };
             minOS = "14.0";
             # desktop-protocols: DRM, session lock, capture and XWayland globals.
-            # Mode B gates compile in; macos.nix gates the dylib separately.
+            # Mode B gates compile in; deps.nix bundles the dylib separately.
             features = [ "smithay-protocols" "desktop-protocols" "profile-desktop-host" "iland-baremetal" "nix-ghostty-vt" ];
-          };
-          backend-linux = mkBackend "linux" workspace-src-linux {} {
-            nativeDeps = {
-              libwayland = pkgs.wayland;
-              xkbcommon = pkgs.libxkbcommon;
-              inherit (pkgs) pixman libffi openssl;
-              ghostty-vt = inputs.ghostty.packages.${system}.libghostty-vt;
-            };
-            features = [ "smithay-protocols" "desktop-protocols" "nix-ghostty-vt" ];
           };
           # Sileo is the jailbroken iOS 13+ product. TrollStore is a separate
           # iOS 14+ product; never let a .tipa inherit the Sileo floor.
@@ -1334,12 +1312,14 @@
               watchos = { deps = watchosDeps; backend = backend-watchos; };
               watchsimulator = { deps = watchosSimDeps; backend = backend-watchos-sim; };
             };
-            macosExtras = {
-              fastfetch = toolchains.buildForMacOS "fastfetch" {};
-              zsh = pkgs.zsh;
-              igetty = iGetty.packages.${system}.wwn-igetty;
-              moltenvk = pkgs.moltenvk;
-            };
+            macosExtras =
+              pkgs.lib.genAttrs [ "fastfetch" "moltenvk" "kosmickrisp" "foot" "niri" "fuzzel" "phoon" "weston-simple-egl" "iland-baremetal" ]
+                (n: toolchains.buildForMacOS n {})
+              // {
+                zsh = pkgs.zsh;
+                igetty = iGetty.packages.${system}.wwn-igetty;
+                iowatchdog = iowatchdog-tools.packages.${system}.wwn-iowatchdog;
+              };
             modeB = {
               iomfb = iosDeps."iomfb-ios";
               igetty = iosDeps."igetty-ios";
@@ -1364,57 +1344,8 @@
               inherit (inputs.wwn-ghostty.packages.${system}) libghostty-macos;
             };
           wawona-macos = pkgs.callPackage ./dependencies/wawona/macos.nix {
-            buildModule = toolchains;
             inherit wawonaSrc wawonaVersion;
-            waypipe = toolchains.buildForMacOS "waypipe" {};
-            weston = toolchains.buildForMacOS "weston" {};
-            moltenvk = toolchains.buildForMacOS "moltenvk" {};
-            kosmickrisp = toolchains.buildForMacOS "kosmickrisp" {};
-            foot = toolchains.buildForMacOS "foot" {};
-            niri = toolchains.buildForMacOS "niri" {};
-            fuzzel = toolchains.buildForMacOS "fuzzel" {};
-            # anowaW app bridge (libanowaw.a + anowaw_mac_shim.o + headers).
-            anowaw = toolchains.buildForMacOS "anowaw" {};
-            # wwn-fastfetch. nixpkgs fastfetch pulls ImageMagick → mypy pytest.
-            fastfetch = toolchains.buildForMacOS "fastfetch" {};
-            phoon = toolchains.buildForMacOS "phoon" {};
-            wawonaWasm = toolchains.buildForMacOS "wawona-wasm" {};
-            # Relay `container` CLI + prebuilt wwn-containerd for
-            # the Machines GUI + in-app terminal.
-            containerCli = wwn-relay.packages.${system}.container-cli or null;
-            containerDaemon = wwn-relay.packages.${system}.wwn-containerd or null;
-            # Container Wayland bridge: host waypipe with SplitFD (--socket-fds)
-            # and IOSurface dmabuf (wwn-waypipe macos.nix). Prefer the full
-            # macOS waypipe over the SHM-only waypipe-splitfd spike.
-            containerWaypipeFds = let
-              wp = toolchains.buildForMacOS "waypipe" {};
-            in
-              if wp != null
-              then wp
-              else (wwn-relay.packages.${system}.waypipe-splitfd or null);
-            containerWaypipeGuestLinux = (pkgsFor "aarch64-linux").waypipe;
-            containerWaypipeGuestRoot =
-              wwn-relay.packages.${system}.waypipe-guest-root or null;
-            # closureInfo is an aarch64-linux derivation. Darwin product builders
-            # cannot realize it when the path is absent from cache (platform
-            # mismatch). Prefer waypipe-guest-root; fall back to nix-store -qR
-            # in macos.nix when this is null.
-            containerWaypipeGuestClosure =
-              if pkgs.stdenv.buildPlatform.isLinux
-              then
-                (pkgsFor "aarch64-linux").closureInfo {
-                  rootPaths = [(pkgsFor "aarch64-linux").waypipe];
-                }
-              else null;
-            zsh = pkgs.zsh;
-            kmscube = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
-            modebTty = iGetty.packages.${system}.wwn-igetty;
-            rustBackend = backend-macos;
             xcodeProject = appleProject (sliceSet ["macosx"]);
-            # Mode B dylib enabled for all macOS builds (Wawona macOS is non-App Store).
-            ilandBaremetal = toolchains.buildForMacOS "iland-baremetal" {};
-            # L3' Watchdog tools (github.com/Wawona/iowatchdog-tools).
-            iowatchdog = iowatchdog-tools.packages.${system}.wwn-iowatchdog;
           };
           # L3' jailbroken iOS lab (github.com/Wawona/wwn-vphone). No prebuilt VM.
           vphone-cli = wwn-vphone.packages.${system}.vphone-cli;

@@ -14,7 +14,9 @@
   ilandGlLdflagsNix,
   # { <sdk> = { deps, backend }; } for every Apple-mobile SDK, plus macosx.
   slices,
-  macosExtras, # { fastfetch, zsh, igetty, moltenvk }
+  # macOS-only bundled software: fastfetch zsh igetty moltenvk kosmickrisp foot
+  # niri fuzzel phoon weston-simple-egl, and Mode B's iland-baremetal and iowatchdog.
+  macosExtras,
   modeB, # { iomfb, igetty, backend }, linked only by Wawona-iOS-ModeB
 }: let
   p = toString;
@@ -134,12 +136,36 @@
   '');
 
   # macOS bundle root: Contents/. xcode-embed.sh signs and relocates what lands here.
-  macosBundle = d: let x = macosExtras; r = "bundle/Resources"; in ''
-    mkdir -p ${r}/bin ${r}/share/icons/Adwaita ${r}/vulkan/icd.d bundle/MacOS bundle/Frameworks
-    for b in ${d.waypipe}/bin/waypipe ${d.sshpass}/bin/sshpass ${x.fastfetch}/bin/fastfetch ${x.zsh}/bin/zsh \
-      ${lib.concatMapStringsSep " " (t: "${d.openssh}/bin/${t}") [ "ssh" "ssh-keygen" "scp" "sftp" "ssh-agent" "ssh-add" ]}; do
+  # Helpers sit on the terminal's PATH (Resources/bin); the ones Wawona spawns
+  # by bundle path are also beside the executable (MacOS).
+  macosBundle = d: let
+    x = macosExtras; r = "bundle/Resources"; w = d.weston; mb = "bundle/Library/Wawona";
+    bins = ps: lib.concatStringsSep " " ps;
+  in ''
+    mkdir -p ${r}/bin ${r}/lib ${r}/share/icons/Adwaita/cursors ${r}/share/niri ${r}/vulkan/icd.d \
+      bundle/MacOS bundle/Frameworks ${mb}/iland ${mb}/lib
+    for b in ${w}/bin/weston* ${w}/libexec/weston-* ${bins [
+      "${d.waypipe}/bin/waypipe" "${d.sshpass}/bin/sshpass" "${x.fastfetch}/bin/fastfetch" "${x.zsh}/bin/zsh"
+      "${x.phoon}/bin/phoon" "${d.wawona-wasm}/bin/wasm" "${d.wawona-wasm}/bin/wpm" "${d.kmscube}/bin/kmscube"
+      "${x.weston-simple-egl}/bin/weston-simple-egl" ]}; do
+      case $b in *.so | *.dylib) continue ;; esac
+      ln -s $b ${r}/bin/
+      ln -s $b bundle/MacOS/
+    done
+    for b in ${bins ([
+      "${x.foot}/bin/foot" "${x.foot}/bin/.foot-wrapped" "${x.niri}/bin/niri" "${x.fuzzel}/bin/fuzzel"
+      "${d.opengl-cube}/bin/opengl-cube" "${d.vkcube}/bin/vkcube" "${d.vkcube}/bin/vkcube-kms"
+      "${d.gbm-es2-demo}/bin/gbm-es2-demo" ]
+      ++ map (t: "${d.openssh}/bin/${t}") [ "ssh" "ssh-keygen" "scp" "sftp" "ssh-agent" "ssh-add" ])}; do
       ln -s $b ${r}/bin/
     done
+    ln -s ${w}/share/weston ${r}/share/weston
+    ln -s ${w}/lib/weston ${w}/lib/libweston-13 ${r}/lib/
+    ln -s ${x.niri}/share/niri/default-config.kdl ${r}/share/niri/
+    ln -s ${x.iland-baremetal}/lib/libwayland-mac.dylib ${mb}/iland/
+    ln -s ${x.iowatchdog}/bin/wwn-iowatchdog ${x.iowatchdog}/bin/wwn-iowatchdog-claim-install \
+      ${x.iowatchdog}/bin/wwn-iowatchdog-claim ${x.iowatchdog}/lib/libwwn_watchdogd_hook.dylib ${mb}/
+    ln -s ${x.iowatchdog}/lib/libwwn_watchdogd_hook.dylib ${mb}/lib/
     ln -s ${x.igetty}/bin/igettyd ${x.igetty}/bin/igetty bundle/MacOS/
     for l in modeb-ttyd:igettyd modeb-tty:igettyd modeb-getty:igetty; do
       ln -s ''${l#*:} bundle/MacOS/''${l%%:*}
@@ -148,7 +174,8 @@
     ln -s ../../MacOS/igetty ${r}/bin/igetty
     mkdir -p ${r}/libexec && ln -s ${x.igetty}/libexec/wwn-modeb-session ${r}/libexec/
     ln -s ${fonts}/share/fonts ${r}/share/fonts
-    ln -s ${cursors}/share/icons/Adwaita/cursors ${cursors}/share/icons/Adwaita/index.theme ${r}/share/icons/Adwaita/
+    ln -s ${cursors}/share/icons/Adwaita/cursors/* ${r}/share/icons/Adwaita/cursors/
+    ln -s ${cursors}/share/icons/Adwaita/index.theme ${r}/share/icons/Adwaita/
     ln -s ${cursors}/share/icons/default ${r}/share/icons/default
     ln -s ${catalog}/share/applications ${r}/share/applications
     ln -s ${catalog}/share/icons/hicolor ${r}/share/icons/hicolor
@@ -156,6 +183,9 @@
       sed 's|"library_path":.*|"library_path": "../../../Frameworks/libMoltenVK.dylib",|' $j > ${r}/vulkan/icd.d/$(basename $j)
     done
     cp ${x.moltenvk}/lib/libMoltenVK.dylib bundle/Frameworks/
+    sed 's|"library_path":[[:space:]]*"[^"]*"|"library_path": "../../../Frameworks/libvulkan_kosmickrisp.dylib"|' \
+      ${x.kosmickrisp}/share/vulkan/icd.d/kosmickrisp_mesa_icd.aarch64.json > ${r}/vulkan/icd.d/kosmickrisp_icd.json
+    cp ${x.kosmickrisp}/lib/libvulkan_kosmickrisp.dylib bundle/Frameworks/
     cp ${d.iland}/lib/libEGL.dylib bundle/Frameworks/libEGL.dylib
     cp ${d.angle}/lib/libEGL.dylib bundle/Frameworks/libEGL_angle.dylib
   '';
