@@ -1,0 +1,27 @@
+# Prebuilt dependency slices (ghcr.io/wawona/deps). Local proof via WAWONA_DEPS_MIRROR.
+
+[slices.src]
+nar = "sha256-local-b36ec1858de0669a"
+sha256 = "b36ec1858de0669a0c374d644d17e229a3141665bbec35670856866e13ed9282"
+size = 2743628
+
+[slices.macosx]
+nar = "sha256-local-17a8679cf16ec9cf"
+sha256 = "17a8679cf16ec9cfdf429d3ec914919db93c3755c732e32fea8b2def426e15cb"
+size = 72929080
+
+[slices.iphonesimulator]
+nar = "sha256-local-af2b8dbe6287fdd8"
+sha256 = "af2b8dbe6287fdd8e1bc5c95bab64faba1bfc24cd3e676f407c3d5cba6cc06e2"
+size = 64279702
+
+[slices.appletvsimulator]
+nar = "sha256-local-bb1a6e41aca7d543"
+sha256 = "bb1a6e41aca7d543e8e1f53bc80515450a90a3722cddbc315a011303d2d620fd"
+size = 133413390
+
+[slices.watchsimulator]
+nar = "sha256-local-453c2d994c8a5d33"
+sha256 = "453c2d994c8a5d33a86d68dc0070e76eeb22c3ddb907f03662c67a74ffc3294e"
+size = 55306883
+
