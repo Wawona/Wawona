@@ -181,7 +181,7 @@ iland virtual DRM + present (Metal / Android overlay)
    - `Wawona/src/platform/android/android_jni.c` (`kmscube_stub_main` vs cube stubs)
 3. Confirm catalog ids already exist (do not rename):
    - `opengl-cube`, `vkcube` in `WWNMachinesViewModel.swift`, `BundledClients.kt`,
-     `bundled_clients.rs`, `bundled-clients-catalog.sh`.
+     `bundled_clients.rs`, `xtask/src/lab/clients.rs`.
 
 **Done when:** you can point at every kmscube file you will clone.
 

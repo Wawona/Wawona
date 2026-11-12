@@ -8,7 +8,7 @@ The store binary must not contain Mode B sources. Those live outside
 `src/platform/ios/` and are packaged later as Debian packages for
 `repo.wawona.io`. The store app does not download those packages.
 
-`.github/scripts/verify-darwin-cli-mode-a.py` fails the tree if Mode A command
+`cargo xtask verify darwin-cli-mode-a` fails the tree if Mode A command
 sources name private or jailbreak symbols.
 
 ## Public API map

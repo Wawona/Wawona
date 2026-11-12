@@ -5,7 +5,7 @@ Use before external TestFlight or App Review submission. Record **build attr**, 
 Build attrs (target):
 
 ```bash
-nix build .#wawona-ios-backend
+cargo xtask build ios --device
 nix build .#weston-ios
 nix build .#zsh-ios          # Phase 2+
 nix build .#wawona-rootfs-ios # Phase 2+

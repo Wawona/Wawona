@@ -60,7 +60,7 @@ See `wawona-apple-sidebar-icons`.
 
 Cursor rule: `.cursor/rules/wawona-global-settings-exclusive.mdc`.
 Product: `docs/settings.md`. RAG: `wwn-mcp/knowledge/wawona/global-settings-exclusive.md`.
-Verify: `Wawona/scripts/verify-settings-bundle-keys.py`.
+Verify: `cargo xtask verify settings-in-app`.
 
 ## History (do not revive)
 

@@ -7,24 +7,24 @@ Wawona Android Gradle and Android Studio must run on **JetBrains Runtime
 
 Pin Project + Gradle JVM to the IDE JDK named `21` (Studio embedded JBR).
 
-- `android/studio/misc.xml`: `project-jdk-name="21"`
-- `android/studio/gradle.xml`: `gradleJvm=21`
-- `gradlegen` writes `org.gradle.java.home` to the generated project when
-  Studio JBR is on disk (`Contents/jbr/Contents/Home`)
-- Local `./gradlew`: `source scripts/lib/android-jbr.sh && wawona_android_export_jbr`
+- `.idea/misc.xml`: `project-jdk-name="21"`
+- `.idea/gradle.xml`: `gradleJvm=21`
+- Local builds: `cargo xtask build android` resolves Studio JBR 21 when `JAVA_HOME` is unset
 
 Do not export Nix `JAVA_HOME` into Android Studio. That is `#GRADLE_LOCAL_JAVA_HOME`
 or a stale OpenJDK path. Symptom: **Invalid Gradle JDK configuration**.
 
 Override path: `ANDROID_STUDIO_JBR`.
 
-## Nix
+## Where Gradle runs
 
 | Host | Gradle JVM |
 |---|---|
-| Linux CI / `.#wawona-android` | `jetbrains.jdk-no-jcef-21` (JBR 21, no JCEF) |
-| Darwin Nix sandbox | OpenJDK 17. nixpkgs `jetbrains.jdk*` is Linux-only |
-| Darwin local Studio / `.#wawona-android-project` | Embedded Studio JBR 21 |
+| Android Studio, `cargo xtask build android` locally | Embedded Studio JBR 21 |
+| CI (`setup-xtask` with `android: true`) | `actions/setup-java`, distribution `jetbrains`, 21 |
+
+Nix builds only the Android dependency slice (`.#deps-android`); it runs no
+Gradle.
 
 ## Hard rejects
 

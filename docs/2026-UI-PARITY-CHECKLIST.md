@@ -4,8 +4,8 @@ Use this checklist before merging changes that touch shared UI or Android host w
 
 ## Required builds
 
-- `nix build .#wawona-android`
-- Darwin backend/package targets required by the current branch scope
+- `cargo xtask build android`
+- `cargo xtask build <target>` for each Apple target the branch touches
 
 ## Screenshot capture matrix
 
@@ -27,7 +27,7 @@ Capture the following screenshots into one folder (example: `artifacts/ui-parity
 Run:
 
 ```bash
-python3 scripts/ui_parity_diff.py --screenshots-dir artifacts/ui-parity --threshold 0.12
+cargo xtask ci ui-parity --screenshots-dir artifacts/ui-parity --threshold 0.12
 ```
 
 - Lower threshold means stricter parity.

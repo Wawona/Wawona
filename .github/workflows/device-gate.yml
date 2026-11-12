@@ -21,38 +21,20 @@ on:
       - "Sources/**"
       - "dependencies/**"
       - "dependencies/wawona/workspace-src.nix"
-      - "scripts/lib/expand_uutils_workspace_deps.py"
-      - "scripts/prepare-cargo-path-deps.sh"
+      - "xtask/src/workspace.rs"
+      - "dependencies/wawona/xtask.nix"
       - "flake.nix"
       - "flake.lock"
       - "fastlane/**"
       - ".github/workflows/release-beta.yml"
       - ".agent-device/**"
-      - "scripts/agent-device-smoke.sh"
-      - "scripts/ci-ios-xcuitest-smoke.sh"
-      - "scripts/ci-android-espresso-smoke.sh"
-      - "scripts/ci-macos-compat-smoke.sh"
+      - "xtask/src/lab/**"
       - "src/platform/android/android_jni.c"
       - "src/platform/macos/ui/Settings/WWNPreferencesSectionsBuilder.m"
       - "Sources/WawonaApple/Settings/**"
       - "src/platform/watchos/WWNWatchStubs.c"
       - "src/platform/ios/WWNAppleMobileOptionalStubs.c"
-      - ".github/scripts/verify-ios-shell-tools.py"
-      - ".github/scripts/verify-android-shell-tools.py"
-      - ".github/scripts/verify-ssh-backends.py"
-      - "scripts/agent-device-fuzzel-smoke.sh"
-      - "scripts/agent-device-set-niri-android.sh"
-      - "scripts/agent-device-set-niri-ios.sh"
-      - "scripts/agent-device-set-client-ios.sh"
-      - "scripts/niri-smoke-macos.sh"
-      - "scripts/niri-fuzzel-smoke-macos.sh"
-      - "scripts/applications-catalog-smoke.sh"
-      - "scripts/leak-idle-gate.sh"
-      - "scripts/lib/leak-idle-measure.sh"
-      - "scripts/bundled-clients-matrix-gate.sh"
-      - "scripts/lib/bundled-clients-catalog.sh"
-      - "scripts/lib/android-ad-scale.sh"
-      - "scripts/lib/agent-device-ios-system-ui.sh"
+      - "xtask/src/verify/**"
       - ".github/workflows/leak-idle-gate.yml"
       - ".github/workflows/bundled-clients-matrix.yml"
       - ".github/workflows/device-e2e.yml"
@@ -68,10 +50,7 @@ on:
       - ".github/workflows/product-android-apk.yml"
       - ".github/workflows/product-macos-app.yml"
       - ".github/workflows/product-appimage.yml"
-      - ".github/scripts/resolve-product-artifacts.sh"
-      - ".github/scripts/select-xcode.sh"
-      - ".github/scripts/warm-ios-simulator-sdk.sh"
-      - ".github/scripts/ci-require-branch-tip.sh"
+      - "xtask/src/ci/**"
       - ".github/ci-package-matrix.json"
 
 concurrency:
@@ -95,11 +74,14 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: tip
       - id: tip
         env:
           WAWONA_CI_FORCE_TIP: ${{ github.event_name == 'workflow_dispatch' && '1' || (inputs.checkout_ref != '' && inputs.checkout_ref != github.sha && '1' || '') }}
           WAWONA_CI_INTENDED_REF: ${{ inputs.checkout_ref }}
-        run: bash .github/scripts/ci-require-branch-tip.sh
+        run: cargo xtask ci tip
 
   product-ios:
     name: "Build: iOS"

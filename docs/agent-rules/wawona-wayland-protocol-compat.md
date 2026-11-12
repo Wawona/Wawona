@@ -20,7 +20,7 @@ older clients.
 - [ ] Newest practical stable version?
 - [ ] Back-compat via bind version, not a parallel same-interface impl?
 - [ ] Extra interface name justified by a concrete client/app?
-- [ ] `docs/protocol-status.md` / matrix updated (`scripts/gen-protocol-status.sh`)?
+- [ ] `docs/protocol-status.md` / matrix updated (`cargo xtask gen protocol-status`)?
 - [ ] wawona.io `/docs/contributor/protocols/` synced (sibling sync script or master dispatch)?
 - [ ] Issue/PR on matching milestone in [`../protocol-milestones.md`](../protocol-milestones.md)?
 - [ ] Functional row has `PROTOCOL_PROOF_OBLIGATIONS` + Kani helpers (`protocol_proofs.rs`)?

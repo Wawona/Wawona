@@ -182,7 +182,7 @@ over the wait spam alone.
 
 ```bash
 # Sim build + install Wawona-iOS; prefs:
-#   scripts/agent-device-set-client-ios.sh weston-terminal <UDID>
+#   cargo xtask lab set-client weston-terminal ios <UDID>
 # Console (keep attached; do not steal with a second launcher):
 xcrun simctl launch --console-pty <UDID> com.aspauldingcode.Wawona
 # After Start → weston-terminal, expect:

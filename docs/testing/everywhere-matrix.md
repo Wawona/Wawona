@@ -9,14 +9,8 @@ iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
 
 | Platform | Flake target | Notes |
 |----------|--------------|-------|
-| macOS backend | `.#wawona-macos-backend` | Rust static lib + bundled Weston |
+| SDK slices | `.#deps-<sdk>` | C libraries and bundle per Xcode platform (`macosx`, `iphoneos`, `iphonesimulator`, `appletvsimulator`, `watchsimulator`, `xrsimulator`, …) and `android` |
 | macOS GL | `.#iland-gl-clients` | kmscube over iland + ANGLE |
-| iOS device backend | `.#wawona-ios-backend` | |
-| iOS sim backend | `.#wawona-ios-sim-backend` | |
-| iPadOS sim backend | `.#wawona-ipados-sim-backend` | |
-| tvOS sim backend | `.#wawona-tvos-sim-backend` | |
-| visionOS sim backend | `.#wawona-visionos-sim-backend` | |
-| watchOS sim backend | `.#wawona-watchos-sim-backend` | |
 | Weston toytoolkit iOS | `.#weston-ios` | cairo/pango demo clients |
 | zsh iOS (planned) | `.#zsh-ios` | App Store-compliant bundled shell. [ios-local-shell](../ios-local-shell/README.md) |
 | wawona rootfs iOS (planned) | `.#wawona-rootfs-ios` | usr/bin/zsh + share for app bundle |
@@ -24,7 +18,6 @@ iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
 | Weston compositor iOS | `.#weston-compositor-ios` | nested compositor archive (Wayland/Pixman default) |
 | Weston compositor iOS DRM | `.#weston-compositor-ios-drm` / `-sim` | iland DRM + GL renderer (CI validation) |
 | Weston GL clients iOS | `.#weston-ios-gl` / `.#weston-ios-gl-sim` | `enableGlClients=true` |
-| Android APK | `.#wawona-android` | NDK toytoolkit + compositor + JNI |
 | Android compositor | `.#weston-compositor-android` | nested compositor archive |
 | ANGLE iOS | `.#angle-ios` / `.#angle-ios-sim` | GLES over Metal |
 | ANGLE Android | `.#angle-android` | |
@@ -33,7 +26,7 @@ iOS on-device shell, agent-device replays), see [`commands.md`](./commands.md).
 | SDL2_gfx demo (planned) | `.#testgfx-ios` / `-macos` / `-android` | in-process `testgfx_main`; software/`wl_shm` first. [#107](https://github.com/Wawona/Wawona/issues/107) |
 | Linux reference | `pkgs.weston` (nixpkgs) | baseline |
 
-CI runs `.github/scripts/verify-wayland-profile-smoke.py` (host-scoped `nix eval`). Use `--build` for compile verification on the matching host.
+The Rust backend and apps are not flake targets: `cargo xtask backend <sdk>` and `cargo xtask build <target>` build them over a slice. CI runs `cargo xtask verify wayland-profile-smoke` (host-scoped `nix eval`). Use `--build` for compile verification on the matching host.
 
 ## Developer refresh workflow (Phase 5C)
 
@@ -41,15 +34,14 @@ After changing native dependencies:
 
 ```bash
 # Apple mobile / macOS
-nix run .#wawona-ios-project          # regenerate Xcode project
-nix build .#wawona-ios-sim-backend    # refresh libwawona.a paths
+cargo xtask deps get iphonesimulator --nix   # rebuild the slice Xcode links
 nix build .#weston-ios                # refresh toytoolkit archives
 nix build .#weston-compositor-ios     # refresh nested compositor archive
 nix build .#weston-compositor-ios-drm # refresh DRM+GL compositor variant (CI)
 nix build .#iland-gl-clients-ios      # refresh kmscube archive
 
 # Android
-nix build .#wawona-android
+cargo xtask deps get android --nix
 nix build .#weston-compositor-android
 # Then sync Gradle in Android Studio
 ```
@@ -58,8 +50,8 @@ nix build .#weston-compositor-android
 
 | Check | Status | Command / notes |
 |-------|--------|-----------------|
-| Profile smoke (eval) | pass | `python3 .github/scripts/verify-wayland-profile-smoke.py` |
-| Runtime ownership strict | pass | `python3 .github/scripts/verify-wayland-runtime-ownership.py --strict` |
+| Profile smoke (eval) | pass | `cargo xtask verify wayland-profile-smoke` |
+| Runtime ownership strict | pass | `cargo xtask verify wayland-runtime-ownership --strict` |
 | `weston-compositor-ios` build | pass | `nix build .#weston-compositor-ios --no-link` |
 | `weston-compositor-ios-drm` build | pass | `nix build .#weston-compositor-ios-drm --no-link` |
 | Weston iOS patch anchors | pass | `python3 .github/scripts/verify-weston-ios-patches.py` |
@@ -140,8 +132,8 @@ lands, the manual item is retired in favor of the ID. IDs are Rust test fns
 | Registry advertises core globals | `test_protocol_matrix_core_globals_advertised` | rust | done |
 | Advertisement honesty per profile | `test_protocol_matrix_profile_honesty` | rust | done |
 | Protocol manifest not drifted | `test_generate_protocol_status_manifest` (CI `cargo-test-linux`) | rust+ci | done |
-| `weston-simple-shm` SHM buffer visible | `scripts/ci-macos-compat-smoke.sh` (macOS), `test_shm_protocol` | script+rust | done (macOS) |
-| `weston-flower` / demo client | `scripts/ci-macos-compat-smoke.sh` | script | done (macOS) |
+| `weston-simple-shm` SHM buffer visible | `cargo xtask lab macos-runtime` (macOS), `test_shm_protocol` | xtask+rust | done (macOS) |
+| `weston-flower` / demo client | `cargo xtask lab macos-runtime` | xtask | done (macOS) |
 | Keyboard `KEY_A` → keysym | `test_keyboard_key_a_keysym` | rust | done |
 | Live resize + configure ack, no SHM exhaustion | `test_configure_serial_backlog_without_ack` | rust | done |
 | Window maximize/fullscreen transitions | `test_window_maximized_transition`, `test_window_fullscreen_transition` | rust | done |
@@ -150,15 +142,15 @@ lands, the manual item is retired in favor of the ID. IDs are Rust test fns
 | dmabuf feedback resolves, no raw formats | `test_protocol_matrix_dmabuf_feedback_resolves` | rust | done |
 | iOS boot + launch client (UI) | `.agent-device/wawona-ios-smoke.ad` | agent-device | done |
 | Android boot + launch client (UI) | `.agent-device/wawona-android-smoke.ad` | agent-device | done |
-| macOS present-frame per bundled client | `scripts/ci-macos-compat-smoke.sh` | script | done |
-| Nested Weston child socket + demo client | (capability lane) | script | pending (`ci-capability-lane`) |
+| macOS present-frame per bundled client | `cargo xtask lab macos-runtime` | xtask | done |
+| Nested Weston child socket + demo client | (capability lane) | xtask | pending (`cargo xtask lab capability`) |
 | waypipe session | (capability lane) | script | pending |
-| UI parity vs golden baselines | `ui_parity_diff.py` + agent-device batch | ci | pending (`ci-l3-parity-agentdevice`) |
+| UI parity vs golden baselines | `cargo xtask ci ui-parity` + agent-device batch | ci | pending (`ci-l3-parity-agentdevice`) |
 | Graphics conformance (GL/Vulkan) | `dependencies/tests/graphics-validate.nix` | nix | pending (`ci-graphics-cts`) |
 | Apple UI flows | Appium XCUITest / Mac2 (`Tests/appium`) | appium | in progress (`ui-appium.yml`) |
 | Android UI flows | Appium UiAutomator2 (`Tests/appium`) | appium | in progress (`ui-appium.yml`) |
 | Linux UI + catalog | Appium AT-SPI2 / Linux driver | appium | in progress (`ui-appium.yml`) |
 
 Run locally: `nix develop -c cargo test --lib --tests`;
-`./scripts/ci-macos-compat-smoke.sh`; `agent-device replay .agent-device/<name>.ad`.
+`cargo xtask lab macos-runtime`; `agent-device replay .agent-device/<name>.ad`.
 

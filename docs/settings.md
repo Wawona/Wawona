@@ -331,7 +331,7 @@ Mode B loads bundled `libwayland-mac.dylib` only from
 AX id: `wwn.settings.dependencies`. Built from
 [`dependencies/wawona/settings-deps.nix`](../dependencies/wawona/settings-deps.nix)
 and shipped as `SettingsDependencies.json` for **this** product only. Never copy
-another platform's list. Regenerate with `./scripts/regen-settings-deps.sh`.
+another platform's list. Regenerate with `cargo xtask gen settings-deps`.
 Each row is Okular-style: version, description (`role`), SPDX `license`, and
 `url` (source or project site; Open Website in the detail UI). Rule:
 [`agent-rules/wawona-settings-dependencies.md`](agent-rules/wawona-settings-dependencies.md).

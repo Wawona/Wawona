@@ -28,9 +28,8 @@ let
       variant == "mobile" || variant == "tv" || variant == "watch" || variant == "vision"
     ) {
       waypipe = buildFn "waypipe" { inherit simulator; };
-      # Root Cargo.toml enables waypipe features lz4/zstd/video. crate2nix
-      # builds waypipe-ffmpeg-wrapper; rust-backend-c2n needs this for
-      # PKG_CONFIG_PATH / libavutil (same as wwn-waypipe ios.nix).
+      # Root Cargo.toml enables waypipe features lz4/zstd/video; the backend's
+      # waypipe-ffmpeg-wrapper needs libavutil on PKG_CONFIG_PATH.
       ffmpeg = buildFn "ffmpeg" { inherit simulator; };
     };
   # Store Apple-mobile + tv/watch: no ANGLE/MoltenVK/cubes (no in-app GLES clients).

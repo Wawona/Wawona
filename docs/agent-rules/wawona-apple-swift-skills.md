@@ -36,7 +36,7 @@ apply). Then Wawona rules: `wawona-swiftui-backports`,
 
 ## Wawona wins on conflict
 
-iOS **13.0** floor + `WawonaBackport`, zero ObjC product classes, Rust policy
+iOS **15.0** floor + `WawonaBackport`, zero ObjC product classes, Rust policy
 ownership, and store Mode A firewall override upstream skill modernization
 advice.
 

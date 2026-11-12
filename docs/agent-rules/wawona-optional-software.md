@@ -45,7 +45,7 @@ Store hosts use `wpm` / wasm only until a real wasm port exists.
 
 ## Unlink: audit what rode along on the link line
 
-Dropping a client's ldflags helper from `xcodegen.nix` also drops every
+Dropping a client's ldflags helper from `deps.nix` also drops every
 keep-set archive that helper happened to carry. The weston helpers were the
 only provider of three keep-set inputs, and removing them left the Apple
 targets with undefined symbols that look unrelated to weston:

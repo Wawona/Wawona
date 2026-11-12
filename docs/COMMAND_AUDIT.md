@@ -80,6 +80,6 @@ out of `src/platform/ios/`.
 
 `scripts/darwin-cli-mode-a-test.m` exercises plutil, defaults, xattr, sips, and
 sw_vers on the Mac against the same Mode A sources. The compliance script
-`.github/scripts/verify-darwin-cli-mode-a.py` rejects private and jailbreak
+`cargo xtask verify darwin-cli-mode-a` rejects private and jailbreak
 tokens in those sources. Simulator coverage of `open` / pasteboard / `say`
 depends on a rebuilt `libwwn-pty.a` plus the rootfs placeholders (template 28).

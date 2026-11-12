@@ -1,5 +1,5 @@
 // Host-side Verus model of sanitize_ssh_host output laws. Not linked into the app.
-// Run: scripts/verify-verus.sh
+// Run: cargo xtask prove verus
 use vstd::prelude::*;
 
 verus! {

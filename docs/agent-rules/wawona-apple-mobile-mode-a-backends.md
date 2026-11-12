@@ -1,7 +1,7 @@
 # Apple-mobile Mode A backends (least maintenance)
 
 Authority for **iOS family** App Store Mode A shell/SSH/`system()` (not macOS).
-iOS / iPadOS / tvOS / watchOS / visionOS. Floor **13.0**, latest SDK.
+iOS / iPadOS / tvOS / watchOS / visionOS. Floor **15.0**, latest SDK.
 
 ## Freeze stack (do not reinvent)
 
@@ -31,13 +31,13 @@ uutils or implement a second SSH/zsh stack.
 - Real POSIX `system()` / `execve` of unsigned Mach-O
 - Mega `libwawona-appstore` SDK that owns every tool
 - Re-pinning uutils with `fetchFromGitHub` inside Wawona `flake.nix`
-- Raising deployment target above 13.0 for Wasmer / GhosttyKit / convenience
+- Raising deployment target above 15.0 for Wasmer / GhosttyKit / convenience
 - Native Shell Terminal Start as a splash only. Wire `wwn_pty` +
   `wawona_zsh_main` + `wwn_term` + inject (`wawona-ios-native-shell`)
 
 ## Verify
 
-`python3 .github/scripts/verify-ios-shell-tools.py` checks libssh2 wiring,
+`cargo xtask verify ios-shell-tools` checks libssh2 wiring,
 `wwn-coreutils` safe-subset vs `Cargo.toml`, and forbids NIOSSH / ios_system
 imports under Apple Swift sources.
 

@@ -53,30 +53,30 @@
       "macos": {
         "driver": "Mac2",
         "env": "WAWONA_APPIUM_PLATFORM=macos WAWONA_APP_PATH=\u2026/Wawona.app",
-        "cmd": "appium (server :4723); ./scripts/appium/run-appium-suite.sh  OR  pytest tests/test_native_ui.py -q",
+        "cmd": "appium (server :4723); cargo xtask appium run",
         "skill": "appium-setup-mac2"
       },
       "ios_family": {
         "driver": "XCUITest",
         "env": "WAWONA_APPIUM_PLATFORM=ios|ipados|tvos|visionos|watchos WAWONA_APP_PATH=\u2026",
-        "cmd": "pytest tests/test_native_ui.py -q",
+        "cmd": "cargo xtask appium run --group native",
         "skill": "appium-setup-xcuitest"
       },
       "android": {
         "driver": "UiAutomator2",
         "env": "WAWONA_APPIUM_PLATFORM=android WAWONA_APP_PATH=\u2026.apk",
-        "cmd": "bash scripts/appium/ci-android-suite.sh  OR  run-appium-suite.sh",
+        "cmd": "cargo xtask appium run --group native,wayland",
         "skill": "appium-setup-uiautomator2"
       },
       "linux": {
         "driver": "AT-SPI / Linux desktop caps in session.py",
         "env": "WAWONA_APPIUM_PLATFORM=linux WAWONA_WAYLAND_GUEST=nested",
-        "cmd": "Xvfb + pytest tests/test_catalog_wayland.py -q",
+        "cmd": "Xvfb + cargo xtask appium run --group catalog",
         "skill": "appium + wawona-appium"
       },
       "citations": [
         "docs/testing/appium-ui-matrix.md",
-        "Tests/appium/wawona_appium/drivers/session.py",
+        "xtask/src/appium/session.rs",
         "wawona/docs appium-ui-gh.md"
       ],
       "confidence": 0.9
@@ -119,7 +119,7 @@
         }
       },
       "citations": [
-        "Tests/appium/matrix.toml + verify-wayland-guest-map.py OK 18 clients",
+        "Tests/appium/matrix.toml + cargo xtask appium verify OK 18 clients",
         "docs/testing/appium-ui-matrix.md:42-71",
         "screenshot_evidence.require_client_screenshot"
       ],
@@ -228,7 +228,7 @@
           "hyprland"
         ]
       },
-      "source": "verify-wayland-guest-map.py",
+      "source": "cargo xtask appium verify",
       "extracted_at": "2026-10-13T18:58:00Z",
       "confidence": 1.0
     },
@@ -244,7 +244,7 @@
           "\u2026"
         ]
       },
-      "source": "verify-wayland-guest-map.py",
+      "source": "cargo xtask appium verify",
       "extracted_at": "2026-10-13T18:58:00Z",
       "confidence": 1.0
     },
@@ -408,7 +408,7 @@
   },
   "next_action": {
     "tick": 7,
-    "cmd": "capture remaining catalog clients (N4) via capture-catalog-gallery.sh",
+    "cmd": "capture remaining catalog clients (N4) via cargo xtask appium catalog",
     "goal": "catalog-gallery full matrix PNGs",
     "blocked_by": null
   },
@@ -463,7 +463,7 @@
       "type": "DriverFix",
       "trigger": "WDA SIGABRT missing lib_TestingInterop/_Testing_Foundation on Xcode 26",
       "args": {
-        "fix": "scripts/appium/ensure-wda-mac.sh DYLD_* + webDriverAgentMacUrl",
+        "fix": "cargo xtask appium wda DYLD_* + webDriverAgentMacUrl",
         "also": "ensure-appium strips DYLD from Node; start_new_session survives agent shells"
       },
       "time": "2026-10-14T21:45:46Z",

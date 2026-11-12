@@ -6,7 +6,7 @@
 # docs/agent-rules/wawona-settings-dependencies.md
 #
 # Regenerate JSON snapshots (do not hand-edit):
-#   ./scripts/regen-settings-deps.sh
+#   cargo xtask gen settings-deps
 #
 # ANGLE / MoltenVK / iland versions must match the linked iland recipes.
 # iland CalVer comes from sibling iland/VERSION (or versions.iland fallback).

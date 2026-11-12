@@ -26,4 +26,4 @@ One command syntax. Two products. Scores from Rust tests plus planned device tra
 
 ## Mode B
 
-Packages exist under `packaging/mode-b-darwin/out/`. `vphone wawona-jb` was not booted at the last check, so install/remove/upgrade was not run on the guest.
+The Mode B Darwin tools are catalog debs in `repo.wawona.io`. Install, remove and upgrade on `vphone wawona-jb` have not been run.

@@ -1,95 +1,84 @@
 # iOS minimum OS and latest SDK
 
-User decision, 2026-09-30: every Wawona iOS/iPadOS product and its dependencies
-compile with deployment target **13.0**. iOS 11 and 12 are no longer supported.
-This supersedes the earlier iOS 11 policy, including older skill text.
+User decision, 2026-11-10: Wawona builds with Xcode 27 and SDK 27 only.
+Xcode 27 accepts iOS deployment targets from **15.0**, so every Wawona
+iOS/iPadOS app (App Store, TestFlight, Sileo `.deb`, TrollStore `.tipa`,
+simulator) targets 15.0. iOS 13 and 14 can no longer be built and are not
+supported. This supersedes the 2026-09-30 13.0 policy and older skill text.
 
-Use the latest installed iPhoneOS SDK (26.5 verified locally on this date).
-When a newer SDK is available, validate it and use it. Never downgrade the SDK
-to match the minimum OS. “13 through 27+” is a compatibility objective, not
-proof that untested or future systems work.
+Use the latest installed iPhoneOS SDK. When a newer SDK is available,
+validate it and use it. Never downgrade the SDK to reach an older minimum.
+"15 through 27+" is a compatibility objective, not proof that untested or
+future systems work.
 
 ## Build contract
 
-- L0 `wwn-toolchain/dependencies/apple/default.nix` owns the default floor.
-- Its xcode environment and shared Apple-mobile recipes inherit 13.0.
-- Wawona's product overlay explicitly passes 13.0 when using a pinned L0 input.
-- `xcodegen` `deploymentTarget.iOS` and the ANGLE embed
-  `IPHONEOS_DEPLOYMENT_TARGET` fallback are **13.0**. Do not fall back to
-  17.0. Store IPA and Sileo `.deb` pass 13.0. TrollStore `.tipa` passes 14.0
-  at the call site.
-- Rust backends, generated Xcode projects, Swift packages, app archives and
-  embedded frameworks must agree. Inspect Mach-O minos in final artifacts.
+- `Wawona.xcodeproj` sets `IPHONEOS_DEPLOYMENT_TARGET = 15.0` on every iOS
+  target, and `xtask/src/slices.rs` builds the iphoneos, iphoneos-modeb and
+  iphonesimulator Rust slices at 15.0. One Mode B build serves the TrollStore
+  `.tipa` and both Sileo `.deb`s (`Depends: firmware (>= 15.0)`).
+- `cargo xtask xcode prebuild` builds the backend at the slice minimum and
+  takes nothing from the environment that could raise it.
+- L0 `wwn-toolchain/dependencies/apple/default.nix` still builds dependency
+  archives at 13.0. An archive with an older minimum links into a 15.0 app;
+  one with a newer minimum than 15.0 must not be linked.
 - tvOS, watchOS, visionOS and macOS retain their own deployment targets.
 - Local dependency changes require an updated published pin or explicit local
   input override before a consumer can claim to have built those changes.
-
-Bundled clients use this same iOS 13.0 floor. That includes fastfetch,
-weston, foot, fuzzel, niri, zsh, waypipe, phoon, kmscube, iland, ANGLE,
-MoltenVK, and the substrate archives they link (epoll-shim, xkbcommon,
-fcft, lz4, zstd, mbedtls, spirv-tools, libssh2). A tipa Mach-O min of 14.0
-does not allow those archives to compile at iOS 16 or the SDK version.
 
 C flags and Meson `c_args` do not apply to `.m` / `.mm`. CMake must set
 `CMAKE_OBJC_FLAGS` / `CMAKE_OBJCXX_FLAGS` with the same
 `-miphoneos-version-min` as C. Meson cross files must set `objc_args` /
 `objcpp_args` the same way. Without that, clang targets the iPhoneOS SDK.
 It emits `_objc_release_xN`, which `libobjc` does not provide before iOS
-16, and dyld aborts on iOS 13, 14, and 15. `scripts/xcode-prebuild.sh`
-`ld -r` takes `IPHONEOS_DEPLOYMENT_TARGET` (default 13.0). Do not hardcode
-17.0. Check: `wwn-toolchain/.github/scripts/verify-apple-objc-deployment.py`.
+16, and dyld aborts on iOS 15. The check lives in `wwn-toolchain` CI.
 
 ## Renderer and UI
 
 Use one native static ANGLE/Metal and one native static MoltenVK/Metal set.
 EGL and GLES go through ANGLE to Metal. Vulkan goes through MoltenVK to Metal.
-Compatibility patches start at iOS 13 and 14. Do not restore iOS 11 or 12
-patches for ANGLE, EGL, GLES, Vulkan, or MoltenVK. Runtime Metal feature
-policy stays in Rust. Swift in `Sources/WawonaApple` fills capabilities and
-bridges native APIs. No Objective-C product classes.
+Runtime Metal feature policy stays in Rust. Swift in `Sources/WawonaApple`
+fills capabilities and bridges native APIs. No Objective-C product classes.
 
-SwiftUI exists at the new floor, but APIs added after iOS 13 still need guarded
-use or a functional backport. Lowering Package.swift or Xcode settings alone
-is not proof that the UI compiles or works. Machine creation, per-machine RAM
-and storage settings, launch and lifecycle must work on the supported range.
+SwiftUI APIs added after iOS 15 still need guarded use or a functional
+backport (`WawonaBackport`). Machine creation, per-machine RAM and storage
+settings, launch and lifecycle must work on the supported range.
 
 ## Distribution channels
 
-All iOS binaries target 13.0. App Store Mode A stays no Cranelift, no `MAP_JIT`, no Hypervisor, no private Metal/IOMFB APIs, and no QEMU. iOS 27+ Mode A Wasm may use Wasmer WASIX in WebKit. TrollStore and Sileo retain their
-separate installation and entitlement contracts. A 13.0 deployment target
-does not extend TrollStore's installer window or the iOS Hypervisor window.
+All iOS binaries target 15.0. App Store Mode A stays no Cranelift, no
+`MAP_JIT`, no Hypervisor, no private Metal/IOMFB APIs, and no QEMU. iOS 27+
+Mode A Wasm may use Wasmer WASIX in WebKit. TrollStore and Sileo retain their
+separate installation and entitlement contracts. A deployment target does not
+extend TrollStore's installer window or the iOS Hypervisor window.
+`cargo xtask artifact ios` requires 15.0 on the app, the tipa and the Sileo
+executables.
 
-Compile success, device operation, App Store processing and review are separate
-gates. Do not describe the whole range or store acceptance as verified without
-evidence for the actual artifact. Keep the SDK current in every channel.
+Compile success, device operation, App Store processing and review are
+separate gates. Do not describe the whole range or store acceptance as
+verified without evidence for the actual artifact.
 
 ## Verification
 
-Compile dependencies, Rust static libraries, Swift modules and final apps with
-13.0. Audit linked Mach-O load commands and embedded framework minima. Exercise
-machine creation, settings, guest launch, graphics, input and background/resume
-on representative iPhone/iPad releases and hardware. Record failures explicitly.
+Audit linked Mach-O load commands and embedded framework minima in final
+artifacts. Exercise machine creation, settings, guest launch, graphics, input
+and background/resume on representative iPhone/iPad releases and hardware.
+Record failures explicitly.
 
 ## Ownership
 
 Toolchain: `wwn-toolchain`. Graphics recipes: `iLand`. App and UI: `Wawona`.
-Relay stays Rust and uses the same floor supplied by its consuming toolchain.
-Reference: `Wawona/docs/agent-rules/wawona-ios-min-os.md`.
+Relay stays Rust and uses the floor supplied by its consuming toolchain.
 
 ## App Store linkage
-
-The floor stays **13.0** on the latest iPhoneOS SDK (26 now, 27 when that SDK
-is installed). A dependency built for a newer minimum does not raise Wawona.
-Do not link a published kit whose minimum OS is newer than 13.0, and do not rewrite
-`LC_BUILD_VERSION` to pretend it is 13.0.
 
 App Store and TestFlight IPAs do not ship a product `.dylib`. Link static
 archives. Apple's `libswift*` / SwiftSupport is the store exception. macOS
 Desktop Mode B `libwayland-mac.dylib` stays in `.#wawona-macos-desktop-host`
-only.
+only. Do not rewrite `LC_BUILD_VERSION` to change an archive's minimum.
 
 Wawona Terminal grid is **libghostty-rs** from `github.com/Wawona/Terminal`
-(flake `terminal`): static archive at deployment target **13.0**. UniFFI is
-the product contract. Never link published GhosttyKit (iOS 17). Never raise
-the shared floor. Never ship a product Terminal `.dylib` in store IPA. Shell
-backends: `wawona-terminal-shell-backend`. Rule: `wawona-ghostty-host`.
+(flake `terminal`), a static archive. UniFFI is the product contract. Never
+link published GhosttyKit (iOS 17). Never ship a product Terminal `.dylib` in
+store IPA. Shell backends: `wawona-terminal-shell-backend`. Rule:
+`wawona-ghostty-host`.

@@ -33,7 +33,8 @@ on:
     branches: [development]
     paths:
       - "Tests/appium/**"
-      - "scripts/appium/**"
+      - "xtask/src/tip.rs"
+      - "xtask/src/appium/**"
       - ".github/workflows/ui-appium.yml"
       - "Sources/WawonaUI/Machines/Catalog/WWNAccessibilityIdentifiers.swift"
       - "android/app/src/main/java/com/aspauldingcode/wawona/WawonaTestTags.kt"
@@ -56,8 +57,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Tip soft-supersede
-        run: ./.github/scripts/ci-require-branch-tip.sh || true
       - name: "Validate Gate: products artifact source"
         if: ${{ inputs.products_ready }}
         env:
@@ -76,20 +75,13 @@ jobs:
             echo "::error title=Invalid Gate: products run::The run must be a successful Gate: products run for this exact commit."
             exit 1
           fi
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: ./.github/actions/setup-xtask
         with:
-          python-version: "3.12"
+          key: appium-unit
       - name: Verify a11y sync + matrix + Wayland guest map
         run: |
-          pip install -q tomli
-          python3 scripts/appium/verify-a11y-sync.py
-          python3 scripts/appium/verify-matrix.py
-          python3 scripts/appium/verify-wayland-guest-map.py
-          cd Tests/appium
-          python3 -m venv .venv
-          . .venv/bin/activate
-          pip install -q -r requirements.txt
-          WAWONA_APPIUM_DRY=1 PYTHONPATH=. pytest tests/test_gates_unit.py -q
+          cargo test --manifest-path xtask/Cargo.toml appium
+          cargo xtask appium run --dry
 
   android:
     name: "Android Appium (KVM)"
@@ -99,12 +91,6 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Tip soft-supersede
-        run: ./.github/scripts/ci-require-branch-tip.sh || true
-      - name: Prepare Appium artifact dir
-        run: |
-          chmod +x scripts/appium/ci-prepare-artifacts.sh
-          eval "$(scripts/appium/ci-prepare-artifacts.sh)"
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -123,9 +109,11 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: ./.github/actions/setup-xtask
         with:
-          python-version: "3.12"
+          key: appium-android
+      - name: Prepare Appium artifact dir
+        run: cargo xtask appium prepare
       - name: Install Appium + UiAutomator2
         run: |
           npm install -g appium@3.1.1
@@ -134,7 +122,7 @@ jobs:
         run: |
           appium --address 127.0.0.1 --port 4723 > /tmp/appium.log 2>&1 &
           echo $! > /tmp/appium.pid
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             curl -sf http://127.0.0.1:4723/status && break
             sleep 1
           done
@@ -147,8 +135,10 @@ jobs:
           profile: pixel_7
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
           disable-animations: true
-          # One-liner: multiline script under /usr/bin/sh (dash) broke if/fi.
-          script: bash scripts/appium/ci-android-suite.sh
+          # The runner executes each script line separately under sh, so this
+          # stays one line. Watch lane: a failure is reported, not fatal, until
+          # the product APK is wired into this job.
+          script: 'if [ -f dist/Wawona.apk ]; then export WAWONA_APP_PATH="$PWD/dist/Wawona.apk"; else export WAWONA_APPIUM_DRY=1; fi; WAWONA_APPIUM_PLATFORM=android cargo xtask appium run --group native,wayland || echo "Appium Android suite returned non-zero (Watch lane)"'
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -164,12 +154,6 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Tip soft-supersede
-        run: ./.github/scripts/ci-require-branch-tip.sh || true
-      - name: Prepare Appium artifact dir
-        run: |
-          chmod +x scripts/appium/ci-prepare-artifacts.sh
-          eval "$(scripts/appium/ci-prepare-artifacts.sh)"
       - name: Download product AppImage
         if: ${{ inputs.products_ready }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -214,9 +198,11 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: ./.github/actions/setup-xtask
         with:
-          python-version: "3.12"
+          key: appium-linux
+      - name: Prepare Appium artifact dir
+        run: cargo xtask appium prepare
       - name: Install Linux AT-SPI runtime
         env:
           GH_TOKEN: ${{ github.token }}
@@ -270,13 +256,7 @@ jobs:
           DISPLAY: ":99.0"
           WAWONA_APPIUM_PLATFORM: linux
           WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
-        run: |
-          set -euo pipefail
-          eval "$(scripts/appium/ci-prepare-artifacts.sh)"
-          chmod +x scripts/appium/run-appium-suite.sh
-          python3 scripts/appium/verify-wayland-guest-map.py
-          WAWONA_APPIUM_DRY=1 ./scripts/appium/run-appium-suite.sh \
-            tests/test_gates_unit.py
+        run: cargo xtask appium run --dry
       - name: Linux Wayland catalog (needs AppImage)
         # Literally skip (not exit 0 + SKIPPED.txt). Catalog green = PNG only.
         if: ${{ inputs.products_ready }}
@@ -287,9 +267,6 @@ jobs:
           WAWONA_WAYLAND_GUEST: nested
         run: |
           set -euo pipefail
-          eval "$(scripts/appium/ci-prepare-artifacts.sh)"
-          chmod +x scripts/appium/run-appium-suite.sh
-          chmod +x scripts/appium/launch-wayland-client.sh
           if [[ -z "${WAWONA_APP_PATH:-}" ]]; then
             img="$(find dist -name 'Wawona*.AppImage' -type f 2>/dev/null | head -1 || true)"
             if [[ -n "$img" ]]; then
@@ -304,10 +281,8 @@ jobs:
               >"${WAWONA_APPIUM_ARTIFACTS}/catalog-gallery/FAILED.txt"
             exit 1
           fi
-          ./scripts/appium/run-appium-suite.sh \
-            tests/test_gates_unit.py \
-            tests/test_catalog_wayland.py
-          python3 scripts/appium/verify-catalog-gallery.py
+          cargo xtask appium run --group catalog
+          cargo xtask appium gallery
           shopt -s nullglob
           pngs=("${WAWONA_APPIUM_ARTIFACTS}/catalog-gallery/"*.png)
           if ((${#pngs[@]} == 0)); then
@@ -332,7 +307,7 @@ jobs:
   apple:
     name: "Apple Appium (${{ matrix.job_name || matrix.platform }})"
     needs: unit
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -354,17 +329,12 @@ jobs:
             watch_pair: true
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Tip soft-supersede
-        run: ./.github/scripts/ci-require-branch-tip.sh || true
+      # The macOS catalog tip build fetches its prebuilt slices through the xtask.
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: appium-${{ matrix.platform }}
       - name: Prepare Appium artifact dir
-        run: |
-          chmod +x scripts/appium/ci-prepare-artifacts.sh
-          eval "$(scripts/appium/ci-prepare-artifacts.sh)"
-      - name: Select Xcode
-        run: ./.github/scripts/select-xcode.sh
-      - name: Setup Nix for macOS catalog tip build
-        if: ${{ matrix.platform == 'macos' && !inputs.products_ready }}
-        uses: ./.github/actions/setup-nix-flakehub
+        run: cargo xtask appium prepare
       # This matrix runs the Appium unit gate in dry mode until product
       # artifacts are wired. Simulator SDK/runtime builds are covered by Gate: products.
       - name: Download product-macos-app
@@ -393,34 +363,23 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.12"
       - name: Install Appium + XCUITest / Mac2
         run: |
           npm install -g appium@3.1.1
           if [[ "${{ matrix.platform }}" == "macos" ]]; then
             appium driver install mac2
-            chmod +x scripts/appium/ensure-wda-mac.sh
-            ./scripts/appium/ensure-wda-mac.sh
+            cargo xtask appium wda
           else
             appium driver install xcuitest
           fi
-          appium --address 127.0.0.1 --port 4723 > /tmp/appium.log 2>&1 &
-          for i in $(seq 1 40); do
-            curl -sf http://127.0.0.1:4723/status && break
-            sleep 1
-          done
+          cargo xtask appium server
       - name: Apple Appium suite (dry until product artifact wired)
         env:
           WAWONA_APPIUM_PLATFORM: ${{ matrix.platform }}
           WAWONA_DEVICE_NAME: ${{ matrix.device }}
           WAWONA_APPIUM_SERVER: http://127.0.0.1:4723
           WAWONA_APPIUM_DRY: "1"
-        run: |
-          eval "$(scripts/appium/ci-prepare-artifacts.sh)"
-          chmod +x scripts/appium/run-appium-suite.sh
-          ./scripts/appium/run-appium-suite.sh
+        run: cargo xtask appium run
       - name: macOS Wayland catalog guests (Colima)
         if: ${{ matrix.platform == 'macos' }}
         env:
@@ -438,17 +397,11 @@ jobs:
           LIMA_HOME: ${{ runner.temp }}/wawona-lima
           COLIMA_PROFILE: wawona-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.platform }}
           COLIMA_SSH_CONFIG: ${{ runner.temp }}/wawona-colima/ssh_config
-          # CI smoke clients only. Full matrix is local
-          # scripts/appium/capture-catalog-gallery.sh (no argv).
+          # CI smoke clients only. The full matrix is local
+          # `cargo xtask appium catalog` (no clients).
           WAWONA_CATALOG_CI_CLIENTS: "weston_simple_shm foot"
         run: |
           set -euo pipefail
-          eval "$(scripts/appium/ci-prepare-artifacts.sh)"
-          chmod +x scripts/appium/launch-wayland-client.sh
-          chmod +x scripts/appium/ensure-colima.sh
-          chmod +x scripts/appium/ensure-tip-wawona-macos.sh
-          chmod +x scripts/appium/capture-catalog-gallery.sh
-          python3 scripts/appium/verify-wayland-guest-map.py
           mkdir -p "$COLIMA_HOME" "$LIMA_HOME"
           # Never exit 0 without PNGs. SKIPPED.txt was false green on tip a58384fc.
           QEMU_BIN="qemu-system-$(uname -m)"
@@ -460,30 +413,12 @@ jobs:
               exit 1
             }
           fi
-          unset WAWONA_APPIUM_DRY || true
-          # Gate product (products_ready): copy into tip path so ensure-tip
-          # clean-launches without xcodebuild. Else capture tip-builds.
-          TIP_APP="/tmp/wawona-macos-tip/DerivedData/Build/Products/Debug/Wawona.app"
-          if [[ -n "${WAWONA_APP_PATH:-}" && -d "${WAWONA_APP_PATH}" ]]; then
-            mkdir -p "$(dirname "$TIP_APP")"
-            rm -rf "$TIP_APP"
-            ditto "$WAWONA_APP_PATH" "$TIP_APP"
-            chmod -R +x "$TIP_APP/Contents/MacOS" 2>/dev/null || true
-            chmod -R +x "$TIP_APP/Contents/Resources/bin" 2>/dev/null || true
-            if [[ -x "$TIP_APP/Contents/MacOS/Wawona" ]]; then
-              echo "$(git rev-parse HEAD)" >/tmp/wawona-macos-tip/git-HEAD
-              export WAWONA_TIP_SKIP_BUILD=1
-              export WAWONA_APP_PATH="$TIP_APP"
-            else
-              unset WAWONA_TIP_SKIP_BUILD || true
-              unset WAWONA_APP_PATH || true
-            fi
-          else
-            unset WAWONA_TIP_SKIP_BUILD || true
-            unset WAWONA_APP_PATH || true
+          # The Gate product of this commit becomes the tip, so no rebuild.
+          if [[ -n "${WAWONA_APP_PATH:-}" ]]; then
+            cargo xtask tip macos --adopt "$WAWONA_APP_PATH" --no-launch
           fi
           # shellcheck disable=SC2086
-          ./scripts/appium/capture-catalog-gallery.sh ${WAWONA_CATALOG_CI_CLIENTS}
+          cargo xtask appium catalog ${WAWONA_CATALOG_CI_CLIENTS}
           shopt -s nullglob
           pngs=("${WAWONA_APPIUM_ARTIFACTS}/catalog-gallery/"*.png)
           if ((${#pngs[@]} == 0)); then

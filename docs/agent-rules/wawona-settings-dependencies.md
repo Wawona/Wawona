@@ -33,7 +33,7 @@ Each package is Okular-style (`KAboutComponent`-like):
 
 1. Edit `settings-deps.nix` (`versions`, `catalog`, and/or `inventories`).
 2. Regenerate JSON snapshots:
-   `./scripts/regen-settings-deps.sh`
+   `cargo xtask gen settings-deps`
 3. Keep roles honest: Apple mobile SSH is libssh2; macOS/Android/Linux SSH
    is OpenSSH. watchOS GPU stays off the list. tvOS lists MoltenVK and
    ANGLE when `WWN_TVOS_GPU` is linked.

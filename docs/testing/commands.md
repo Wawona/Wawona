@@ -66,7 +66,7 @@ agent-device replay Wawona/.agent-device/wawona-android-smoke.ad
 agent-device replay Wawona/.agent-device/wawona-android-machines.ad
 ```
 
-The macOS convenience wrapper is `Wawona/scripts/agent-device-smoke.sh`.
+The macOS convenience wrapper is `cargo xtask lab smoke`.
 
 ## macOS OCI containers (Apple Containerization)
 
@@ -130,7 +130,7 @@ markers), not a compile. Guest `nix shell` is gone from CLI recipes.
 
 GUI: Machines → container profile → **Desktop session** on → image
 `wawona-container-desktop:latest` → command `weston-flower`. Smoke helper:
-`scripts/agent-device-container-smoke-macos.sh`.
+`Wawona run flower` (below).
 
 ### Container desktop client matrix (CLI)
 
@@ -142,14 +142,6 @@ Wawona run sway      # sway + swaybg + Alt+Enter (ghostty/foot)
 Wawona run hyprland
 Wawona run ghostty
 Wawona machines list
-```
-
-Legacy wrapper (calls `Wawona run`):
-
-```bash
-scripts/container-desktop-clients-macos.sh flower
-scripts/container-desktop-clients-macos.sh sway
-scripts/container-desktop-matrix-macos.sh
 ```
 
 | Client | Notes | Status |
@@ -237,6 +229,6 @@ Retina output.
 ## Android / Linux VM automation
 
 ```bash
-nix run .#wawona-android        # Android build + adb install/launch smoke
+cargo xtask build android && cargo xtask lab android-runtime   # APK + emulator launch smoke
 nix run .#wawona-linux-vm     # NixOS Plasma 6 Wayland VM for Linux UI testing
 ```

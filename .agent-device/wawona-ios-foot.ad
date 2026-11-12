@@ -1,9 +1,9 @@
 # Foot terminal GUI e2e. iOS simulator.
 #
-# The live lane is scripts/agent-device-smoke.sh ios-foot (shell-driven so
+# The live lane is cargo xtask lab smoke ios-foot (shell-driven so
 # a missing Welcome Continue is not a hard fail). This .ad is the same
 # Start → screenshot sequence for manual replay after:
-#   scripts/agent-device-set-client-ios.sh foot
+#   cargo xtask lab set-client foot ios
 #
 # Coordinate taps target iPhone 17 Pro logical size (402x874). Foot
 # surfaces are accessibility-sparse; screenshots + console assertions in

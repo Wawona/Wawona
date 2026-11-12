@@ -1,8 +1,20 @@
-// Build number is stamped before compile (scheme pre-action + build phase).
-// Fallback applies only if the stamp script did not run (should not happen in Xcode).
-#include? "$(SRCROOT)/.build/wwn-build-number.xcconfig"
-#include? "$(DERIVED_FILE_DIR)/wwn-terminal-force-load.xcconfig"
-// Zig GhosttyLib: SRCROOT/.build only. DERIVED_FILE_DIR include is too late
-// for OTHER_LDFLAGS (same as wwn-build-number). ensure-tip / prebuild write it.
-#include? "$(SRCROOT)/.build/wwn-libghostty-link.xcconfig"
+// Project configuration file. Everything the dependency slices provide (link
+// flags, MARKETING_VERSION, dependency versions) is in the per-SDK file that
+// `cargo xtask deps get <sdk>` unpacks, named by Xcode's PLATFORM_NAME. An SDK
+// without one fails at link time, never at project open. Include paths are
+// relative to this file: Xcode does not expand build settings in them.
 CURRENT_PROJECT_VERSION = 1
+#include? "../../../.deps/macosx/Wawona.xcconfig"
+#include? "../../../.deps/iphoneos/Wawona.xcconfig"
+#include? "../../../.deps/iphonesimulator/Wawona.xcconfig"
+#include? "../../../.deps/appletvos/Wawona.xcconfig"
+#include? "../../../.deps/appletvsimulator/Wawona.xcconfig"
+#include? "../../../.deps/xros/Wawona.xcconfig"
+#include? "../../../.deps/xrsimulator/Wawona.xcconfig"
+#include? "../../../.deps/watchos/Wawona.xcconfig"
+#include? "../../../.deps/watchsimulator/Wawona.xcconfig"
+// DEVELOPMENT_TEAM, untracked.
+#include? "../../../.deps/signing.xcconfig"
+// Stamped before compile by scripts/xcode-stamp-build-number.sh.
+#include? "../../../.build/wwn-build-number.xcconfig"
+#include? "../../../.build/wwn-libghostty-link.xcconfig"

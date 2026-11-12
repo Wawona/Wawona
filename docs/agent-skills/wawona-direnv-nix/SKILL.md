@@ -20,7 +20,7 @@ Keep untracked product sources in local builds; git flakes omit them.
 Host Swift Keychain tests need access outside the execution sandbox. All 40
 passed with that access; the sandboxed attempt failed secret round-trips.
 
-Also exclude root `.nix-deps`, `.artifacts`, `.agent-device` and
-`Wawona-gradle-project` when staging a local product source. These generated
+Also exclude root `.deps`, `.build`, `.artifacts` and `.agent-device`
+when staging a local product source. These generated
 outputs added approximately 11 GB to a measured source snapshot. Preserve
 the original files and untracked product sources; do not disable fixup checks.

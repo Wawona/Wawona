@@ -41,35 +41,24 @@ concurrency:
 jobs:
   ios-sim-e2e:
     name: "iOS simulator: simctl runtime smoke"
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
-      - name: Select Xcode
-        id: xcode
-        run: ./.github/scripts/select-xcode.sh
-
-      - name: Install Nix
-        if: ${{ !inputs.products_ready }}
-        uses: DeterminateSystems/nix-installer-action@v22
+      - uses: ./.github/actions/setup-xtask
         with:
-          determinate: true
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-      - uses: DeterminateSystems/flakehub-cache-action@v3
-        if: ${{ !inputs.products_ready }}
+          key: ios-sim
 
-      - name: Ensure iOS Simulator SDK before nix build
+      - name: Build Wawona.app (iOS simulator)
         if: ${{ !inputs.products_ready }}
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh ios
-
-      - name: Build Wawona.app (iOS simulator slice)
-        if: ${{ !inputs.products_ready }}
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-ios" --print-build-logs --out-link result-ios
+        run: |
+          cargo xtask ci warm-sdk ios watchos
+          cargo xtask build ios --release
+          mkdir -p result-ios
+          ditto .build/xcode/ios/Build/Products/Release-iphonesimulator/Wawona.app result-ios/Wawona.app
 
       - name: Download product-ios-sim
         if: ${{ inputs.products_ready }}
@@ -91,21 +80,11 @@ jobs:
           fi
           test -d result-ios/Wawona.app
 
-      - name: Ensure simulator device exists
-        run: |
-          SIM_NAME="${WAWONA_IOS_SIM:-iPhone 17 Pro}"
-          if ! xcrun simctl list devices available | grep -q "$SIM_NAME ("; then
-            DEVTYPE=$(xcrun simctl list devicetypes | grep -F "$SIM_NAME (" | sed -E 's/.*\((com[^)]*)\).*/\1/' | head -1)
-            RUNTIME=$(xcrun simctl list runtimes | grep -E "^iOS" | tail -1 | sed -E 's/.*(com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9._-]+).*/\1/')
-            xcrun simctl create "$SIM_NAME" "$DEVTYPE" "$RUNTIME"
-          fi
-
       - name: iOS runtime smoke (simctl)
         env:
           WAWONA_IOS_APP: result-ios/Wawona.app
         run: |
-          chmod +x ./scripts/ci-ios-xcuitest-smoke.sh
-          ./scripts/ci-ios-xcuitest-smoke.sh
+          cargo xtask lab ios-runtime
 
       - name: Upload iOS runtime artifacts
         if: always()

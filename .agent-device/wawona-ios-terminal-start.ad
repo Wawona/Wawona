@@ -1,5 +1,5 @@
 # Zero-AI: Start → Wawona Terminal (not StartupLog preview).
-# Run: scripts/agent-device-smoke.sh terminal-ios
+# Run: cargo xtask lab smoke terminal-ios
 # Requires tip app with wwn.terminal.root / wwn.terminal.done.
 context platform=ios
 context session=wawona-ios-terminal-start

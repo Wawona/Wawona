@@ -32,33 +32,26 @@ permissions:
   contents: read
   id-token: write
 
-env:
-  NIXPKGS_ALLOW_UNFREE: "1"
-
 jobs:
   ios-sim:
     name: "iOS sim .app"
-    runs-on: macos-26
+    runs-on: macos-27
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
 
-      - name: Select Xcode
-        id: xcode
-        run: ./.github/scripts/select-xcode.sh
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: ios-sim
 
-      # XcodeGen emits every Apple target in one project.yml. A cache-miss
-      # Relay/backend for watch/tv/vision needs that SDK at configure even when
-      # this job only builds the iOS slice. Warm the full simulator set.
+      # The iOS app embeds the watch companion, so both SDKs are needed.
       - name: Ensure Apple simulator SDKs
-        run: ./.github/scripts/warm-ios-simulator-sdk.sh all
+        run: cargo xtask ci warm-sdk ios watchos
 
-      - uses: ./.github/actions/setup-nix-flakehub
-
-      - name: Build wawona-ios
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-ios" --print-build-logs --out-link result-ios
+      - name: Build Wawona-iOS for the simulator
+        run: cargo xtask build ios --release
 
       - name: Plain summary
         if: success()
@@ -74,36 +67,18 @@ jobs:
       - name: Stage + manifest
         run: |
           mkdir -p dist/ios-sim
-          # Dereference store symlinks so the GHA artifact is self-contained.
-          ditto result-ios/Wawona.app dist/ios-sim/Wawona.app
-          test -d dist/ios-sim/Wawona.app
-          OUT="$(readlink -f result-ios)"
-          {
-            echo "{"
-            echo "  \"attr\": \"wawona-ios\","
-            echo "  \"sha\": \"${{ github.sha }}\","
-            echo "  \"outPath\": \"$OUT\","
-            echo "  \"artifact\": \"product-ios-sim\""
-            echo "}"
-          } > dist/ios-sim/product-manifest.json
-          # Note whether path looks cache-backed (best-effort).
-          if nix path-info --json "$OUT" 2>/dev/null | grep -q cache.flakehub.com; then
-            echo "" >>"$GITHUB_STEP_SUMMARY"
-            echo "Cache: reused a matching Nix build from FlakeHub (faster)." >>"$GITHUB_STEP_SUMMARY"
-          else
-            echo "" >>"$GITHUB_STEP_SUMMARY"
-            echo "Cache: built on this runner (or cache probe unclear)." >>"$GITHUB_STEP_SUMMARY"
-          fi
-          ls -la dist/ios-sim/
+          ditto .build/xcode/ios/Build/Products/Release-iphonesimulator/Wawona.app dist/ios-sim/Wawona.app
+          printf '{"target":"ios","sha":"%s","artifact":"product-ios-sim"}\n' "${{ github.sha }}" \
+            > dist/ios-sim/product-manifest.json
 
       - name: Verify store-safe iOS graphics bundle
-        run: ./.github/scripts/verify-iland-graphics-bundle.sh --platform ios --simulator dist/ios-sim/Wawona.app
+        run: cargo xtask artifact graphics --platform ios --simulator dist/ios-sim/Wawona.app
 
       - name: Verify iOS Mode A firewall
-        run: bash ./.github/scripts/verify-ios-modeb-artifacts.sh --mode-a-simulator dist/ios-sim/Wawona.app
+        run: cargo xtask artifact ios mode-a-simulator dist/ios-sim/Wawona.app
 
       - name: Verify iOS Mode B replay contract
-        run: bash ./.github/scripts/verify-ios-modeb-ci.sh
+        run: cargo xtask artifact ios-contract
 
       - uses: actions/upload-artifact@v7
         with:

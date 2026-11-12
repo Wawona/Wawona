@@ -1,0 +1,95 @@
+name: "Deps: prebuilt slices"
+
+# Nix builds each dependency slice, `cargo xtask deps pack` makes it
+# relocatable, and `deps push` publishes it to ghcr.io/wawona/deps. A slice
+# whose Nix output did not change is skipped. The last job opens a pull
+# request that updates deps.lock, which is what `cargo xtask deps get <sdk>`
+# downloads from.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [development]
+    paths:
+      - flake.nix
+      - flake.lock
+      - dependencies/**
+      - Cargo.lock
+
+concurrency:
+  group: deps-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+  id-token: write
+
+env:
+  NIXPKGS_ALLOW_UNFREE: "1"
+
+jobs:
+  slice:
+    name: "${{ matrix.sdk }}"
+    runs-on: macos-27
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [src, macosx, iphoneos, iphonesimulator, appletvos, appletvsimulator, xros, xrsimulator, watchos, watchsimulator, android]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-nix-flakehub
+      - name: Build, pack and publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SDK: ${{ matrix.sdk }}
+        run: |
+          set -euo pipefail
+          nix build ".#deps-$SDK" --print-build-logs --out-link "result-$SDK"
+          out=$(readlink "result-$SDK")
+          nar=$(nix path-info --json --json-format 1 "$out" | jq -r '.[0].narHash')
+          if [ "$(cargo xtask deps nar "$SDK")" = "$nar" ]; then
+            echo "$SDK: unchanged ($nar)" >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          cargo xtask deps pack "$SDK" "$out" "$RUNNER_TEMP/$SDK.tar.zst"
+          cargo xtask deps push "$SDK" "$RUNNER_TEMP/$SDK.tar.zst" --nar "$nar"
+          mkdir -p lock && cp deps.lock "lock/$SDK.lock"
+          echo "$SDK: published ($(du -h "$RUNNER_TEMP/$SDK.tar.zst" | cut -f1))" >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lock-${{ matrix.sdk }}
+          path: lock/
+          if-no-files-found: ignore
+
+  lock:
+    name: "deps.lock"
+    needs: slice
+    if: always()
+    runs-on: macos-27
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lock-*
+          path: locks
+          merge-multiple: true
+      - name: Open the deps.lock pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ls locks/*.lock >/dev/null 2>&1 || { echo "No slice changed."; exit 0; }
+          cargo xtask deps merge locks/*.lock
+          git diff --quiet deps.lock && exit 0
+          branch="deps/${GITHUB_SHA::12}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -m "deps: update deps.lock for ${GITHUB_SHA::12}" deps.lock
+          git push origin "$branch"
+          gh pr create --base development --head "$branch" \
+            --title "deps: update deps.lock for ${GITHUB_SHA::12}" \
+            --body "Slices rebuilt by the Deps workflow for ${GITHUB_SHA}."

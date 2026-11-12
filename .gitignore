@@ -1,8 +1,11 @@
 # Build directories
 build/
 cmake-build-*/
-*.xcodeproj/
+*.xcodeproj/*
+!Wawona.xcodeproj/project.xcproj
+!Wawona.xcodeproj/xcshareddata/
 *.xcworkspace/
+xcuserdata/
 target/
 
 # Compiled binaries
@@ -49,7 +52,11 @@ test_xdg-shell-client-protocol.c
 
 # IDE
 .vscode/
-.idea/
+# Studio's Gradle JVM and run configuration are shared; the rest is per machine.
+.idea/*
+!.idea/gradle.xml
+!.idea/misc.xml
+!.idea/runConfigurations/
 *.swp
 *.swo
 *~
@@ -97,20 +104,13 @@ src/android/.gradle/
 build/
 .gradle-build/
 gradle-app.setting
-!android/gradle/wrapper/gradle-wrapper.jar
-!android/gradle/wrapper/gradle-wrapper.properties
+!gradle/wrapper/gradle-wrapper.jar
 
 # Gradle local configuration (contains local paths)
 local.properties
 .gradle-local.properties
 
-# Root-level Android Studio project files (legacy mistaken repo-root flatten)
-/gradlew
-/gradlew.bat
-/gradle/
-/build.gradle.kts
-/settings.gradle.kts
-/gradle.properties
+# Stray files from the retired flattened Android layout
 /AndroidManifest.xml
 /java/
 /jniLibs/
@@ -118,9 +118,6 @@ local.properties
 /res/mipmap-*/
 /res/mipmap-anydpi-v26/
 
-# generated xcode proj
-Wawona.xcodeproj/
-dependencies/generators/xcodegen/output/
 
 # Nix-generated UniFFI (rust backend $out/uniffi). Never commit.
 Sources/Generated/
@@ -154,18 +151,14 @@ google-play*.json
 # direnv cache
 .direnv/
 _GEN-*
-Wawona-gradle-project/
-dependencies/generators/gradlegen/generated/
-dependencies/generators/gradlegen/output/
 
 # Stray generated shader header: MUST NOT live next to renderer_android.c.
 # `#include "shader_spv.h"` (quoted) resolves relative to the source file's own
 # directory before falling back to -I search paths, so a copy here silently
-# shadows the freshly generated dependencies/generators/gradlegen/generated/shader_spv.h
+# shadows the generated .deps/android/cpp/shader_spv.h
 # and makes every android_quad.vert/.frag edit a no-op at link time.
 src/platform/android/rendering/shader_spv.h
 
-# Legacy generated files (remove after migration)
 # src/platform/macos/wawona-Swift.h
 
 # Generated Rust Protocol Bindings
@@ -183,11 +176,10 @@ mesa/
 scripts/setup_inspiration.sh
 Inspiration/
 
-# waypipe Rust sources (populate with: ./scripts/ensure-waypipe.sh — same pin as flake.nix)
-/waypipe/
-
-# uutils coreutils sources (populate with: ./scripts/ensure-coreutils.sh — same pin as flake.nix)
-/coreutils/
+# waypipe and uutils coreutils path crates
+# (scripts/build-backend.sh symlinks both from the Nix workspace source.)
+/waypipe
+/coreutils
 
 # SwiftPM (local)
 .build/
@@ -208,7 +200,8 @@ scripts/__pycache__/
 # Local Xcode DerivedData / caches (never commit)
 .derivedData*/
 .ccache/
-.nix-deps/
+# nix run .#deps -- <platform>
+.deps/
 fastlane/report.xml
 .agents/
 
@@ -220,10 +213,6 @@ fastlane/report.xml
 
 # Local dogfood: prebuilt .so extracted for Kotlin-only assembleDebug
 /android/app/src/main/jniLibs/
-Tests/appium/.venv/
-Tests/appium/**/__pycache__/
-Tests/appium/.pytest_cache/
-!Tests/appium/requirements.txt
 XCBuildData/
 /verification-out/
 /android/verification-out/

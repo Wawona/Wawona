@@ -42,31 +42,9 @@ jobs:
   android-apk:
     name: "Android: Wawona.apk"
     if: ${{ !inputs.products_ready }}
-    runs-on: macos-26
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.checkout_ref || github.sha }}
-
-      - uses: ./.github/actions/setup-nix-flakehub
-
-      - name: Build Wawona.apk
-        run: ./.github/scripts/nix-retry.sh nix build ".#wawona-android" --print-build-logs --out-link result-android
-
-      - name: Stage APK
-        run: |
-          mkdir -p dist
-          cp -L result-android/bin/Wawona.apk dist/Wawona.apk
-          ls -lh dist/Wawona.apk
-
-      - name: Upload product-android-apk
-        uses: actions/upload-artifact@v7
-        with:
-          name: product-android-apk
-          path: dist/Wawona.apk
-          if-no-files-found: error
-          compression-level: 0
+    uses: ./.github/workflows/product-android-apk.yml
+    with:
+      checkout_ref: ${{ inputs.checkout_ref }}
 
   android-emu-e2e:
     name: "Android emulator: adb runtime smoke"
@@ -78,6 +56,13 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
+
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: android-e2e
+
+      - name: Build cargo xtask
+        run: cargo xtask --help >/dev/null
 
       - name: Enable KVM group perms
         run: |
@@ -113,8 +98,7 @@ jobs:
           script: >-
             adb shell settings put secure immersive_mode_confirmations confirmed
             && export WAWONA_ANDROID_APK="$GITHUB_WORKSPACE/dist/Wawona.apk"
-            && chmod +x ./scripts/ci-android-espresso-smoke.sh
-            && ./scripts/ci-android-espresso-smoke.sh
+            && cargo xtask lab android-runtime
 
       - name: Upload Android runtime artifacts
         if: always()

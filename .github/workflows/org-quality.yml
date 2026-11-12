@@ -48,7 +48,6 @@ jobs:
             [[ -f "$path" ]] || continue
             case "$path" in
               *.json) jq empty "$path" ;;
-              *.py) python3 -m py_compile "$path" ;;
               *.sh)
                 if head -n 1 "$path" | grep -q 'bash'; then
                   bash -n "$path"
@@ -96,48 +95,36 @@ jobs:
       - name: Stub optional path dependencies for fmt
         shell: bash
         run: |
-          # ./coreutils and ./waypipe are populated locally by
-          # scripts/ensure-coreutils.sh / ensure-waypipe.sh (Nix).
+          # ./coreutils and ./waypipe link into .deps/src (`cargo xtask deps get src`).
           # cargo fmt --all resolves workspace metadata for all path deps even
           # when they are optional; stub Cargo.toml (with the feature names
           # Cargo.toml requests) so metadata load succeeds without a real
           # source checkout.
-          python3 - <<'PY'
-          from pathlib import Path
-          stubs = {
-              "coreutils": [
-                  "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "ln", "touch", "echo",
-                  "pwd", "head", "tail", "wc", "sort", "cut", "tr", "seq", "basename",
-                  "dirname", "stat", "du", "df", "date", "env", "printenv", "uname",
-                  "whoami", "yes", "tee", "nl", "tac", "fold", "expand", "unexpand",
-                  "truncate", "chmod",
-              ],
-              "waypipe": ["lz4", "zstd", "video"],
+          stub() {
+            local name=$1; shift
+            [[ -f $name/Cargo.toml ]] && return
+            mkdir -p "$name/src"
+            echo "// stub" > "$name/src/lib.rs"
+            {
+              printf '[package]\nname = "%s"\nversion = "0.0.1"\nedition = "2021"\n\n[features]\ndefault = []\n' "$name"
+              for f in "$@"; do echo "$f = []"; done
+            } > "$name/Cargo.toml"
           }
-          for name, feats in stubs.items():
-              root = Path(name)
-              if (root / "Cargo.toml").exists():
-                  continue
-              (root / "src").mkdir(parents=True, exist_ok=True)
-              feat_lines = "\n".join(f"{f} = []" for f in feats)
-              (root / "Cargo.toml").write_text(
-                  f"[package]\nname = \"{name}\"\nversion = \"0.0.1\"\nedition = \"2021\"\n\n"
-                  f"[features]\ndefault = []\n{feat_lines}\n"
-              )
-              (root / "src" / "lib.rs").write_text("// stub\n")
-          PY
+          stub coreutils ls cat cp mv rm mkdir rmdir ln touch echo pwd head tail wc sort cut tr seq \
+            basename dirname stat du df date env printenv uname whoami yes tee nl tac fold expand \
+            unexpand truncate chmod
+          stub waypipe lz4 zstd video
       - name: Stub dangling Terminal symlinks for fmt
         shell: bash
         run: |
-          # src/term/{screen,kitty}.rs are committed as symlinks to a sibling
-          # Terminal checkout. CI shallow clones do not have that tree;
-          # scripts/ensure-terminal.sh (Nix) materializes real files for builds.
+          # src/term/{cell,engine,ffi_surface,key_input}.rs are committed as
+          # symlinks into .deps/src/terminal, which this job does not fetch.
           # rustfmt follows the broken links and aborts, so replace them with
           # tiny stubs for the format check only.
-          for f in src/term/screen.rs src/term/kitty.rs; do
+          for f in src/term/*.rs; do
             if [[ -L "$f" && ! -e "$f" ]]; then
               rm -f "$f"
-              printf '// stub for fmt; real file from scripts/ensure-terminal.sh\n' > "$f"
+              printf '// stub for fmt; real file from .deps/src/terminal\n' > "$f"
             fi
           done
       - run: cargo fmt --all -- --check
@@ -182,7 +169,19 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install zizmor 1.30.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/zizmor"
+          mkdir -p "$dir"
+          gh release download v1.30.1 --repo zizmorcore/zizmor \
+            --pattern zizmor-x86_64-unknown-linux-gnu.tar.gz --dir "$dir"
+          echo "e65324f4430c2717591937edcec90ccbefaf14c174f8ec9415e03ca875b46e1a  $dir/zizmor-x86_64-unknown-linux-gnu.tar.gz" \
+            | sha256sum --check -
+          tar -xzf "$dir/zizmor-x86_64-unknown-linux-gnu.tar.gz" -C "$dir"
+          echo "$dir" >> "$GITHUB_PATH"
       - name: Reject high-severity GitHub Actions findings
         env:
           GH_TOKEN: ${{ github.token }}
@@ -208,7 +207,7 @@ jobs:
           if (( ${#workflows[@]} == 0 )); then
             exit 0
           fi
-          uvx "zizmor==1.30.1" --min-severity high "${workflows[@]}"
+          zizmor --min-severity high "${workflows[@]}"
 
   linux-package-wiring:
     name: Linux package wiring
@@ -217,7 +216,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Verify Linux package wiring (wawonaLinuxUiBin / #164 / autostart)
-        run: python3 ./.github/scripts/verify-linux-package-wiring.py
-      - name: Verify Linux shell-tool wiring
-        run: python3 ./.github/scripts/verify-linux-shell-tools.py
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: linux-wiring
+      - name: Verify Linux package and shell-tool wiring (wawonaLinuxUiBin, #164, autostart)
+        run: cargo xtask verify linux-package-wiring linux-shell-tools
+      - name: No Python where the build, CI or tools run
+        run: cargo xtask verify no-python

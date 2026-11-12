@@ -1,127 +1,76 @@
 # Compilation Guide
 
-Wawona uses **Nix Flakes** for all builds. For the full build pipeline (crate2nix, cross-compilation, layers), see [2026-nix-build-system.md](2026-nix-build-system.md).
+Xcode 27 opens the committed `Wawona.xcodeproj` and Android Studio the
+`android/` Gradle project. What neither can build (cross-compiled C
+libraries, the Rust toolchain's vendored crates, generated UniFFI Swift)
+arrives as prebuilt dependency slices in `.deps/`. `cargo xtask` drives the
+rest from a shell: the Rust backend, builds, tests, archives and the Mode B
+and DMG wrappers. There is no Python and no project generator.
 
-## Quick Build
+Nix builds the slices in CI (`deps.yml` publishes them to GHCR and records
+them in `deps.lock`) and builds Linux. It is not needed to build the Apple or
+Android apps. Layers and recipes: [2026-nix-build-system.md](2026-nix-build-system.md).
 
-```bash
-# macOS app (build + launch)
-nix run .#wawona
-nix run .#wawona-macos
-
-# Low-RAM / OOM. See Troubleshooting below.
-./scripts/nix-build-low-mem.sh .#wawona-macos
-
-# Store-shaped macOS vs SIP Desktop Replacement host
-nix build .#wawona-macos
-nix build .#wawona-macos-desktop-host
-
-# Apple family simulators
-nix run .#wawona-ios
-# TrollStore Mode B on vphone (not the Xcode Simulator)
-nix run .#wawona-ios-modeb
-nix build .#wawona-watchos-app-sim
-nix build .#wawona-tvos-sim
-nix build .#wawona-visionos-sim
-
-# Android / Linux
-nix run .#wawona-android
-nix run .#wawona-linux
-# On a Linux host, .#wawona and .#default are the same prebuilt UI wrapper:
-nix run .#wawona
-nix build .#wawona-appimage
-```
-
-Linux wrappers (`wawona-linux-run`, compositor-host, tray) require LF line
-endings. A CRLF git checkout inside Docker/NixOS containers breaks the
-generated shell (`syntax error near unexpected token $'in\r'`; issue #164).
-Keep `.gitattributes` (`*.nix text eol=lf`) and avoid `core.autocrlf=true`
-on the build host.
-
-`--rebuild` is not a Nix flag. Use `nix build --rebuild` only if you mean Nix's
-`--rebuild` (force rebuild of a derivation). For a clean tree, `nix build` the
-attribute again.
-
-## Build Monitoring With `nom`
-
-`nix-output-monitor` is integrated into the flake:
+## IDE loop
 
 ```bash
-# Run nom from the flake
-nix run .#nom -- build .#wawona-macos
+# Fetch .deps/<sdk> for the SDKs you build (Xcode PLATFORM_NAME, or android).
+# iphoneos also fetches watchos for the embedded Watch app.
+cargo xtask deps get macosx iphonesimulator android
 
-# If you are already in nix develop
-nom build .#wawona-macos
-nb .#wawona-macos   # alias for `nom build`
+open Wawona.xcodeproj        # schemes Wawona-macOS, Wawona-iOS, Wawona-tvOS, ...
+# or open android/ in Android Studio (Gradle JDK: its bundled JBR 21)
 ```
 
-## Build (without run)
+Xcode's prebuild phase runs `cargo xtask xcode prebuild`, which builds the
+working-tree Rust backend for the target's SDK into `.build/backend/<sdk>`
+and links it; the embed phase runs `cargo xtask xcode embed`. Gradle's
+`preBuild` does the same for Android. A Rust edit needs nothing else: press
+Run. To build a backend alone:
 
 ```bash
-nix build .#wawona-macos
-nix build .#wawona-ios-backend
-nix build .#wawona-android-backend
+cargo xtask backend iphonesimulator
 ```
 
-## Common Flags
+A slice older than `deps.lock` (after a pull that changed Nix inputs) is
+fetched again by the next `deps get`. Without network access to GHCR, or for
+a slice `deps.lock` does not list yet, `cargo xtask deps get <sdk> --nix`
+builds it locally with Nix.
 
-| Flag | Purpose |
-|------|---------|
-| `-L` | Print full build logs |
-| `--show-trace` | Stack trace on Nix evaluation errors |
-
-## Xcode Iteration
-
-`xcodebuild` (including `nix run .#wawona-macos`) may print notes that Run
-Script phases will run during **every** build because "Based on dependency
-analysis" is unchecked. Those are notes, not errors.
-
-`dependencies/generators/xcodegen.nix` sets `basedOnDependencyAnalysis = false`
-for several phases on purpose. Xcode cannot skip them from declared inputs and
-outputs. The Nix closure, store copies, and Info.plist edits are not a graph
-Xcode can track. On `Wawona-macOS` that includes Stamp Build Number, Build
-Rust Backend via Nix (`scripts/xcode-prebuild.sh`), Bundle Executables, and
-Strip iOS-only keys from Info.plist (#138).
-
-The **script still runs** every time. Cheap when the store is warm: Nix
-cache, `WAWONA_BACKEND_OUT*` copy of a realized `libwawona.a`, or
-`WAWONA_SKIP_NIX_PREBUILD=1` for UI-only iteration. By default the prebuild
-builds only the **active SDK backend** (device or simulator, not both).
+## From a shell
 
 ```bash
-# One-time warm (full iOS, both device and simulator backends)
-nix build .#wawona-ios-backend .#wawona-ios-sim-backend
-mkdir -p .nix-gcroots && nix build --out-link .nix-gcroots/xcodegen .#xcodegen
-
-# UI-only iteration. Skip Nix entirely (script still runs, then exits):
-export WAWONA_SKIP_NIX_PREBUILD=1
-
-# Release builds that want both device+sim warm in one pass:
-export WAWONA_WARM_BOTH_BACKENDS=1
-
-# Skip redundant simulator runtime download during Nix iOS app builds
-export WAWONA_SKIP_IOS_SIMULATOR_PLATFORM_DOWNLOAD=1
-
-# CI product-build (ios-sim + apple-family) / device-e2e / frontend-syntax set the
-# skip flag via `.github/scripts/warm-ios-simulator-sdk.sh` when the requested
-# simulator SDK is present (`ios`, `ipados`, `tvos`, `watchos`, `visionos`, or `all`).
-# Product `.#wawona-ios` uses `xcodegenIosSimOutputs` (ios-only + simulatorOnly).
-# Nix product builds also pass `WAWONA_BACKEND_OUT*` so xcode-prebuild copies
-# `libwawona.a` instead of nested-compiling the Rust backend during xcodebuild.
+cargo xtask build macos              # ios, ipados, ios-modeb, tvos, visionos, watchos, android
+cargo xtask build ios --device --sign  # TEAM_ID signs device builds
+cargo xtask test rust                # ios (XCTest on a simulator), android (unit tests)
+cargo xtask archive ios --export app-store-connect
+cargo xtask archive android          # release AAB
+cargo xtask package ios-mode-b       # TrollStore .tipa + rootless and rootful Sileo debs
+cargo xtask package dmg --notarize   # drag-install macOS DMG
+cargo xtask install                  # Release build into /Applications with agents and helper
+eval "$(cargo xtask tip macos)"      # tip app for agent-device and Appium
 ```
 
-After a `Cargo.lock` change, unset `WAWONA_SKIP_NIX_PREBUILD` or rebuild the relevant backend:
+`cargo xtask <verb> --help` names every flag; `cargo xtask verify --list`
+names the repository gates.
+
+## Linux and the Nix products
 
 ```bash
-unset WAWONA_SKIP_NIX_PREBUILD
-# or: nix build .#wawona-ios-sim-backend
+nix build .#wawona-linux .#wawona-appimage   # on Linux
+nix run .#terminal                   # Wawona Terminal standalone
+nix run .#nom -- build .#wawona-linux   # with build progress
 ```
 
-Use `nom` / `nb` for cold builds with build visibility. See [2026-nix-build-system.md](2026-nix-build-system.md) for the full pipeline.
+On Linux, `nix run .#wawona` runs the prebuilt UI wrapper. Its scripts need
+LF line endings: a CRLF checkout breaks them (`syntax error near unexpected
+token $'in\r'`; issue #164). Keep `.gitattributes` (`*.nix text eol=lf`) and
+avoid `core.autocrlf=true`.
 
 ## FlakeHub Cache (shared org binary cache)
 
-To pull prebuilt Layer-1/`wwn-*` store paths on a laptop (same cache CI uses):
+To pull prebuilt Layer-1/`wwn-*` store paths when building slices with
+`--nix` or building Linux (same cache CI uses):
 
 ```bash
 determinate-nixd login   # once per machine
@@ -129,81 +78,44 @@ determinate-nixd status  # Logged in: true
 ```
 
 Details, limits (forks / anonymous cold rebuild), and CI fragment:
-[`flakehub-cache.md`](flakehub-cache.md).
-
-## Project Generators
-
-```bash
-nix run .#xcodegen      # Generate Wawona.xcodeproj (iOS + macOS)
-nix run .#xcodegen-ios  # iOS only
-nix run .#gradlegen     # Generate ./Wawona-gradle-project for Android Studio
-```
+[`flakehub-cache.md`](flakehub-cache.md). A cold `--nix` build that dies
+with exit 137 on a small machine is too many parallel jobs: pass
+`--option max-jobs 2 --option cores 4` through `NIX_CONFIG`.
 
 ## Requirements
 
-- Apple Silicon Mac
-- Nix with flake support
-- Xcode (for iOS)
-- `.envrc` with `TEAM_ID` for iOS signing
+- Apple Silicon Mac on macOS 27, Xcode 27 (SDK 27; older Xcode is refused)
+- Rust from `rust-toolchain.toml` (rustup installs it on first `cargo`)
+- Android Studio with its bundled JBR 21 for Android
+- `TEAM_ID` in `.envrc.local` for device signing (`deps get` writes
+  `.deps/signing.xcconfig` from it)
+- Nix only for `--nix` slices, Linux and the release shell
 
 See [README](../README.md) for environment setup.
 
-## Troubleshooting macOS builds
-
-Weston cursor assets come from `adwaita-cursors`: unpack GNOME's Xcursor
-files from the source tarball. `nix build .#wawona-macos` does **not**
-build nixpkgs `adwaita-icon-theme`, `librsvg`, Sphinx, or mypy.
-
-A remaining OOM on a tiny laptop is usually some other cold nixpkgs compile
-running too many jobs. Cap parallelism:
-
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| Full cold compile on a laptop | Not logged into FlakeHub for `wwn-*` slices | `determinate-nixd login` |
-| Exit 137 / `Killed: 9` on a small machine | Too many parallel Nix jobs | `./scripts/nix-build-low-mem.sh .#wawona-macos` |
-
-Recommended order for new contributors:
-
-```bash
-determinate-nixd login
-determinate-nixd status   # Logged in: true
-nix build .#wawona-macos
-```
-
-On a machine that still OOMs:
-
-```bash
-./scripts/nix-build-low-mem.sh .#wawona-macos
-```
-
-CI sets `max-jobs` / `cores` in the Nix installer extra-conf, not in flake
-`nixConfig` (that setting is untrusted on laptops). Cache details:
-[`flakehub-cache.md`](flakehub-cache.md).
-
 ## Release beta (TestFlight + Play)
 
-CalVer is `VERSION` (`YY.M.D`). Fastlane lives in this repo. Contributor CI:
-[`ci.md`](./ci.md). Secrets: [`maintainers/secrets.md`](./maintainers/secrets.md)
-(not for the public site).
+CalVer is `VERSION` (`YY.M.D`). Fastlane lives in this repo and calls
+`cargo xtask archive`. Contributor CI: [`ci.md`](./ci.md). Secrets:
+[`maintainers/secrets.md`](./maintainers/secrets.md) (not for the public site).
 
 ```bash
 # Tier 0. Docs/maintainers/secrets.md (SecretSpec + pass; sops-nix unlocks GPG)
-./scripts/setup-release-secrets.sh                      # verify pass + secretspec
-./scripts/bootstrap-apple-signing.sh                    # one-time match → apple-signing repo
-./scripts/sync-github-secrets.sh                        # pass → GitHub Environment release-beta
+cargo xtask secrets check                      # verify pass + secretspec
+cargo xtask secrets bootstrap-signing          # one-time match → apple-signing repo
+cargo xtask secrets sync                       # pass → GitHub Environment release-beta
 
 nix develop .#release
 secretspec check -P local
-./scripts/release-env.sh fastlane ios beta              # match + gym + TestFlight
-./scripts/release-env.sh fastlane android beta          # Play internal (CI smoke)
+cargo xtask secrets run -- fastlane ios beta              # match + archive + TestFlight
+cargo xtask secrets run -- fastlane android beta          # Play internal (CI smoke)
 # Closed Alpha / Open: Draft apps need draft status. Reuse internal versionCode via promote:
 PLAY_PROMOTE_INTERNAL=1 PLAY_RELEASE_STATUS=draft \
-  ./scripts/release-env.sh fastlane android beta_closed   # → alpha
+  cargo xtask secrets run -- fastlane android beta_closed   # → alpha
 PLAY_PROMOTE_INTERNAL=1 PLAY_RELEASE_STATUS=draft \
-  ./scripts/release-env.sh fastlane android beta_open     # → open (needs production access)
+  cargo xtask secrets run -- fastlane android beta_open     # → open (needs production access)
 # Fresh AAB: omit PLAY_PROMOTE_INTERNAL (or set WAWONA_AAB_PATH=/path/to.aab)
 ```
 
-Signed IPAs: `TEAM_ID=… nix build .#wawona-ios-ipa --impure` (also ipados/tvos/watchos/visionos variants).
-
-Android AAB: `nix build .#wawona-android-aab` with `ANDROID_KEYSTORE_*` env vars set.
+Signed Android AABs need the `ANDROID_KEYSTORE_*` variables
+(`cargo xtask secrets run -- cargo xtask archive android`).

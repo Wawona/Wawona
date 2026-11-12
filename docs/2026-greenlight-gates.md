@@ -16,7 +16,7 @@ Job names refer to `.github/workflows/nix.yml` unless noted.
 - **L2 Build**. Platform artifact compiles/links (`build-*` jobs).
 - **L3 Functional**. Compositor accepts clients and presents frames
   (smoke jobs + agent-device replays).
-- **L4 Parity**. UI matches golden baselines (agent-device + `ui_parity_diff.py`).
+- **L4 Parity**. UI matches golden baselines (agent-device + `cargo xtask ci ui-parity`).
 
 ## Per-platform gates
 
@@ -34,7 +34,7 @@ Job names refer to `.github/workflows/nix.yml` unless noted.
 
 `repro-rebuild` builds then `--rebuild`s `wawona-android-backend` and
 `wawona-workspace-src-android` and byte-compares. Non-reproducible source churn
-fails here. Plus `verify-no-tar-wildcards.py` bans nondeterministic archive
+fails here. Plus `cargo xtask verify no-tar-wildcards` bans nondeterministic archive
 extraction in Nix recipes.
 
 ## Protocol honesty gate

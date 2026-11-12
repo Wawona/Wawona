@@ -5,79 +5,36 @@ Launching Wawona, starting a machine, and capturing UI evidence is
 `screencapture`, or `open -n …/Wawona.app` as the test path. See
 `.cursor/rules/wawona-test-control.mdc` and `wawona-agent-device.mdc`.
 
-LLDB is opt-in for crashes and freezes.
+LLDB is opt-in for crashes and freezes. Builds launch without a debugger.
 
-All flake apps launch **without** a debugger by default. Pass `--debug` to
-run under LLDB (or attach).
+## Apple platforms
 
-## Quick Reference
+Run the scheme from Xcode 27 (`Wawona-macOS`, `Wawona-iOS`, …): Xcode's
+debugger attaches from process start, and Debug ▸ Pause interrupts a hang.
+The Rust backend is built with debug info in Debug, so frames in `libwawona`
+symbolicate.
 
-```bash
-# Default. No debugger
-nix run .#wawona-macos
-nix run .#wawona-ios
-nix run .#wawona-ios-modeb
-nix run .#wawona-android
-nix run .#wawona-linux
-
-# Opt-in LLDB (launch under debugger; freeze → process interrupt)
-nix run .#wawona-macos -- --debug
-nix run .#wawona-ios -- --debug
-nix run .#wawona-android -- --debug
-
-# Attach to an already-running / frozen macOS process
-nix run .#wawona-macos -- --debug-attach
-
-# Env opt-in / force-off (macOS)
-WAWONA_LLDB=1 nix run .#wawona-macos
-WAWONA_NO_LLDB=1 nix run .#wawona-macos -- --debug   # still plain run
-```
-
----
-
-## macOS
+From a shell, build the tip and run it under LLDB, or attach to a live one:
 
 ```bash
-nix run .#wawona-macos                # plain run
-nix run .#wawona-macos -- --debug     # LLDB from process start
-nix run .#wawona-macos -- --debug-attach
+eval "$(cargo xtask tip macos --no-launch)"   # exports WAWONA_APP_PATH
+lldb -- "$WAWONA_APP_PATH/Contents/MacOS/Wawona"
+lldb -n Wawona                                # attach to a running or frozen process
 ```
 
-With `--debug`:
+At the `(lldb)` prompt, `process interrupt` then `thread backtrace all` is the
+same as Xcode's Pause. On a simulator, launch with
+`xcrun simctl launch --wait-for-debugger booted com.aspauldingcode.Wawona`
+and attach with `lldb -n Wawona`. Agents use the `lldb` MCP for the same.
 
-1. Nix build must succeed
-2. Wrapper verifies `Wawona.app` + Mach-O binary exist
-3. **LLDB spawns the app**. Backtraces on crash/halt
-4. On hang/freeze: at the `(lldb)` prompt run `process interrupt`
-   (same as Xcode Pause); stop-hooks print `thread backtrace all`
-
-`--debug-attach` attaches to a live `Wawona` PID (useful when it already froze
-outside the debugger). Then `process interrupt` if it is still running.
-
-`--no-debug` / `--release` remain accepted as no-ops for old scripts.
-
----
-
-## iOS / iPadOS / tvOS / watchOS / visionOS
-
-```bash
-nix run .#wawona-ios -- --debug
-```
-
-App launches with `--wait-for-debugger`; LLDB attaches to the simulator PID.
-
----
+Never attach to `watchdogd`, WindowServer or anything holding
+`IOWatchdogUserClient` (`wawona-mode-b-watchdog-safety`).
 
 ## Android
 
-```bash
-nix run .#wawona-android -- --debug
-```
-
-Deploys `lldb-server`, starts the app wait-for-debugger, attaches via
-gdb-remote. See the runner tip when launching without `--debug`.
-
----
+Run from Android Studio with Debug (Run ▸ Debug 'app', debugger type Dual),
+which attaches Java and native LLDB. `cargo xtask build android` makes the
+same debug APK.
 
 ## Linux
 
@@ -85,5 +42,4 @@ gdb-remote. See the runner tip when launching without `--debug`.
 nix run .#wawona-linux -- --debug
 ```
 
-When `--debug` is set, the runner wraps the built binary with LLDB the same
-way as macOS (`process interrupt` for freezes).
+The runner wraps the UI binary with LLDB (`process interrupt` for freezes).

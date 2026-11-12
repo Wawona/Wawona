@@ -12,7 +12,7 @@ Open rule `wawona-calver-today` and
 `docs/agent-rules/wawona-calver-today.md`.
 
 ```bash
-bash .github/scripts/verify-calver-today.sh
+cargo xtask verify calver
 # bump VERSION + Cargo.toml + Cargo.lock to $(date in America/Los_Angeles as YY.M.D)
 ```
 

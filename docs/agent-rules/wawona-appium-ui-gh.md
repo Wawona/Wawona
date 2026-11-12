@@ -21,7 +21,7 @@ Install / refresh from `/etc/nix-darwin/.dotfiles` (`skills/appium`,
 
 ## When this fires
 
-- Editing `Tests/appium/`, `scripts/appium/`, `.github/workflows/ui-appium.yml`
+- Editing `Tests/appium/` (matrix, selectors), `xtask/src/appium/`, `.github/workflows/ui-appium.yml`
 - Touching `wwn.*` a11y ids / `selectors.json` / `matrix.toml`
 - Any red or flaky **UI / Appium / GUI smoke** job on GitHub Actions
 - Wayland catalog guests on runners (Colima on Darwin; nested on Linux)
@@ -46,12 +46,12 @@ lane under `ui-appium.yml`):
 - Gates: `matrix.toml` (PlatformCapabilities)
 - Selectors: `wwn.*` only
 - **Tip host app (hard):** Darwin Mac2 always runs
-  `scripts/appium/ensure-tip-wawona-macos.sh` first (rebuild when HEAD
+  `cargo xtask tip macos` first (rebuild when HEAD
   drifts, clean launch tip binary, refuse `/Applications`). See
   `wawona-test-tip-app`.
 - Catalog Wayland clients: real guests via
-  `scripts/appium/launch-wayland-client.sh` (**Colima on Darwin**; nested on
-  Linux). Run `ensure-colima.sh` first on macOS. No local-bundle.
+  `cargo xtask appium launch` (**Colima on Darwin**; nested on
+  Linux). Run `cargo xtask appium colima` first on macOS. No local-bundle.
 - Colima guest SSH must use its generated SSH config (`COLIMA_SSH_CONFIG` or
   `${COLIMA_HOME:-$HOME/.colima}/ssh_config`). Never assume an internal key,
   port, or profile path.
@@ -67,9 +67,8 @@ lane under `ui-appium.yml`):
   instead of VZ. Lima falls back from HVF to TCG when HVF is not available.
   Local runs keep the normal Colima VM type.
 - When no successful same-SHA `Gate: products` artifact is supplied, the
-  macOS catalog lane builds a clean tip host app. Install
-  `setup-nix-flakehub` before catalog capture so XcodeGen and the Nix build are
-  available. Grant `id-token: write` for FlakeHub cache access.
+  macOS catalog lane builds a clean tip host app. `cargo xtask tip macos`
+  fetches the `deps.lock` slices and builds it (`setup-xtask` puts Cargo on PATH).
 - **Catalog green = Present surface PNG** in
   `.agent-device/test-artifacts/appium/catalog-gallery/<client>.png`
   (non-blank via `require_client_screenshot`). Capture

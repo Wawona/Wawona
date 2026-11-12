@@ -3,7 +3,7 @@
 # without fork/exec (whoami, ls, fastfetch, ssh, apt).
 #
 # Default Machine must be weston-terminal (not nested weston). Seed with
-# scripts/agent-device-set-client-ios.sh weston-terminal, then write the
+# cargo xtask lab set-client weston-terminal, ios then write the
 # profiles key as JSON NSData if the card still says "Runs: Weston".
 #
 # Coordinate taps are pinned to the iPhone 17 Pro logical size (402x874);

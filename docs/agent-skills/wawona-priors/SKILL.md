@@ -18,7 +18,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-caveman` | Forced caveman-full voice (+ upstream `caveman` skill) |
 | `wawona-carplay-lab` | Playport physical-iPhone CarPlay lab; private runtime identity and pairing. |
 | `wawona-vphone-lab-recover` | Dead / stale vphone lab. Sock refused. Stuck SSH wait. |
-| `wawona-ios-min-os` | iOS 13-27+ min OS vs latest SDK, including bundled archives. ObjC needs its own deployment flag. One ANGLE, one MoltenVK. Never downgrade SDK. |
+| `wawona-ios-min-os` | iOS 15.0 min OS on the iOS 27 SDK; bundled archives at 13.0 or higher. ObjC needs its own deployment flag. One ANGLE, one MoltenVK. Never downgrade SDK. |
 | `wawona-ios-sim-runtime` | iOS Simulator dogfood: backend ladder, ffmpeg nativeDeps, Watch vs phone, half-sheet, AUTO_START, lab-synth guest name. |
 | `wawona-staticcpu-shm-tip` | Mode A StaticCpu SHM tip: DIFF-before-buffer, release, synthesize attach, exclusive UDID, 800x600 gap. |
 | `wawona-flake-consumer-rename` | After renaming a flake input/repo (e.g. iLand), bump every consumer tip + follows before claiming eval green. |
@@ -40,7 +40,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-android-compose` | Android Kotlin/Compose. Always load `compose-agent` + `modern-jetpack-compose` first. |
 | `wawona-appium` | Mode A Appium UI on GH runners. Tip host app + clean launch; Darwin catalog = Colima only; Present surface PNG; no local-bundle. |
 | `wawona-store-archive-preflight` | Apple beta release archive/export all targets and IPA checks before the first ASC upload; simulator-only gates miss embedded Watch device compile failures. |
-| `wawona-swiftui-backports` | iOS 13 `WawonaBackport` shims. Wins over upstream SwiftUI skill modernization. |
+| `wawona-swiftui-backports` | iOS 15 `WawonaBackport` shims. Wins over upstream SwiftUI skill modernization. |
 | `wawona-icon-composer` | Layered icon drafts, native rendering, shared IDE tooling. |
 
 ## Rules (hard gates)
@@ -75,7 +75,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-relay-ios-hypervisor` | Mode B iOS/iPadOS Hypervisor.framework window (not HVF-via-qemu) |
 | `wawona-linux-vms-relay-runtime` | NixOS VMs; Mode A/B engines; no QEMU/UTM |
 | `wawona-platform-targets` | Four-state gates. Wawona Terminal = Zig libghostty + native chrome. Toolbar keys are `Wawona/ToolbarKeys`. |
-| `wawona-ios-min-os` | iOS 13.0 min OS for the app and every bundled archive; latest iPhoneOS SDK only; one ANGLE + one MoltenVK |
+| `wawona-ios-min-os` | iOS 15.0 min OS for the app on every channel; iOS 27 SDK; one ANGLE + one MoltenVK |
 | `wawona-ios-app-entry` | Mobile `@main` / no client C `_main` / XDG_RUNTIME_DIR before compositor |
 | `wawona-ios-link-contract` | Membership + called C symbols before Apple app compile |
 | `wawona-apple-swift-skills` | Must install/use SwiftUI + Swift concurrency/testing skills for Apple UI |
@@ -106,7 +106,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-machine-types` | Three Machines kinds. SSH/wasm/waypipe are Native Shell sessions. |
 | `wawona-machine-card-actions` | Card action chips always inside glass; Flow measure + card hug height |
 | `wawona-ios-native-shell` | Apple-mobile Wawona Terminal Start. No splash stub. Fake `weston_terminal_main` is not a shell. |
-| `wawona-apple-mobile-mode-a-backends` | Mode A SSH/zsh/uutils/`system()`: wwn-* owners, no Swift backends, patch budget, iOS 13 |
+| `wawona-apple-mobile-mode-a-backends` | Mode A SSH/zsh/uutils/`system()`: wwn-* owners, no Swift backends, patch budget, iOS 15 |
 
 ## Hard-won (do not re-learn)
 
@@ -161,7 +161,7 @@ skill, add one row. Capture flow: `wawona-learn`.
   on the compositor exec only.
 - macOS Aqua weston needs bundled `Resources/bin/weston` plus
   `libweston-13` / `lib/weston` / `share/weston`. Skinny `/Applications`
-  and `WAWONA_SKIP_NIX_PREBUILD` Debug drop them. Restage from store
+  drop them. Restage from store
   `wawona-macos`. In-process `--backend=wayland` is the missing-bin
   fallback. niri Aqua is nested only. Knowledge:
   `macos-aqua-weston-bins.md`.
@@ -169,7 +169,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 - Wayland client taps need Multi-Touch. Touchpad "success" is often a no-op.
 - Tipa: bump `CFBundleVersion`. Never install under `/var/jb/Applications` (179).
 - Apple-mobile LC_MAIN: `Darwin/Sources/Main.swift` on iOS/iPadOS/tvOS/visionOS
-  xcodegen targets. Mobile entry is `UIApplicationMain` (iOS 13 floor). Never
+  app targets. Mobile entry is `UIApplicationMain` (iOS 15 floor). Never
   leave process entry to `libgbm_es2_demo.a` C `_main`. Archive rename is
   `-Dmain=gbm_es2_demo_cli_main` only; product ABI stays
   `extern C gbm_es2_demo_main`. Do not `-Dmain=gbm_es2_demo_main`
@@ -222,10 +222,9 @@ skill, add one row. Capture flow: `wawona-learn`.
   Knowledge: `nixpkgs-swift-packaging.md`.
 - Port = substitute platform, not client. Waypipe Linux build is the reference.
 - Graphics keys live in L1 `iLand`. Never L0 toolchain. Never invert DAG.
-- iOS min OS is **13.0** against the **latest** iPhoneOS SDK only (26 now, 27
-  next). Never downgrade the SDK. One ANGLE, one MoltenVK, Wawona patches.
-  App Store / TrollStore / Sileo share that min. ASC upload range is a
-  separate investigation. Rule `wawona-ios-min-os`.
+- iOS min OS is **15.0** on every channel against the iPhoneOS 27 SDK
+  (Xcode 27 refuses lower). Never downgrade the SDK. One ANGLE, one
+  MoltenVK, Wawona patches. Rule `wawona-ios-min-os`.
 - iOS IOMFB ABI lives in L3′ `wwn-iomfb-rs`. L4 Mode B links `ios.nix` /
   `libwwn_iomfb.a`. Do not grow frozen `wwn-iland-iomfb`. L1 must not import
   the crate. GhidraVibe: `POST /load_program` body `{"file": guest Mach-O}`,

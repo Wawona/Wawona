@@ -74,7 +74,7 @@ jobs:
         github.event_name == 'workflow_run'
         || (github.event_name == 'workflow_dispatch' && !contains(github.event.inputs.lane, 'android'))
       )
-    runs-on: macos-26
+    runs-on: macos-27
     environment: release-beta
     timeout-minutes: 180
     steps:
@@ -90,19 +90,16 @@ jobs:
             echo "WAWONA_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
           fi
 
-      - name: Select Active Xcode
-        run: ./.github/scripts/select-xcode.sh
-
-      - uses: ./.github/actions/setup-nix-flakehub
+      - uses: ./.github/actions/setup-xtask
         with:
-          extra-conf: |
-            allow-import-from-derivation = true
-            trusted-users = runner root
-            max-jobs = auto
-            cores = 0
+          key: release-ios
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
 
       - name: Test App Store Connect upload verdict gate
-        run: nix develop .#release --command ruby fastlane/spec/asc_build_upload_gate_spec.rb
+        run: bundle exec ruby fastlane/spec/asc_build_upload_gate_spec.rb
 
       - name: Run Fastlane iOS beta
         env:
@@ -116,16 +113,13 @@ jobs:
           TEAM_ID: ${{ secrets.TEAM_ID }}
           WAWONA_BUILD_NUMBER: ${{ github.run_number }}
           WAWONA_DEBUG_SCHEME: ${{ github.event.inputs.debug_scheme }}
-          SECRETSPEC_PROFILE: ci-apple
-          SECRETSPEC_PROVIDER: env
           CI: "true"
           LANG: en_US.UTF-8
           LC_ALL: en_US.UTF-8
         working-directory: .
         run: |
           LANE="${{ github.event.inputs.lane || 'ios beta' }}"
-          nix develop .#release --command bash -c \
-            './scripts/release-env.sh fastlane '"$LANE"
+          bundle exec fastlane $LANE
 
       - name: Upload debug_export ipa artifact
         if: contains(github.event.inputs.lane, 'debug_export')
@@ -148,7 +142,7 @@ jobs:
             && (github.event.inputs.lane == 'beta'
                 || contains(github.event.inputs.lane, 'android')))
       )
-    runs-on: macos-26
+    runs-on: macos-27
     environment: release-beta
     timeout-minutes: 90
     steps:
@@ -174,21 +168,14 @@ jobs:
           echo "WAWONA_BUILD_NUMBER=$build_number" >> "$GITHUB_ENV"
           echo "Play versionCode: $build_number" >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: ./.github/actions/setup-nix-flakehub
+      - uses: ./.github/actions/setup-xtask
         with:
-          extra-conf: |
-            sandbox = relaxed
-            allow-import-from-derivation = true
-            trusted-users = runner root
-            max-jobs = auto
-            cores = 0
+          key: release-android
+          android: true
 
-      - name: Prepare Android signing keystore
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/wawona-upload.jks"
-          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/wawona-upload.jks" >> "$GITHUB_ENV"
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
 
       - name: Run Fastlane Android beta
         env:
@@ -197,13 +184,10 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
-          SECRETSPEC_PROFILE: ci-android
-          SECRETSPEC_PROVIDER: env
           CI: "true"
         working-directory: .
         run: |
           LANE="${{ github.event.inputs.lane || 'android beta' }}"
-          nix develop .#release --command bash -lc \
-            './scripts/release-env.sh fastlane '"$LANE"
+          bundle exec fastlane $LANE
 
   # Beta Linux AppImages: Ship: beta AppImages (workflow_run on Gate: products).

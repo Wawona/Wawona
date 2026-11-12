@@ -1,12 +1,35 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
-    // Version comes from settings.gradle.kts pluginManagement. Nix offline
-    // assemble strips this line (detekt is not in the MITM lockfile).
-    id("io.gitlab.arturbosch.detekt")
+    // detekt comes from android/detekt.init.gradle (`cargo xtask prove kotlin`).
     // SpotBugs is not applied: AGP 9 dropped BaseExtension and spotbugs 6.1.7
-    // fails at configuration. verify-kotlin.sh records that blocker in NDJSON.
+    // fails at configuration. `cargo xtask prove kotlin` records that blocker in NDJSON.
 }
+
+// `cargo xtask deps get android` unpacks .deps/android: CMake flags, jniLibs, assets.
+// The preBuild task below builds libwawona_core.so into .build/backend/android.
+val deps = rootProject.file(".deps/android")
+val backend = rootProject.file(".build/backend/android")
+// Relocatable slices use @SLICE@ in wawona.properties; expand to the unpacked dir.
+val depsProps = Properties().apply {
+    val f = deps.resolve("wawona.properties")
+    if (f.isFile) {
+        f.inputStream().use { load(it) }
+        val slice = deps.absolutePath
+        keys.toList().forEach { k ->
+            val key = k as String
+            setProperty(key, getProperty(key).replace("@SLICE@", slice))
+        }
+    }
+}
+
+val rustBackend = tasks.register<Exec>("rustBackend") {
+    workingDir = rootProject.projectDir
+    commandLine("cargo", "xtask", "backend", "android")
+}
+tasks.named("preBuild") { dependsOn(rustBackend) }
 
 android {
     namespace = "com.aspauldingcode.wawona"
@@ -22,11 +45,7 @@ android {
         // Studio / local: prefer env, else repo VERSION (CalVer). Nix always exports WAWONA_VERSION.
         versionCode = (System.getenv("WAWONA_BUILD_NUMBER") ?: "1").toInt()
         versionName = System.getenv("WAWONA_VERSION")?.trim()?.takeIf { it.isNotEmpty() }
-            ?: sequenceOf(
-                rootProject.file("../VERSION"),
-                rootProject.file("../../VERSION"),
-                rootProject.file("VERSION"),
-            ).firstOrNull { it.isFile }?.readText()?.trim()?.takeIf { it.isNotEmpty() }
+            ?: rootProject.file("VERSION").readText().trim().takeIf { it.isNotEmpty() }
             ?: "0.0.0"
         // Layer-3 Compose UI tests (ci-l3-android-espresso).
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -41,29 +60,16 @@ android {
             cmake {
                 cppFlags("-fPIC")
 
-                fun prop(name: String): String =
-                    (project.findProperty(name) as? String)?.trim().orEmpty()
-
-                // When building under Nix, DEP_INCLUDES is populated in the environment.
-                // We pass it to CMake as a property so it can include external Nix paths.
-                val nixIncludes =
-                    (System.getenv("DEP_INCLUDES") ?: prop("wawona.nixDepIncludes")).trim()
-                if (nixIncludes.isNotEmpty()) {
-                    arguments("-DNIX_DEP_INCLUDES=${nixIncludes}")
-                }
-
-                // Linker paths for Nix external dependencies
-                val nixLibs =
-                    (System.getenv("DEP_LIBS") ?: prop("wawona.nixDepLibs")).trim()
-                if (nixLibs.isNotEmpty()) {
-                    arguments("-DNIX_DEP_LIBS=${nixLibs}")
-                }
-
-                // Rust Backend Object
-                val rustLib =
-                    (System.getenv("RUST_BACKEND_LIB") ?: prop("wawona.rustBackendLib")).trim()
-                if (rustLib.isNotEmpty()) {
-                    arguments("-DRUST_BACKEND_LIB=${rustLib}")
+                arguments(
+                    "-DWAWONA_ROOT=${rootProject.projectDir}",
+                    "-DWAWONA_DEPS=$deps",
+                    "-DRUST_BACKEND_LIB=${backend.resolve("lib/libwawona_core.so")}",
+                )
+                for ((key, define) in listOf(
+                    "wawona.nixDepIncludes" to "NIX_DEP_INCLUDES",
+                    "wawona.nixDepLibs" to "NIX_DEP_LIBS",
+                )) {
+                    depsProps.getProperty(key)?.let { arguments("-D$define=$it") }
                 }
             }
         }
@@ -126,32 +132,17 @@ android {
         jniLibs {
             // AGP upgrade path: replace manifest extractNativeLibs with DSL.
             useLegacyPackaging = true
-            // Local Studio/cmake builds libwawona.so while androidDeps also
-            // stages one into jniLibs. Prefer the cmake output.
-            pickFirsts += "**/libwawona.so"
         }
     }
 
     sourceSets {
         getByName("main") {
             kotlin.directories += "src/main/kotlin"
-            // Local monorepo: <workspace>/Terminal. CI: checkout into repo as Terminal/.
-            val terminalUi = listOf(
-                file("../../../Terminal/android"),
-                file("../../Terminal/android"),
-            ).firstOrNull { it.isDirectory }
-            if (terminalUi != null) {
-                kotlin.directories += terminalUi.path
-            }
-            // ToolbarKeys Compose (github.com/Wawona/ToolbarKeys). Same overlay
-            // pattern as Terminal; Nix copies into app/src when building APK.
-            val toolbarKeysUi = listOf(
-                file("../../../ToolbarKeys/android"),
-                file("../../ToolbarKeys/android"),
-            ).firstOrNull { it.isDirectory }
-            if (toolbarKeysUi != null) {
-                kotlin.directories += toolbarKeysUi.path
-            }
+            kotlin.directories += rootProject.file(".deps/terminal/android").path
+            kotlin.directories += rootProject.file(".deps/toolbar-keys/android").path
+            jniLibs.directories += deps.resolve("jniLibs").path
+            jniLibs.directories += backend.resolve("jniLibs").path
+            assets.directories += deps.resolve("assets").path
         }
     }
 }
@@ -251,16 +242,7 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
-detekt {
-    buildUponDefaultConfig = true
-    // Compose functions are PascalCase. The naming rule still applies to other functions.
-    config.setFrom(files("detekt.yml"))
-    // Existing Android UI debt. Fail only on new findings after this baseline.
-    baseline = file("detekt-baseline.xml")
-    parallel = true
-}
-
-// Verification report (scripts/verify-kotlin.sh) runs unit tests / detekt / lint
+// Verification report (`cargo xtask prove kotlin`) runs unit tests / detekt / lint
 // without the Nix Android native dependency graph. Skip cmake/NDK there.
 if (System.getenv("WAWONA_VERIFICATION_KOTLIN") == "1") {
     tasks.matching {

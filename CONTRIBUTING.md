@@ -18,7 +18,7 @@ Agent / Cursor mirror: `docs/agent-rules/wawona-wayland-protocol-compat.md`
 
 Before opening a protocol PR, run through that checklist and keep
 `docs/protocol-status.md` in sync
-(`scripts/gen-protocol-status.sh`, which also syncs
+(`cargo xtask gen protocol-status`, which also syncs
 https://wawona.io/docs/contributor/protocols/ when `../wawona.io` is
 checked out). Attach protocol issues to titles in
 [`docs/protocol-milestones.md`](./docs/protocol-milestones.md).

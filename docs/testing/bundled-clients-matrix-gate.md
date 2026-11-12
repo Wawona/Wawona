@@ -10,11 +10,11 @@ does not treat them as bundled clients.
 
 ```bash
 # All platforms × all clients (uses /tmp/wawona-*-gate.app when present)
-./scripts/bundled-clients-matrix-gate.sh
+cargo xtask lab matrix
 
 # Subset
-./scripts/bundled-clients-matrix-gate.sh ios
-WAWONA_MATRIX_CLIENTS="wawona-shell" ./scripts/bundled-clients-matrix-gate.sh ios
+cargo xtask lab matrix ios
+WAWONA_MATRIX_CLIENTS="wawona-shell" cargo xtask lab matrix ios
 ```
 
 Artifacts: `.agent-device/test-artifacts/bundled-clients-matrix/<stamp>/`
@@ -22,7 +22,7 @@ Artifacts: `.agent-device/test-artifacts/bundled-clients-matrix/<stamp>/`
 - `SUMMARY.md`. PASS/FAIL/SKIP table
 - `summary.json`. Machine-readable
 - `matrix.log`. Full run log
-- `<platform>/<client>/`. Prefs, install, lldb, console, screenshot
+- `<platform>/<client>/`. Prefs, install, launch, console, screenshot
 
 Failure line:
 
@@ -32,14 +32,14 @@ MATRIX_FAIL count=3 cells=ios/niri,android/vkcube,visionos/foot
 
 ## How each cell works (Apple)
 
-1. Write Machine profile prefs (`bundledAppID=<client>`) via `agent-device-set-client-ios.sh`
-2. `simctl install` + `launch`
-3. LLDB `connectProfile:` (same inject as the leak campaign)
-4. Hold N seconds; require process still alive
-5. Scan console/lldb for fail markers (`niri_main: panicked`, `Unknown bundled client id`, …)
-6. LLDB `disconnectProfile:`
+1. Write Machine profile prefs (`bundledAppID=<client>`): `cargo xtask lab set-client <client> ios`
+2. `simctl install`, then `simctl launch` with `WAWONA_AUTO_CLIENT=<client>`; the scene delegate starts the client
+   (`WAWONA_MATRIX_USE_AGENT_DEVICE=1` presses **Start** through agent-device instead)
+3. Hold N seconds; require the process still alive
+4. Scan the console for fail markers (`niri_main: panicked`, `Unknown bundled client id`, ...)
 
-Android uses prefs + agent-device **Start**. macOS uses host `defaults` + LLDB.
+Android writes the prefs, then presses **Start** over UI Automator. macOS writes host `defaults` and
+launches its own child with `WAWONA_AUTO_CLIENT`; it refuses to run beside another Wawona.
 
 ## Platform skips
 
@@ -51,5 +51,5 @@ Missing app or device → `SKIP` (CI: set `WAWONA_MATRIX_STRICT=1` to require PA
 ## Related
 
 - Leak idle plateau: [`leak-idle-gate.md`](./leak-idle-gate.md)
-- Prefs helpers: `scripts/agent-device-set-client-{ios,android}.sh`
-- Catalog: `scripts/lib/bundled-clients-catalog.sh` (must track `kBundledClients`)
+- Prefs: `cargo xtask lab set-client <client> ios|android`
+- Catalog: `xtask/src/lab/clients.rs` (must track `kBundledClients`)

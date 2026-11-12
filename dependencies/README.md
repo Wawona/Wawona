@@ -13,8 +13,8 @@ dependencies/
 │   ├── rust-backend-c2n.nix      # Per-platform libwawona.a (crate2nix)
 │   └── devshells.nix             # `nix develop` shell
 ├── clients/                      # Wawona shell/tools (integration-only)
-├── generators/                   # xcodegen.nix, gradlegen.nix, android-icon helpers
-├── gradle-deps.nix               # Gradle dependency mirror for Android Studio
+├── generators/                   # applications catalog, Android icons
+├── gradle-deps.nix               # Offline Gradle mirror for the Nix APK build
 └── smoke-test-lists.nix          # CI smoke targets
 ```
 
@@ -51,21 +51,21 @@ Then run `nix flake lock --update-input wwn-toolchain` (and peers) after upstrea
 
 ## Xcode Prebuild
 
-Xcode targets run `scripts/xcode-prebuild.sh` before linking. It realizes only the backend for the active target **and SDK** (device vs simulator). After warming the store:
-
-```bash
-export WAWONA_SKIP_NIX_PREBUILD=1   # Swift/UI iteration
-```
+Xcode targets run `scripts/xcode-prebuild.sh` before linking. It compiles
+nothing: it copies `libwawona.a` from `.build/backend/<sdk>` (what
+`scripts/build-backend.sh <sdk>` last built from the working tree) or else
+`.deps/<sdk>/backend`, and privatizes zsh and fastfetch on Apple mobile.
 
 See [docs/compilation.md](../docs/compilation.md) for the full contributor workflow.
 
-## Project Generators
+## Project dependencies
+
+`Wawona.xcodeproj` and the Gradle project (`settings.gradle.kts`) are committed.
+What they read that is not in git, `nix run .#deps -- <sdk>...` links into `.deps/`:
 
 ```bash
-nix run .#xcodegen          # All Apple targets (CI)
-nix run .#xcodegen-ios      # iOS + iPadOS only (faster)
-nix run .#xcodegen-macos    # macOS only
-nix run .#gradlegen         # Android Studio project
+nix run .#deps -- macosx iphonesimulator   # Apple slices (Xcode PLATFORM_NAME)
+nix run .#deps -- android                  # .deps/android for Android Studio / ./gradlew
 ```
 
 ## Key Concepts

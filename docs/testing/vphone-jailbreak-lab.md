@@ -87,7 +87,7 @@ that tree to the same `@eN` refs the Simulator XCTest path uses.
 2. User-app icon-grid fallback (SpringBoard-ish 4 columns)
 3. Full-screen placeholder if both fail: `press x y`
 
-Replay: `scripts/agent-device-smoke.sh vphone` or
+Replay: `cargo xtask lab smoke vphone` or
 `agent-device replay Wawona/.agent-device/wawona-ios-vphone-smoke.ad`
 
 Mode B Desktop evidence belongs under
@@ -97,42 +97,29 @@ not IOMFB or JIT proof. `vphone wawona-jb` is the physical-class TrollStore
 proof device. Do not wait for STARDUST or a retail iPhone. TXM limits on
 this guest (MAP_JIT write+exec `EPERM`, Metal nil) are proven results.
 
-## Mode B tipa: slim vs official
+## Mode B tipa and debs
 
-| Attr | Guests | Verifier | When |
-|---|---|---|---|
-| `.#wawona-ios-modeb-tipa-slim` | None | `--iteration` | Greeter / IOMFB / compositor iteration on 32 GB vphone |
-| `.#wawona-ios-modeb-tipa` | None until Relay frames | `--mode-b` | Product tipa. Same slim guest rule. Relay NixOS disks later |
+`cargo xtask package ios-mode-b` builds the `Wawona-iOS-ModeB` scheme once
+(device, Release), ldid-signs it, and writes the TrollStore `.tipa` and the
+rootless and rootful Sileo debs to `dist/`. No guest disks are bundled until
+Relay boots NixOS.
 
-Bump `WAWONA_BUILD_NUMBER` every reinstall (`nix build --impure`). Keep
-`CFBundleDisplayName=Wawona`. Install recipe:
+Bump `WAWONA_BUILD_NUMBER` every reinstall (the prebuild stamps it as
+`CFBundleVersion`). Keep `CFBundleDisplayName=Wawona`. Install recipe:
 
 ```bash
-# aarch64-darwin only. Starts the existing vphone VM if SSH is down, builds
-# the slim artifact, installs, launches. Not the Xcode Simulator
-# (`nix run .#wawona-ios`). Create the VM once with `nix run .#vphone-jb-lab`.
+# aarch64-darwin only. Not the Xcode Simulator. Create the VM once with
+# `nix run .#vphone-jb-lab`.
+WAWONA_BUILD_NUMBER=10 cargo xtask package ios-mode-b
 
-# TrollStore .tipa (JIT + IOMFB Desktop). Short alias: .#wawona-ios-ts
-nix run .#wawona-ios-trollstore
-nix run .#wawona-ios-ts -- --no-install
-# Legacy alias of trollstore:
-nix run .#wawona-ios-modeb
+# TrollStore .tipa (JIT + IOMFB Desktop).
+agent-device packages tipa install dist/Wawona-*-iOS-arm64.tipa --device "vphone wawona-jb"
+agent-device packages tipa open-jit com.aspauldingcode.Wawona.ModeB --device "vphone wawona-jb"
 
-# Sileo / Procursus rootless .deb (full jailbreak Mode B). Short: .#wawona-ios-jb
-nix run .#wawona-ios-jailbreak
-nix run .#wawona-ios-jb -- --no-install
+# Sileo rootless .deb (same binary, /var/jb/Applications).
+agent-device packages apt install dist/Wawona-*-iOS-arm64-rootless.deb --device "vphone wawona-jb"
 
-# Slim tipa (build 10+). Safe on a 32 GB guest with a few GB free.
-WAWONA_BUILD_NUMBER=10 nix build --impure .#wawona-ios-modeb-tipa-slim
-scripts/install-ios-modeb-tipa.sh --slim result-modeb-slim/Wawona-*-iOS-arm64.tipa
-
-# Slim rootless deb (same binary, /var/jb/Applications).
-nix build --impure .#wawona-ios-modeb-deb-rootless-slim -o result-modeb-deb-slim
-scripts/install-ios-modeb-deb.sh --rootless result-modeb-deb-slim/Wawona-*-iOS-arm64-rootless.deb
-
-# Official tipa. Same slim guest rule until Relay boots NixOS. Uninstall first
-# if a leftover 5.7 G zip is still on the guest. Helper 176 is disk-full.
-scripts/install-ios-modeb-tipa.sh --official result/Wawona-*-iOS-arm64.tipa
+# Uninstall first if a leftover 5.7 G zip is still on the guest. Helper 176 is disk-full.
 ```
 
 `vm` / `container` tokens fail closed on Relay (`No QEMU`). Do not prove

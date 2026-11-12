@@ -50,7 +50,7 @@ Stop → wwn_pty_ios_stop_shell_session
 | Present trigger | `WWNMachinesViewModel.presentGuestConsoleIfNeeded` (`source=shell`) |
 
 Prefer extending those files. Brand-new Swift under `Sources/` must still land
-on the xcodegen `Sources/WawonaApple` / `Sources/WawonaUI` tree and compile in
+in the `Sources/WawonaApple` / `Sources/WawonaUI` synchronized folders and compile in
 the app target (`wawona-ios-link-contract`).
 
 ## Gotchas (2026-10-11)
@@ -61,7 +61,6 @@ the app target (`wawona-ios-link-contract`).
 | User said "weston terminal" | Check for Native Shell / Wawona Terminal title first |
 | `weston_terminal_main` in binary | Fake SHM chrome (`mobile-weston-terminal.c`). Not a shell |
 | `write` to PTY master for keys | `wwn_ios_terminal_inject` |
-| `Font.TextStyle.caption2` | `.caption` (iOS 13 floor) |
 | Install OK, launch Locked | Unlock device; install already done |
 
 ## Stop and second session (2026-10-17)
@@ -106,7 +105,7 @@ Prove on tip: `nm` shows `wawona_zsh_main`, `wwn_pty_session_start`,
 |---|---|
 | JVM argv banners | `cd android && ./gradlew :Wawona:testDebugUnitTest --tests '*MachineStartCommandTest'` |
 | Compose Start UI | `./gradlew :Wawona:connectedDebugAndroidTest --tests '*TerminalStartUiTest'` |
-| iOS/Android replay | `scripts/agent-device-smoke.sh terminal` (or `terminal-ios` / `terminal-android`) |
+| iOS/Android replay | `cargo xtask lab smoke terminal` (or `terminal-ios` / `terminal-android`) |
 
 Assert `id="wwn.terminal.root"` + `id="wwn.terminal.done"` after Start.
 Do not dogfood multi-sim with an AI agent for this gate.

@@ -7,12 +7,11 @@ app must use a **tip build** and a **clean launch**. Never a stale install.
 
 1. **Build tip** into a test tree (macOS default:
    `/tmp/wawona-macos-tip/DerivedData/Build/Products/Debug/Wawona.app` via
-   `scripts/appium/ensure-tip-wawona-macos.sh`). Rebuild when `git HEAD` no
+   `cargo xtask tip macos`). Rebuild when `git HEAD` no
    longer matches the tip stamp, or when `WAWONA_TEST_REBUILD=1`.
-   **macOS dogfood (hard):** always `nix run .#xcodegen-macos` (or the
-   ensure-tip path that runs it) then `xcodebuild -scheme Wawona-macOS`.
-   Never claim macOS Terminal/Present green from `run-standalone-macos.sh`
-   alone. Standalone is atlas smoke only.
+   **macOS dogfood (hard):** the tip (or Xcode Run of `Wawona-macOS`).
+   Never claim macOS Terminal/Present green from `nix run .#terminal` alone:
+   standalone is grid smoke only.
 2. **Refuse stale paths**: `/Applications/Wawona.app`,
    `~/Applications/Wawona.app`, old `build/DerivedData-macos*`, random
    Xcode DerivedData outside the tip root. Never `sudo rm` or symlink tip
@@ -23,9 +22,9 @@ app must use a **tip build** and a **clean launch**. Never a stale install.
 4. Set `WAWONA_APP_PATH` to that tip `.app` before Appium Mac2 or
    `agent-device open`.
 
-Helper: `scripts/lib/require-tip-wawona-app.sh` (`wawona_refuse_stale_app_path`).
-Appium catalog: `capture-catalog-gallery.sh` always calls
-`ensure-tip-wawona-macos.sh` first.
+Check: `cargo xtask tip <platform> --check` (refuses installed copies and stale stamps).
+Appium catalog: `cargo xtask appium catalog` always calls
+`cargo xtask tip macos` first.
 
 ## Hard rejects
 
@@ -39,10 +38,10 @@ Appium catalog: `capture-catalog-gallery.sh` always calls
 
 | Host | Tip build |
 |------|-----------|
-| macOS | `ensure-tip-wawona-macos.sh` / `Wawona-macOS` Debug under `/tmp/wawona-macos-tip` |
+| macOS | `cargo xtask tip macos` / `Wawona-macOS` Debug under `/tmp/wawona-macos-tip` |
 | iOS Simulator | Tip `nix build` / Xcode sim product for current HEAD (same refuse-stale idea) |
 | Android | Tip APK/AAB from current HEAD Gradle/nix, not a random old install |
 
 Cursor: `wawona-test-tip-app`. Skill: `wawona-appium`. Related:
-`wawona-nix-fresh-build` (Nix attrs / never Vision Pro for Terminal),
+`wawona-fresh-build` (build commands; never Vision Pro for Terminal),
 `wawona-appium-ui-gh`, `wawona-test-control`, `wawona-calver-today`.

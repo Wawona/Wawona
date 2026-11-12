@@ -30,7 +30,7 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 - Cross-repo sharing (Wawona ↔ `wwn-*`): the repo that **owns** the derivation
   builds it in CI (e.g. `wwn-toolchain` substrate, `wwn-weston` archives). Wawona
   substitutes when store hashes match (single nixpkgs lineage via `follows` +
-  `verify-nixpkgs-lineage.py`).
+  `cargo xtask verify nixpkgs-lineage`).
 - Local: `determinate-nixd login` (or `fh login`). Fork PRs and anonymous
   contributors rebuild cold.
 
@@ -57,21 +57,21 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
 - **Path filters.** `device-gate.yml`, Gate: packages `ci-scope` (skips Darwin matrix /
   frontend-syntax / cargo-macos on docs-only tips), and `android-gradle-gate` so
   non-native pushes stop burning macos-26 minutes. `workflow_dispatch` stays full.
-- **Host Xcode pin.** [`.github/scripts/select-xcode.sh`](../.github/scripts/select-xcode.sh)
+- **Host Xcode pin.** `cargo xtask ci select-xcode`
   pins `Xcode_26.6.0.app` (not newest). Bump deliberately. See [`ci.md`](./ci.md).
   Do **not** chase `apple-sdks.nix` / FlakeHub Apple frameworks for product SDKs.
   nixpkgs `apple-sdk_15` (ANGLE Darwin) and `apple-sdk_26` (FFmpeg last-resort)
   are the only packaged-framework uses; they are macOS-lib recipes, not product
   `SDKROOT`.
-- **Host simulator SDK warm.** [`.github/scripts/warm-ios-simulator-sdk.sh`](../.github/scripts/warm-ios-simulator-sdk.sh)
+- **Host simulator SDK warm.** `cargo xtask ci warm-sdk`
   is the Apple platform-SDK cache (`ios` / `ipados` / `tvos` / `watchos` /
   `visionos` / `all`). Product ios-sim, apple-family, device-e2e in-job builds,
-  and Gate: packages frontend-syntax all run it before `xcodebuild`.
-- **Inner vs outer loop.** Fast iteration is `nix develop` / backend static libs
-  (FlakeHub-friendly). Outer `xcodegen` + `xcodebuild` / `.#wawona-ios` only when
-  app packaging inputs change. See [`compilation.md`](./compilation.md).
-- **Product xcodebuild must not nested-compile Rust.** `nix build .#wawona-ios`
-  passes `WAWONA_BACKEND_OUT*` so `xcode-prebuild.sh` copies `libwawona.a`.
+  run it before `xcodebuild`.
+- **Inner vs outer loop.** Fast iteration is the committed Xcode project over
+  `.deps/<sdk>` plus `cargo xtask backend`. `cargo xtask deps get <sdk> --nix`
+  only when a C dependency changes. See [`compilation.md`](./compilation.md).
+- **One Rust build per product.** `cargo xtask xcode prebuild` builds the
+  backend once for the slice (`cargo xtask backend <sdk>`) and links `libwawona.a`.
   Simulator Swift is `ARCHS=arm64` only (no x86_64 slice). Sim Rust backends
   use `release = false` (skip thin LTO). These are the compile-time wins; host
   SDK warm / apple-sdks.nix are not.
@@ -86,7 +86,7 @@ Operational runbook: [`flakehub-cache.md`](./flakehub-cache.md).
   - *PR:* fuzzel lanes skipped; smoke still runs when device-e2e is invoked.
   - *Nightly:* graphics + protocol drift + capability only (no Gate: products).
 - **Reproducibility.** `repro-rebuild` `--rebuild`s backend + workspace-src and
-  byte-compares; `verify-no-tar-wildcards.py` bans nondeterministic archives.
+  byte-compares; `cargo xtask verify no-tar-wildcards` bans nondeterministic archives.
   Deterministic outputs are what make FlakeHub Cache safe to trust.
 
 ## Sizing rules of thumb

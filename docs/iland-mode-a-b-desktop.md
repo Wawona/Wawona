@@ -124,7 +124,7 @@ not enable `iland-baremetal`.
 | Mode B compositor argv/env | `WWNWaypipeRunner` `baremetalCompositorLaunchSpecForProfile:` |
 | Connect / lockscreen handoff | `Sources/WawonaApple/Runners/MachineSessionBridge.swift` |
 | Mode A present | `Sources/WawonaApple/Present/IlandPresenter.swift` + `iland_present.h` |
-| Bundle verify | `.github/scripts/verify-iland-mode-b-bundle.sh` |
+| Bundle verify | `cargo xtask artifact mode-b` |
 
 Prefs (macOS `NSUserDefaults`):
 
@@ -227,7 +227,7 @@ repo: [`iLand/docs/mode-b/baremetal-display-spi-25F80.md`](../../iLand/docs/mode
 1. Settings stores `DesktopReplacementMachineId` (weston, niri, or custom
    compositor). Demo clients (`kmscube`, `weston-terminal`, `foot`) are not
    eligible.
-2. `nix run .#install` syncs the Mode B helper, `libwayland-mac.dylib`,
+2. `cargo xtask install` syncs the Mode B helper, `libwayland-mac.dylib`,
    `wwn-iowatchdog`, and a root-owned helper
    (`/Library/Application Support/Wawona/run-modeb.sh`) and installs
    `/etc/sudoers.d/wawona-modeb` (`NOPASSWD` for that helper and
@@ -248,7 +248,7 @@ repo: [`iLand/docs/mode-b/baremetal-display-spi-25F80.md`](../../iLand/docs/mode
    and Enable / Replace now runs bundled `claim-install` doctor, heal if
    needed, then `--path-b` plus native Restart. KEEP_WS
    `--mode-b-probe` may still inject while WindowServer and watchdogd
-   stay up. Opening desktop-host Wawona or `nix run .#install` syncs the Mode B
+   stay up. Opening desktop-host Wawona or `cargo xtask install` syncs the Mode B
    helper and dylib for this build. Never `export
    DYLD_INSERT_LIBRARIES`. Insert on the niri/weston exec only.
    `ws-guard` may restore WindowServer only.
@@ -351,8 +351,8 @@ UIKit stays input and lifecycle glue. Native IOSurface buffers stay zero-copy.
 Firewall:
 
 ```text
-./.github/scripts/verify-ios-modeb-artifacts.sh --mode-a dist/ios-sim/Wawona.app
-./.github/scripts/verify-ios-modeb-artifacts.sh --mode-b Wawona-YY.M.D-iOS-arm64.tipa
+cargo xtask artifact ios mode-a dist/ios-sim/Wawona.app
+cargo xtask artifact ios mode-b Wawona-YY.M.D-iOS-arm64.tipa
 ```
 
 Xcode Simulator is not IOMFB or JIT proof. `vphone wawona-jb` is the
@@ -393,7 +393,7 @@ Wawona Swinging Bridge Mode B.
 5. **visionOS/iPadOS:** store Mode A meets multi-window + product GLES/Vulkan
    expectations without Mode B.
 6. **Shared Nix/xcodegen:** gate Mode B + desktop-host dylibs so store schemes
-   cannot link them; `verify-iland-mode-b-bundle.sh` is the evidence.
+   cannot link them; `cargo xtask artifact mode-b` is the evidence.
 7. **macOS 3rd-party:** may ship desktop-host flavor separately; never reuse
    its packaging for iOS/Android store builds.
 8. **No jailbreak language** in App Store iOS binaries or metadata.

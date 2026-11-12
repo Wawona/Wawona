@@ -66,7 +66,7 @@ only**. Not Linux. Not App Store iOS family.
  **and** the user chooses Replace now → Mode B via
  `WWNDesktopReplacementController` (privileged insert of bundled dylib).
  First enable installs `/etc/sudoers.d/wawona-modeb`.
- `nix run .#install` always syncs helper + dylib + `wwn-iowatchdog` +
+ `cargo xtask install` always syncs helper + dylib + `wwn-iowatchdog` +
  sudoers for this store (administrator once) and
  fails if the helper still points at a previous nix store. It does **not**
  take over the screen. It does **not** install
@@ -108,7 +108,7 @@ Never invent CSR_* syscalls; stay on `csrutil status` string matching.
  re-vendor Watchdog C sources under `Wawona/src/platform/macos/modeb/`.
 - Default `.#wawona-macos` (store-safe / product-build / TestFlight-shaped) and
  **all** iOS/iPadOS/tvOS/watchOS/visionOS/Android artifacts: **dylib absent**.
-- Assert with `Wawona/.github/scripts/verify-iland-mode-b-bundle.sh`.
+- Assert with `cargo xtask artifact mode-b`.
 - Cargo: `iland-baremetal` only with `profile-desktop-host` or
  `profile-full-dev` (see `Wawona/src/lib.rs` compile_errors). Never on mobile.
 - Do **not** ship or describe Desktop/LockScreen as ready until the planned

@@ -3,7 +3,7 @@
 Companion to epic [#122](https://github.com/Wawona/Wawona/issues/122) and
 [`iland-graphics-progress.md`](../iland-graphics-progress.md). Bundle policy is
 enforced by
-[`.github/scripts/verify-iland-graphics-bundle.sh`](../../.github/scripts/verify-iland-graphics-bundle.sh)
+`cargo xtask artifact graphics`
 from [`product-build.yml`](../../.github/workflows/product-build.yml).
 
 ## Bundle audit (every product-build)
@@ -17,7 +17,7 @@ from [`product-build.yml`](../../.github/workflows/product-build.yml).
 | watchOS | `watchos` | absent | SpriteKit present; no Metal/MVK. Optional CPU SwiftShader+ANGLE when `WWN_WATCH_SWIFTSHADER=1` |
 | Android Play APK | `android` | **absent** (+ no Turnip/KGSL; requires ANGLE + SwiftShader `.so` + ICD JSON) | ANGLE + SwiftShader |
 | macOS 3rd-party | `macos` | **absent** | MoltenVK + KosmicKrisp dylibs |
-| macOS desktop-host | `macos-desktop` | **present** (`verify-iland-mode-b-bundle.sh --mode present`) | same + Mode B dylib |
+| macOS desktop-host | `macos-desktop` | **present** (`cargo xtask artifact mode-b --mode present`) | same + Mode B dylib |
 
 ## Runtime acceptance (Agent-Device / local)
 

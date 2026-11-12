@@ -73,19 +73,19 @@ and fails the workflow. Per-target artifacts upload as `leak-idle-<target>/` con
 # iOS (product or Xcode build)
 export WAWONA_IOS_APP=/path/to/Wawona.app
 export WAWONA_LEAK_STRICT=1
-./scripts/leak-idle-gate.sh ios
+cargo xtask lab leak ios
 
 # Android
 export WAWONA_ANDROID_APK=/path/to/Wawona.apk
 export WAWONA_ANDROID_SERIAL=emulator-5554   # or device
-./scripts/leak-idle-gate.sh android
+cargo xtask lab leak android
 
 # macOS
 export WAWONA_MACOS_APP=/path/to/Wawona.app
-./scripts/leak-idle-gate.sh macos
+cargo xtask lab leak macos
 
 # Rollup after any combination
-./scripts/leak-idle-gate.sh summary
+cargo xtask lab leak summary
 ```
 
 Artifacts land under `.agent-device/test-artifacts/leak-idle-gate/<target>/`.
@@ -102,5 +102,4 @@ Artifacts land under `.agent-device/test-artifacts/leak-idle-gate/<target>/`.
 
 ## Scripts
 
-- [`scripts/leak-idle-gate.sh`](../../scripts/leak-idle-gate.sh). Agent-device Start/Stop + hold
-- [`scripts/lib/leak-idle-measure.sh`](../../scripts/lib/leak-idle-measure.sh). Footprint / PSS parse + plateau analyze
+- [`xtask/src/lab/leak.rs`](../../xtask/src/lab/leak.rs). Launch, hold, sample, plateau verdict (`cargo xtask lab leak`)

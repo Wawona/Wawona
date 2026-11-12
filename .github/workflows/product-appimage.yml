@@ -63,11 +63,13 @@ jobs:
 
       - name: Build AppImage
         run: |
-          ./.github/scripts/nix-retry.sh \
-            nix build ".#packages.x86_64-linux.wawona-appimage" --print-build-logs --out-link result
+          nix build ".#packages.x86_64-linux.wawona-appimage" --print-build-logs --out-link result
 
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: appimage
       - name: Smoke-test and stage AppImage
-        run: ./.github/scripts/appimage-smoke.sh result "x86_64-linux"
+        run: cargo xtask artifact appimage result "x86_64-linux"
 
       - name: Manifest
         run: |
@@ -119,11 +121,13 @@ jobs:
 
       - name: Build AppImage
         run: |
-          ./.github/scripts/nix-retry.sh \
-            nix build ".#packages.aarch64-linux.wawona-appimage" --print-build-logs --out-link result
+          nix build ".#packages.aarch64-linux.wawona-appimage" --print-build-logs --out-link result
 
+      - uses: ./.github/actions/setup-xtask
+        with:
+          key: appimage-arm64
       - name: Smoke-test and stage AppImage
-        run: ./.github/scripts/appimage-smoke.sh result "aarch64-linux"
+        run: cargo xtask artifact appimage result "aarch64-linux"
 
       - name: Manifest
         run: |

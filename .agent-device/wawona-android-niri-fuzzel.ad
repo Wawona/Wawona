@@ -1,6 +1,6 @@
 # Nested niri + fuzzel (Mod+D) GUI e2e — Android.
 #
-# Prereq (scripts/agent-device-fuzzel-smoke.sh sets this): Default Machine
+# Prereq (cargo xtask lab fuzzel sets this): Default Machine
 # nativeLauncher=niri in SharedPreferences. Use label selectors so Start is
 # not missed when the emulator skin differs from the old 1080x2424 frame.
 #

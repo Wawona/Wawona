@@ -19,7 +19,7 @@ Packages stay bytecode (`/wasm/v1`, `.wasm` documents). The engine that
 | Target | Mode A execute | Forbidden in that artifact |
 |---|---|---|
 | iOS / iPadOS through OS 26, plus tvOS / watchOS / visionOS | Pulley / static | Cranelift native, `MAP_JIT`, Wasmer, WKWebView JSPI |
-| iOS / iPadOS 27+ | Wasmer WASIX Swift SDK: hidden WKWebView, WebKit JIT, JSPI. Same `/wasm/v1` bytecode. Only when the build defines `WWN_WASMER_IOS27` and links WasmerSDK. Otherwise Pulley. | Cranelift native, `MAP_JIT`, a second wasm catalog, raising the deployment target above 13.0 |
+| iOS / iPadOS 27+ | Wasmer WASIX Swift SDK: hidden WKWebView, WebKit JIT, JSPI. Same `/wasm/v1` bytecode. Only when the build defines `WWN_WASMER_IOS27` and links WasmerSDK. Otherwise Pulley. | Cranelift native, `MAP_JIT`, a second wasm catalog, raising the deployment target above 15.0 |
 | Android Play / unrooted sideload | Pulley or store-safe Cranelift | Mode B JIT, AVF as a wasm path |
 | macOS | Wasmtime Cranelift | A second Wasmer engine. Wasmer on macOS is not the Linux WASIX path |
 | Linux | Wasmtime Cranelift for WASI P1/P2. Wasmer (`wasmer-wasix` in `wawona-wasm`) for modules that import `wasix_32v1` or `wasix_64v1` | Wasmer for P1/P2. Wasmtime for WASIX |
@@ -83,8 +83,8 @@ KosmicKrisp) follow the platform GPU gate:
 - Treating tvOS / watchOS / visionOS wasm as optional or "transfer only"
 - Hiding `wawona-wasm` from Watch Machines so Start cannot run a user `.wasm`
 - Cranelift native / `MAP_JIT` in App Store Apple-mobile
-- Wasmer, WKWebView, or JSPI Wasm execute on iOS 13-26
-- Linking WasmerSDK by raising the iOS deployment target above 13.0
+- Wasmer, WKWebView, or JSPI Wasm execute on iOS 15-26
+- Linking WasmerSDK by raising the iOS deployment target above 15.0
 - Calling wasm a VM or a container
 - A wasm fuel burst that cannot cover one Wayland SHM frame. `chess-wawona`
   trapped `all fuel consumed` after `toplevel configure 0x0` on a 25_000_000

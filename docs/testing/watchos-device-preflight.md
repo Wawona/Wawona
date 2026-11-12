@@ -36,8 +36,8 @@ the earlier Rust backend success, identified the missing coverage.
 
 ## Verification
 
-Build `.#wawona-watchos-app-device`, `.#wawona-watchos-app-sim`,
-`.#wawona-ipados-app-sim`, and `.#wawona-visionos-app-sim` on the current tip.
+Run `cargo xtask build watchos --device`, `cargo xtask build watchos`,
+`cargo xtask build ipados` and `cargo xtask build visionos` on the current tip.
 The Watch device target validates both the LP64 archive and arm64_32
 compatibility link. The simulator targets check the relevant Apple UI and
 terminal ABI links. Every listed build must pass before promoting a release

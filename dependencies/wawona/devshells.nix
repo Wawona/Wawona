@@ -1,7 +1,7 @@
 { systems, pkgsFor }:
 
 let
-  # secretspec: CI + local release-env. pass/gnupg stay on the host (dendritic /
+  # secretspec: CI and `cargo xtask secrets run`. pass/gnupg stay on the host (dendritic /
   # sops-nix); bundling gnupg here forces a slow Darwin rebuild of the shell.
   releasePackages = pkgs: with pkgs; [
     fastlane
@@ -26,11 +26,11 @@ builtins.listToAttrs (map (system: let
     export SECRETSPEC_FILE="''${SECRETSPEC_FILE:-$PWD/secretspec.toml}"
     export PASSWORD_STORE_DIR="''${PASSWORD_STORE_DIR:-$HOME/.password-store}"
     echo "Release secrets: SecretSpec + pass (tier 0 -> docs/maintainers/secrets.md)"
-    echo "Fastlane: ./scripts/release-env.sh fastlane ios beta"
+    echo "Fastlane: cargo xtask secrets run -- fastlane ios beta"
   '';
 
   # Fastlane match and xcodebuild need DEVELOPER_DIR and xcodebuild on PATH inside
-  # nix develop. CI exports these via select-xcode.sh; local dev uses find-xcode.
+  # nix develop. CI exports these via `cargo xtask ci select-xcode`; local dev uses find-xcode.
   darwinXcodeShellHook = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
     XCODE_APP=""
     if [ -n "''${DEVELOPER_DIR:-}" ]; then
@@ -132,7 +132,7 @@ builtins.listToAttrs (map (system: let
 
       ${darwinXcodeShellHook}
 
-      echo "Contributors: nix run .#xcodegen-ios | export WAWONA_SKIP_NIX_PREBUILD=1 for UI iteration"
+      echo "Xcode: nix run .#deps -- <sdk>, then open Wawona.xcodeproj"
       ${releaseShellHook}
     '';
   };

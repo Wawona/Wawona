@@ -1,5 +1,5 @@
 {
-  "comment": "Canonical wwn.* accessibility ids. Keep in sync with WWNA11y (Swift), WawonaTestTags (Kotlin), and src/linux/ui/a11y.rs. Verified by scripts/appium/verify-a11y-sync.py.",
+  "comment": "Canonical wwn.* accessibility ids. Keep in sync with WWNA11y (Swift), WawonaTestTags (Kotlin), and src/linux/ui/a11y.rs. Verified by `cargo xtask appium verify`.",
   "ids": [
     "wwn.welcome.root",
     "wwn.welcome.continue",

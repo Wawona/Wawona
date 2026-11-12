@@ -2,7 +2,7 @@
 
 This document lists protocol surfaces currently retained outside Smithay-backed paths. A survivor is allowed only when `equivalent = "no-equivalent"` and explicitly gated by profile policy.
 
-Smithay-equivalent protocols are enforced by `verify-wayland-runtime-ownership.py --strict` and must not be added to this survivor list.
+Smithay-equivalent protocols are enforced by `cargo xtask verify wayland-runtime-ownership --strict` and must not be added to this survivor list.
 
 ## Survivors (No Equivalent)
 

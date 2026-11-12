@@ -1,62 +1,56 @@
 # Nix-generated artifacts (flake spirit)
 
-Reproducible generated files are **Nix outputs**. They are not git sources.
+What Nix can emit from inputs is a Nix output, never a git source. The Xcode
+project and the Gradle build are ordinary committed source that Xcode and
+Android Studio open from the repository root.
 
 Cursor rule: `wawona-nix-generated`.
-Related: `wawona-uniffi-domain`, `wawona-repo-dag`, `docs/2026-nix-build-system.md`.
+Related: `wawona-uniffi-domain`, `wawona-repo-dag`, `docs/compilation.md`.
 
-## Rule
+## Committed source
 
-`nix build` / `nix run` produces the app. A clean checkout plus the flake must
-be enough. Do not commit a file that Nix can emit bit-for-bit from inputs.
+| File | Edited with |
+|---|---|
+| `Wawona.xcodeproj/project.xcproj` (JSON project) and `xcshareddata/` schemes | Xcode, or by hand |
+| `settings.gradle.kts`, `build.gradle.kts`, `android/app/` | Android Studio, or by hand |
+
+Sources are synchronized folders: a new file under `Sources/` or `src/` joins
+its targets without a project edit. The project names no store path. It reads
+the per-SDK slice through `.deps/<sdk>/Wawona.xcconfig`.
 
 ## Store / gitignore (never commit)
 
 | Artifact | How it appears |
 |---|---|
-| UniFFI Swift / Kotlin | `$rustBackend/uniffi/{swift,kotlin}` |
-| `Wawona.xcodeproj` | `nix run .#xcodegen-*` |
-| Gradle project / `shader_spv.h` | `gradlegen` |
+| `.deps/<sdk>` (C libraries, archives, bundle tree, xcconfig) | `cargo xtask deps get <sdk>` |
+| `.deps/android` (jniLibs, assets, `shader_spv.h`) | `cargo xtask deps get android` |
+| `.build/backend/<sdk>` (libwawona, UniFFI Swift linked at `.deps/uniffi`) | `cargo xtask backend <sdk>` (working-tree Rust) |
 | Wayland `_GEN-*.rs` | rustc / scanner in the backend build |
-| crate2nix `Cargo.nix` | IFD `generatedCargoNix` |
-| `result`, `target/`, `.build/` | local eval |
+| `result`, `target/`, `.build/` | local builds |
 
-Bindings: `uniffi-bindgen` is `dependencies/generators/uniffi-bindgen.nix`
-(host rustPlatform, UniFFI 0.30). Not a crate2nix workspace member. Not
-`uniffi` `cli` on the Wawona crate.
+Bindings: the xtask binary serves `uniffi-bindgen` (UniFFI 0.30, `xtask/src/tools`).
+Not `uniffi` `cli` on the Wawona crate.
 
 ## Allowed committed generate-and-diff
 
-`docs/protocol-status.md` is a human/CI **contract**. `scripts/gen-protocol-status.sh`
+`docs/protocol-status.md` is a human/CI **contract**. `cargo xtask gen protocol-status`
 rewrites it; CI `git diff --exit-code` fails if stale. That is not an app
-binary. Do not use it as a pattern for Swift, Kotlin, or Xcode projects.
-
-## Xcode project
-
-`Wawona.xcodeproj` / `project.pbxproj` is **always** the output of Nix
-XcodeGen (`dependencies/generators/xcodegen.nix`). An Apple app `nix build`
-runs that generator inside the derivation. A local project is only
-`nix run .#xcodegen`, `.#xcodegen-ios`, or `.#xcodegen-macos`.
-
-Spec paths stay relative (`.nix-deps/...`). Copy a store input into
-`.nix-deps` before generate. A store path in the spec is written into
-`project.pbxproj`.
+binary. Do not use it as a pattern for Swift, Kotlin, or project files.
 
 ## Hard rejects
 
+- Reintroducing a project generator (XcodeGen, gradlegen) for the app
 - Checking in generated UniFFI Swift/Kotlin under `Sources/` or `android/`
-- Hand-editing `project.pbxproj`, or any file Nix just wrote
-- Copying a generated `.xcodeproj` aside and patching paths into it
-- Putting `/nix/store` or `/store/<hash>` into `project.pbxproj`
-- Interpolating a Nix store path into an XcodeGen source entry
+- A `/nix/store` or `/store/<hash>` path in `project.xcproj`, an xcconfig in git, or Gradle files
+- Committing `.deps/` or `org.gradle.java.home`
 - `|| true` on bindgen so a missing binding still "succeeds"
-- Adding `uniffi` `cli` / `uniffi_build` to the Wawona crate2nix graph
-- Copying `result/uniffi` into git "for convenience"
+- Copying `.build/backend/*/uniffi` into git "for convenience"
 
 ## Local
 
 ```text
-nix build .#uniffi-bindgen
-nix build .#wawona-macos-xcode-env   # rust backend; bindings at $out/uniffi
-nix run .#xcodegen-macos
+cargo xtask deps get macosx            # then open Wawona.xcodeproj
+cargo xtask deps get iphonesimulator   # adds watchsimulator for the companion
+cargo xtask deps get android           # then open the root in Android Studio
+cargo xtask backend macosx     # rebuild Rust from the working tree
 ```

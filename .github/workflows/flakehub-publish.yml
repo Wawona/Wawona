@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   flakehub-publish:
-    runs-on: macos-26
+    runs-on: macos-27
     steps:
       - uses: actions/checkout@v5
         with:

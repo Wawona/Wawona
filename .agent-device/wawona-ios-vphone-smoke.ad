@@ -7,7 +7,7 @@ context platform=ios
 context session=wawona-ios-vphone-smoke
 context device=vphone wawona-jb
 
-# scripts/agent-device-smoke.sh vphone runs packages tipa open-jit first.
+# cargo xtask lab smoke vphone runs packages tipa open-jit first.
 # Replay alone cannot enable JIT. Unlock SpringBoard. Kill WawonaModeBDemo.
 open com.aspauldingcode.Wawona.ModeB --relaunch
 wait 2500

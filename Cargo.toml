@@ -1,16 +1,18 @@
 [workspace]
 members = ["."]
+# Its own workspace: it must run before .deps supplies the path crates.
+exclude = ["xtask"]
 
 [package]
 name = "wawona"
-version = "26.11.3"
+version = "26.11.11"
 edition = "2021"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)", "cfg(loom)"] }
 
 # uutils coreutils 0.12 uses `[lints] workspace = true`. Keep its upstream
-# workspace lint policy available after scripts/ensure-coreutils.sh prunes the
+# workspace lint policy available after `cargo xtask workspace prepare` prunes the
 # upstream workspace into this single-crate workspace.
 [workspace.lints.rust]
 renamed_and_removed_lints = { level = "allow", priority = -1 }
@@ -125,14 +127,14 @@ xkbcommon = { version = "0.8", features = ["wayland"] }
 wayland-scanner = "0.31.8"
 tempfile = "3.25.0"
 
-# waypipe: integrated as optional dependency for unified static library (run scripts/ensure-waypipe.sh if ./waypipe is missing)
+# waypipe: integrated as optional dependency for unified static library (`cargo xtask deps get src` links ./waypipe)
 waypipe = { path = "./waypipe", optional = true, default-features = false, features = ["lz4", "zstd", "video"] }
 
 # uutils coreutils umbrella: in-process ls/cat/cp/... dispatched from zsh on the
 # App-Store-compliant build (no fork/exec). Ownership: wwn-uutils-rs (pin, patch,
-# safe-subset.txt). Run scripts/ensure-coreutils.sh if ./coreutils is missing
-# (stages wwn-uutils-rs.lib.mkPatchedSrc). Feature list MUST match
-# wwn-uutils-rs/.../safe-subset.txt (verify-ios-shell-tools.py).
+# safe-subset.txt). `cargo xtask deps get src` links ./coreutils
+# (wwn-uutils-rs.lib.mkPatchedSrc). Feature list MUST match
+# wwn-uutils-rs/.../safe-subset.txt (cargo xtask verify ios-shell-tools).
 coreutils = { path = "./coreutils", optional = true, default-features = false, features = [
   "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "ln", "touch", "echo",
   "pwd", "head", "tail", "wc", "sort", "cut", "tr", "seq", "basename",

@@ -8,12 +8,12 @@ description: Central SwiftUI availability shims for Apple products.
 Read `Wawona/docs/agent-rules/wawona-swiftui-backports.md` before changing
 SwiftUI availability. Use `WawonaBackport` for iOS/iPadOS 13+ APIs (Dave
 DeLong namespace pattern: availability only inside `.backport.*` shims). The
-product floor is iOS 13, so SwiftUI is the UI. There is no iOS 11 or 12
+product floor is iOS 15, so SwiftUI is the UI. There is no iOS 11 or 12
 UIKit-only product. After a new durable shim, update this rule and Wawona RAG.
 
 `ScrollViewReader`: `WawonaBackport<Any>.scrollViewReader` +
 `WawonaScrollViewProxy` in `Compatibility/WawonaBackport.swift`. Required for
-Wawona Terminal on iOS 13+. Never bare `ScrollViewReader` at phone call sites.
+Wawona Terminal on iOS 15+. The shim is due for removal under the iOS 15 floor (#248).
 
 ## iOS 26 bottom search
 

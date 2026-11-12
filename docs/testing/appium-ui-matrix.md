@@ -26,17 +26,16 @@ Docs: `/etc/nix-darwin/.dotfiles/docs/appium-agents.md`. Upstream setup skills:
 `appium-setup-mac2`, `appium-troubleshooting`. MCP server name: `appium`
 (`appium-mcp`).
 
-Restart the IDE after `nh darwin switch` or after running
-`scripts/configure-appium-agents.py`.
+Restart the IDE after `nh darwin switch`.
 
 ## Suite layout
 
 | Path | Role |
 |------|------|
-| [`Tests/appium/`](../../Tests/appium/) | pytest + Appium 2 page objects |
+| [`xtask/src/appium/`](../../xtask/src/appium/) | `cargo xtask appium`: WebDriver client, page objects, cases, evidence checks |
 | [`Tests/appium/matrix.toml`](../../Tests/appium/matrix.toml) | Platform gates + catalog Wayland guests |
 | [`Tests/appium/selectors.json`](../../Tests/appium/selectors.json) | Canonical `wwn.*` ids |
-| [`scripts/appium/launch-wayland-client.sh`](../../scripts/appium/launch-wayland-client.sh) | Real Wayland guest launcher |
+| `cargo xtask appium launch` | Real Wayland guest launcher |
 | [`.github/workflows/ui-appium.yml`](../../.github/workflows/ui-appium.yml) | Nightly / path-filtered `development` |
 
 ## Wayland catalog clients (23.A / 23.B)
@@ -56,10 +55,10 @@ step ran.
 Capture locally (Wawona up, Appium on :4723):
 
 ```bash
-./scripts/appium/capture-catalog-gallery.sh
+cargo xtask appium catalog
 # or one client:
-./scripts/appium/capture-catalog-gallery.sh kde_plasma_de
-python3 scripts/appium/verify-catalog-gallery.py
+cargo xtask appium catalog kde_plasma_de
+cargo xtask appium gallery --only kde_plasma_de
 open .agent-device/test-artifacts/appium/catalog-gallery/index.html
 ```
 
@@ -67,18 +66,18 @@ Each client is a real Wayland process forwarded into the host Wawona socket:
 
 | `guest` | How |
 |---------|-----|
-| `colima` | **Required on Darwin.** Colima Linux VM + `waypipe-ssh-colima-lab.sh`. No local-bundle, no Apple Containerization shortcut for catalog tests. |
+| `colima` | **Required on Darwin.** Colima Linux VM + `cargo xtask appium waypipe`. No local-bundle, no Apple Containerization shortcut for catalog tests. |
 | `nested` | Linux runner only: same-host nested client on `WAYLAND_DISPLAY` (`WAWONA_WAYLAND_GUEST=nested`) |
 
-CI fails closed if `matrix.toml` and `launch-wayland-client.sh` drift
-(`scripts/appium/verify-wayland-guest-map.py`). Appium then asserts the host
+CI fails closed if `matrix.toml` and `cargo xtask appium launch` drift
+(`cargo xtask appium verify`). Appium then asserts the host
 compositor surface (`wwn.compositor.surface`).
 
 ## Runners
 
 | Job | Label |
 |-----|-------|
-| iOS, iPadOS, tvOS, visionOS, macOS, iPhone+watch | `macos-26` |
+| iOS, iPadOS, tvOS, visionOS, macOS, iPhone+watch | `macos-27` |
 | Android emulator | `ubuntu-latest` + KVM |
 | Linux desktop + nested Wayland catalog | `ubuntu-latest` + Xvfb |
 
@@ -92,27 +91,28 @@ run succeeded on the exact same commit before downloading artifacts from it.
 
 ```bash
 # Offline gate/selector + guest-map checks (no Appium server):
-python3 scripts/appium/verify-matrix.py
-python3 scripts/appium/verify-wayland-guest-map.py
-cd Tests/appium
-python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
-WAWONA_APPIUM_DRY=1 pytest tests/test_gates_unit.py -q
+cargo xtask appium verify
+cargo test --manifest-path xtask/Cargo.toml appium
 
 # Wayland catalog (host compositor must own wayland-0 first):
 export WAWONA_APPIUM_PLATFORM=macos   # or linux
 # Darwin: tip host + Colima (never /Applications).
-eval "$(scripts/appium/ensure-tip-wawona-macos.sh)"
+eval "$(cargo xtask tip macos)"
 colima start   # once on the host
-./scripts/appium/ensure-colima.sh
-# Or: ./scripts/appium/capture-catalog-gallery.sh foot
-pytest tests/test_catalog_wayland.py -q
+cargo xtask appium colima
+# Or: cargo xtask appium catalog foot
+cargo xtask appium run --group catalog --only foot
 
 # Full native session (Appium server on :4723, tip app):
 export WAWONA_APPIUM_PLATFORM=ios
 export WAWONA_APP_PATH=/path/to/tip/Wawona.app   # never stale install
-pytest tests/test_native_ui.py -q
+cargo xtask appium run --group native
 ```
+
+`appium run` writes `junit.xml` to the artifacts directory. Groups are
+`native`, `wayland` and `catalog`; `--only` names cases, and a catalog
+client may be named without its `catalog_` prefix.
+`WAWONA_APPIUM_DRIVER_SCOPE=function` starts a session per case.
 
 Guest SSH uses a freshly generated Colima config at
 `${COLIMA_HOME:-$HOME/.colima}/ssh_config`, or `COLIMA_SSH_CONFIG` when set.

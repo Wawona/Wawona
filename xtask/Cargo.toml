@@ -1,0 +1,44 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+anyhow = "1"
+bindgen = "0.72"
+clap = { version = "4", features = ["derive", "env"] }
+flate2 = "1"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tar = "0.4"
+toml = "0.9"
+# Same minor as the wawona crate's uniffi: library mode reads its metadata.
+uniffi = { version = "=0.30.0", features = ["cli"] }
+ureq = "3"
+walkdir = "2"
+zstd = "0.13"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+toml_edit = "0.25.19"
+roxmltree = "0.21.2"
+base64 = "0.22"
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }
+plist = "1"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+
+[profile.dev]
+opt-level = 1
+debug = false
+
+[profile.dev.package."*"]
+opt-level = 2
+
