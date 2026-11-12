@@ -20,7 +20,7 @@ GHCR publish (`deps push`) was not required for this local mirror proof. CI
 | Metric | Value |
 |---|---|
 | Tracked `*.py` | 0 |
-| `xtask/src` Rust lines | 15129 |
+| `xtask/src` Rust lines | 15165 |
 | Tracked `*.sh` | 3 (Mode B / ABI-bound only) |
 
 ## Times (clean clone unless noted)
