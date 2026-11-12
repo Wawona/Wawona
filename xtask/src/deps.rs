@@ -229,7 +229,30 @@ fn fetch(sdk: &str, e: &Entry, dst: &Path) -> Result<()> {
     write(tmp.join(".sha256"), &e.sha256)?;
     remove(dst)?;
     std::fs::rename(&tmp, dst)?;
+    // Readers that do not expand @SLICE@ (Gradle before the CMake replace,
+    // older Studio caches) still need absolute paths on disk. Expand after
+    // rename so the placeholder becomes the final .deps/<sdk> path.
+    expand_slice_placeholders(dst)?;
     eprintln!("{sdk}: {}", dst.display());
+    Ok(())
+}
+
+fn expand_slice_placeholders(dir: &Path) -> Result<()> {
+    let abs = dir
+        .canonicalize()
+        .unwrap_or_else(|_| dir.to_path_buf())
+        .to_string_lossy()
+        .into_owned();
+    for name in ["wawona.properties", "slice.json"] {
+        let p = dir.join(name);
+        if !p.is_file() {
+            continue;
+        }
+        let s = read(&p)?;
+        if s.contains("@SLICE@") {
+            write(&p, s.replace("@SLICE@", &abs))?;
+        }
+    }
     Ok(())
 }
 

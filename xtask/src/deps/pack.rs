@@ -34,15 +34,17 @@ pub fn pack(sdk: &str, from: &Path, out: &Path) -> Result<()> {
     let re = store_re();
     let mut roots: BTreeSet<String> = BTreeSet::new();
 
-    for e in std::fs::read_dir(from)? {
+    for e in std::fs::read_dir(from).with_context(|| format!("read_dir {}", from.display()))? {
         let e = e?;
         let name = e.file_name().to_string_lossy().into_owned();
-        let src = std::fs::canonicalize(e.path())?;
+        let src = std::fs::canonicalize(e.path())
+            .with_context(|| format!("canonicalize {}", e.path().display()))?;
         let dst = stage.join(&name);
         if src.is_dir() {
-            copy_tree(&src, &dst)?;
+            copy_tree(&src, &dst).with_context(|| format!("copy_tree {} -> {}", src.display(), dst.display()))?;
         } else {
-            std::fs::copy(&src, &dst)?;
+            std::fs::copy(&src, &dst)
+                .with_context(|| format!("copy {} -> {}", src.display(), dst.display()))?;
         }
     }
 
@@ -73,7 +75,12 @@ pub fn pack(sdk: &str, from: &Path, out: &Path) -> Result<()> {
             eprintln!("warning: {r} is referenced but not in the store");
             continue;
         }
-        copy_tree(Path::new(&r), &dst)?;
+        // The slice may already ship a `store/` tree (Android). Skip if the
+        // path is already present from the top-level copy.
+        if !dst.exists() {
+            copy_tree(Path::new(&r), &dst)
+                .with_context(|| format!("copy store {r} -> {}", dst.display()))?;
+        }
         for f in walk_files(&dst) {
             let mut refs = macho_store_deps(&f);
             if f.extension().is_some_and(|x| x == "pc") {

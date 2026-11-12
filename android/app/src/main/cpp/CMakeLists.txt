@@ -19,7 +19,10 @@ include_directories(
     ${WAWONA_ROOT}/src/platform/macos
     ${WAWONA_ROOT}/src/platform/android
 )
-string(REPLACE "-I" "" NIX_INCLUDES_CL ${NIX_DEP_INCLUDES})
+# Relocatable slices keep @SLICE@ in wawona.properties; expand to WAWONA_DEPS.
+string(REPLACE "@SLICE@" "${WAWONA_DEPS}" NIX_DEP_INCLUDES "${NIX_DEP_INCLUDES}")
+string(REPLACE "@SLICE@" "${WAWONA_DEPS}" NIX_DEP_LIBS "${NIX_DEP_LIBS}")
+string(REPLACE "-I" "" NIX_INCLUDES_CL "${NIX_DEP_INCLUDES}")
 separate_arguments(NIX_INCLUDES_CL)
 include_directories(${NIX_INCLUDES_CL})
 

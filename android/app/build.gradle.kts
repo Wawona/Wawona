@@ -12,9 +12,17 @@ plugins {
 // The preBuild task below builds libwawona_core.so into .build/backend/android.
 val deps = rootProject.file(".deps/android")
 val backend = rootProject.file(".build/backend/android")
+// Relocatable slices use @SLICE@ in wawona.properties; expand to the unpacked dir.
 val depsProps = Properties().apply {
     val f = deps.resolve("wawona.properties")
-    if (f.isFile) f.inputStream().use { load(it) }
+    if (f.isFile) {
+        f.inputStream().use { load(it) }
+        val slice = deps.absolutePath
+        keys.toList().forEach { k ->
+            val key = k as String
+            setProperty(key, getProperty(key).replace("@SLICE@", slice))
+        }
+    }
 }
 
 val rustBackend = tasks.register<Exec>("rustBackend") {

@@ -33,7 +33,7 @@ GHCR publish (`deps push`) was not required for this local mirror proof. CI
 | `build tvos` | **SUCCEEDED** | 885 s (after appletvsimulator repack with `slice.json`) |
 | `build watchos` | **SUCCEEDED** | ~1230 s |
 | `build visionos` | **SUCCEEDED** | 441 s |
-| `build android` | see log `/tmp/wawona-proof2-android2.log` | (main tree `.deps/android`) |
+| `build android` | **SUCCEEDED** | 95 s (assembleDebug; main-tree `.deps/android`) |
 
 ## Notes
 
