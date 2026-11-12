@@ -53,8 +53,14 @@ pub fn main(a: Args) -> Result<()> {
     let deps = root.join(".deps").join(slices::deps_name(s.name));
     let src = root.join(".deps/src");
     for d in [&deps, &src] {
-        if !d.join(if d == &src { "waypipe" } else { "slice.json" }).exists() {
-            bail!("{} is missing. Run: cargo xtask deps get {}", d.display(), slices::deps_name(s.name));
+        let need = if d == &src { "waypipe" } else { "slice.json" };
+        if !d.join(need).exists() {
+            bail!(
+                "{}/{} is missing. Run: cargo xtask deps get {}",
+                d.display(),
+                need,
+                slices::deps_name(s.name)
+            );
         }
     }
     let j = SliceJson::load(&deps)?;

@@ -16,12 +16,22 @@ sha256 = "af2b8dbe6287fdd8e1bc5c95bab64faba1bfc24cd3e676f407c3d5cba6cc06e2"
 size = 64279702
 
 [slices.appletvsimulator]
-nar = "sha256-local-bb1a6e41aca7d543"
-sha256 = "bb1a6e41aca7d543e8e1f53bc80515450a90a3722cddbc315a011303d2d620fd"
-size = 133413390
+nar = "sha256-local-9e57aaf419b83d34"
+sha256 = "9e57aaf419b83d34cd971d2bd2c7f683744c2525ad302e8d4fda0843ac97fcf9"
+size = 63225162
 
 [slices.watchsimulator]
 nar = "sha256-local-453c2d994c8a5d33"
 sha256 = "453c2d994c8a5d33a86d68dc0070e76eeb22c3ddb907f03662c67a74ffc3294e"
 size = 55306883
 
+[slices.xrsimulator]
+nar = "sha256-local-81ef4281b90e0fdc"
+sha256 = "81ef4281b90e0fdc05ee93aa1295e75f6fbdbecdc8fd2c063ca7c3bf32dbbc21"
+size = 61712512
+
+
+[slices.android]
+nar = "sha256-local-android"
+sha256 = "80bdcc98b607f1182c2bba04d6e7235c79aa8b79ef6db376f097d9abacef62fc"
+size = 84998121
