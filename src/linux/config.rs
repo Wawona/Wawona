@@ -28,13 +28,10 @@ impl LinuxMachineType {
     }
 }
 
-/// Wayland client presets for native machine type (mirrors `ClientLauncher.presets` from SwiftUI).
+/// Keep-set client presets for native machine type (mirrors `ClientLauncher.presets`).
 pub const LAUNCHER_PRESETS: &[(&str, &str)] = &[
     ("wawona-shell", "Native Shell"),
-    ("weston-terminal", "Weston Terminal"),
-    ("weston-simple-shm", "Weston Simple SHM"),
-    ("foot", "Foot Terminal"),
-    ("weston", "Weston"),
+    ("wawona-wasm", "Wawona Runtime (.wasm)"),
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -68,8 +68,8 @@ pub use domain::machine_profile::{
 };
 pub use domain::uniffi_api::{
     machine_profiles_decode_v1, machine_profiles_encode_v1, normalize_ssh_port_uniffi,
-    sanitize_ssh_host_uniffi, validate_machine_editor, validate_machine_profile,
-    MachineProfileStoreApi,
+    sanitize_ssh_host_uniffi, split_ssh_host_and_port_uniffi, validate_machine_editor,
+    validate_machine_profile, MachineProfileStoreApi, SshHostPortView,
 };
 pub use ffi::api::{build_info, build_number, version, WawonaCore};
 pub use ffi::errors::*;

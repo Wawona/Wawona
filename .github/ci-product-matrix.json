@@ -1,0 +1,99 @@
+{
+  "description": "Single product matrix for Build: products / Gate: products. Apple and Android use cargo xtask over Exact bun hosts (no Wawona.xcodeproj / root Gradle). Linux AppImages use nix build .#wawona-appimage. Ship workflows only rename and upload these artifacts.",
+  "include": [
+    {
+      "id": "ios",
+      "os": "macos-27",
+      "kind": "apple-sim",
+      "target": "ios",
+      "sdk": "iphonesimulator",
+      "warm_sdk": "ios watchos",
+      "artifact": "product-ios-sim",
+      "only": ["all", "ios-sim"]
+    },
+    {
+      "id": "ipados",
+      "os": "macos-27",
+      "kind": "apple-sim",
+      "target": "ipados",
+      "sdk": "iphonesimulator",
+      "warm_sdk": "all",
+      "artifact": "product-ipados-sim",
+      "only": ["all", "apple-family"]
+    },
+    {
+      "id": "tvos",
+      "os": "macos-27",
+      "kind": "apple-sim",
+      "target": "tvos",
+      "sdk": "appletvsimulator",
+      "warm_sdk": "all",
+      "artifact": "product-tvos-sim",
+      "only": ["all", "apple-family"]
+    },
+    {
+      "id": "watchos",
+      "os": "macos-27",
+      "kind": "apple-sim",
+      "target": "watchos",
+      "sdk": "watchsimulator",
+      "warm_sdk": "all",
+      "artifact": "product-watchos-sim",
+      "device_first": true,
+      "only": ["all", "apple-family"]
+    },
+    {
+      "id": "visionos",
+      "os": "macos-27",
+      "kind": "apple-sim",
+      "target": "visionos",
+      "sdk": "xrsimulator",
+      "warm_sdk": "all",
+      "artifact": "product-visionos-sim",
+      "only": ["all", "apple-family"]
+    },
+    {
+      "id": "macos",
+      "os": "macos-27",
+      "kind": "macos",
+      "target": "macos",
+      "artifact": "product-macos-app",
+      "desktop_host_artifact": "product-macos-desktop-host",
+      "needs_waypipe_guest": true,
+      "only": ["all", "macos-app"]
+    },
+    {
+      "id": "android",
+      "os": "macos-27",
+      "kind": "android",
+      "target": "android",
+      "artifact": "product-android-apk",
+      "only": ["all", "android-apk"]
+    },
+    {
+      "id": "ios-modeb",
+      "os": "macos-27",
+      "kind": "ios-modeb",
+      "artifact": "product-ios-modeb",
+      "only": ["all", "ios-modeb"]
+    },
+    {
+      "id": "appimage-x86_64",
+      "os": "ubuntu-latest",
+      "kind": "appimage",
+      "system": "x86_64-linux",
+      "attr": "packages.x86_64-linux.wawona-appimage",
+      "artifact": "product-appimage-x86_64-linux",
+      "only": ["all", "appimage"]
+    },
+    {
+      "id": "appimage-aarch64",
+      "os": "ubuntu-24.04-arm",
+      "kind": "appimage",
+      "system": "aarch64-linux",
+      "attr": "packages.aarch64-linux.wawona-appimage",
+      "artifact": "product-appimage-aarch64-linux",
+      "only": ["all", "appimage"]
+    }
+  ]
+}

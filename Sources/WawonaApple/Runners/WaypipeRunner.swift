@@ -100,8 +100,8 @@ public final class WWNWaypipeRunner: NSObject {
         }
         args.append("--")
         let remote = prefs.waypipeRemoteCommand()
-        let cmd = remote.isEmpty ? "weston-simple-shm" : remote
-        args.append(remoteSwayEnvPrefixedCommand(cmd))
+        guard !remote.isEmpty else { return args }
+        args.append(remoteSwayEnvPrefixedCommand(remote))
         return args
     }
     @objc(remoteSwayEnvPrefixedCommand:)

@@ -4048,8 +4048,8 @@ static void wwn_android_write_zsh_defaults(const char *home,
       "if [[ -z \"${WAWONA_ZSH_BANNER_SHOWN:-}\" ]]; then\n"
       "  export WAWONA_ZSH_BANNER_SHOWN=1\n"
       "  print -P \"%F{green}Wawona%f zsh ${ZSH_VERSION} - bundled Android userland.\"\n"
-      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, waypipe, ssh/ssh-keygen, niri, fuzzel.\"\n"
-      "  print -P \"%F{yellow}Note:%f weston demos launch from Machines (not PATH) until multi-client tabs land.\"\n"
+      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, waypipe, ssh/ssh-keygen, wasm.\"\n"
+      "  print -P \"%F{yellow}Note:%f weston/niri/foot install via apt / Termux / wpm (not bundled).\"\n"
       "  print -P \"%F{yellow}Note:%f ssh is OpenSSH portable (wwn-ssh). Try ssh -V / ssh-keygen -t ed25519.\"\n"
       "fi\n");
 
@@ -4060,8 +4060,8 @@ static void wwn_android_write_zsh_defaults(const char *home,
       "if [[ -z \"${WAWONA_ZSH_BANNER_SHOWN:-}\" ]]; then\n"
       "  export WAWONA_ZSH_BANNER_SHOWN=1\n"
       "  print -P \"%F{green}Wawona%f zsh ${ZSH_VERSION} - bundled Android userland.\"\n"
-      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, waypipe, ssh/ssh-keygen, niri, fuzzel.\"\n"
-      "  print -P \"%F{yellow}Note:%f weston demos launch from Machines (not PATH) until multi-client tabs land.\"\n"
+      "  print -P \"%F{blue}Bundled:%f uutils coreutils, fastfetch, waypipe, ssh/ssh-keygen, wasm.\"\n"
+      "  print -P \"%F{yellow}Note:%f weston/niri/foot install via apt / Termux / wpm (not bundled).\"\n"
       "  print -P \"%F{yellow}Note:%f ssh is OpenSSH portable (wwn-ssh). Try ssh -V / ssh-keygen -t ed25519.\"\n"
       "fi\n");
 
@@ -4251,9 +4251,6 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
                                          "libcoreutils_bin.so", cu_utils[ci]);
         }
       }
-      /* phoon (wwn-phoon-rs): clean-room Rust moon-phase utility. */
-      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libphoon_bin.so",
-                                     "phoon");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libwaypipe_bin.so",
                                      "waypipe");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libwaypipe_bin.so",
@@ -4266,34 +4263,13 @@ static void wwn_android_prepare_shell_environment(const char *files_dir) {
                                      "scp");
       wwn_android_install_shell_tool(native_lib_dir, usr_bin,
                                      "libsshpass_bin.so", "sshpass");
-      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libniri_bin.so",
-                                     "niri");
-      /* fuzzel (wwn-niri): niri Mod+D launcher. Same jniLibs PIE pattern. */
-      wwn_android_install_shell_tool(native_lib_dir, usr_bin,
-                                     "libfuzzel_bin.so", "fuzzel");
-      /* foot (wwn-foot): Wayland terminal. Fork/exec libfoot_bin.so. */
-      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libfoot_bin.so",
-                                     "foot");
-      /* Nested-niri fuzzel catalog Exec=weston-* → multicall PIE that dlopens
-       * the real client and inherits niri's WAYLAND_DISPLAY (issue #78). */
-      {
-        static const char *const wl_execs[] = {
-            "weston-simple-shm", "weston-simple-egl", "weston-flower",
-            "weston-clickdot", "weston-smoke", "weston-eventdemo",
-            "weston-resizor", "weston-cliptest", "weston-transformed",
-            "weston-stacking", "weston-dnd", "weston-image", "weston-scaler",
-            "weston-editor", "weston-constraints",
-        };
-        size_t wi;
-        for (wi = 0; wi < sizeof(wl_execs) / sizeof(wl_execs[0]); wi++) {
-          wwn_android_install_shell_tool(native_lib_dir, usr_bin,
-                                         "libwawona_wl_bin.so", wl_execs[wi]);
-        }
-      }
+      wwn_android_install_shell_tool(native_lib_dir, usr_bin, "libwasm_bin.so",
+                                     "wasm");
+      /* weston/niri/foot/phoon/cubes: optional-software. Not in jniLibs keep-set. */
     }
   }
 
-  /* Freedesktop catalog for fuzzel (issue #78). share/applications + hicolor
+  /* Freedesktop catalog for installed launchers. share/applications + hicolor
    * live under the synthetic rootfs usr/share (extracted from APK assets). */
   {
     char share_buf[768];
@@ -6600,6 +6576,147 @@ Java_com_aspauldingcode_wawona_WawonaNative_nativeLogRingDump(JNIEnv *env,
   jstring out = (*env)->NewStringUTF(env, dump);
   WWNStringFree(dump);
   return out;
+}
+
+/* Domain SSH sanitize. Rust `wawona_editor_*` owns the rules (#67). */
+extern char *wawona_editor_sanitize_ssh_host(const char *raw);
+extern int wawona_editor_normalize_ssh_port(const char *raw, int fallback);
+extern char *wawona_editor_split_ssh_host_port(const char *raw_host,
+                                               const char *raw_port,
+                                               int fallback);
+extern void wawona_domain_string_free(char *s);
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeSanitizeSshHost(JNIEnv *env,
+                                                                  jobject thiz,
+                                                                  jstring raw) {
+  (void)thiz;
+  const char *own = NULL;
+  const char *c = wwn_jni_cstr(env, raw, &own);
+  char *out = wawona_editor_sanitize_ssh_host(c ? c : "");
+  if (own) {
+    (*env)->ReleaseStringUTFChars(env, raw, own);
+  }
+  jstring js = (*env)->NewStringUTF(env, out ? out : "");
+  if (out) {
+    wawona_domain_string_free(out);
+  }
+  return js;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeNormalizeSshPort(
+    JNIEnv *env, jobject thiz, jstring raw, jint fallback) {
+  (void)thiz;
+  const char *own = NULL;
+  const char *c = wwn_jni_cstr(env, raw, &own);
+  int port = wawona_editor_normalize_ssh_port(c ? c : "", (int)fallback);
+  if (own) {
+    (*env)->ReleaseStringUTFChars(env, raw, own);
+  }
+  return (jint)port;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeSplitSshHostPort(
+    JNIEnv *env, jobject thiz, jstring rawHost, jstring rawPort,
+    jint fallback) {
+  (void)thiz;
+  const char *host_own = NULL;
+  const char *port_own = NULL;
+  const char *host = wwn_jni_cstr(env, rawHost, &host_own);
+  const char *port =
+      rawPort ? wwn_jni_cstr(env, rawPort, &port_own) : NULL;
+  char *out = wawona_editor_split_ssh_host_port(host ? host : "", port,
+                                                (int)fallback);
+  if (host_own) {
+    (*env)->ReleaseStringUTFChars(env, rawHost, host_own);
+  }
+  if (port_own) {
+    (*env)->ReleaseStringUTFChars(env, rawPort, port_own);
+  }
+  jstring js = (*env)->NewStringUTF(env, out ? out : "{\"host\":\"\",\"port\":22}");
+  if (out) {
+    wawona_domain_string_free(out);
+  }
+  return js;
+}
+
+/* Domain profile store. Rust `wawona_profiles_v1_*` owns schema (#67). */
+extern char *wawona_profiles_v1_decode(const char *json);
+extern char *wawona_profiles_v1_put(const char *list_json, const char *profile_json);
+extern char *wawona_profiles_v1_delete(const char *list_json, const char *id);
+extern char *wawona_profiles_v1_validate(const char *profile_json);
+
+static jstring wwn_jni_domain_string_or_null(JNIEnv *env, char *out) {
+  if (!out) {
+    return NULL;
+  }
+  jstring js = (*env)->NewStringUTF(env, out);
+  wawona_domain_string_free(out);
+  return js;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeProfilesV1Decode(
+    JNIEnv *env, jobject thiz, jstring json) {
+  (void)thiz;
+  const char *own = NULL;
+  const char *c = wwn_jni_cstr(env, json, &own);
+  char *out = wawona_profiles_v1_decode(c ? c : "");
+  if (own) {
+    (*env)->ReleaseStringUTFChars(env, json, own);
+  }
+  return wwn_jni_domain_string_or_null(env, out);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeProfilesV1Put(
+    JNIEnv *env, jobject thiz, jstring listJson, jstring profileJson) {
+  (void)thiz;
+  const char *list_own = NULL;
+  const char *prof_own = NULL;
+  const char *list = wwn_jni_cstr(env, listJson, &list_own);
+  const char *prof = wwn_jni_cstr(env, profileJson, &prof_own);
+  char *out = wawona_profiles_v1_put(list ? list : "[]", prof ? prof : "{}");
+  if (list_own) {
+    (*env)->ReleaseStringUTFChars(env, listJson, list_own);
+  }
+  if (prof_own) {
+    (*env)->ReleaseStringUTFChars(env, profileJson, prof_own);
+  }
+  return wwn_jni_domain_string_or_null(env, out);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeProfilesV1Delete(
+    JNIEnv *env, jobject thiz, jstring listJson, jstring id) {
+  (void)thiz;
+  const char *list_own = NULL;
+  const char *id_own = NULL;
+  const char *list = wwn_jni_cstr(env, listJson, &list_own);
+  const char *cid = wwn_jni_cstr(env, id, &id_own);
+  char *out = wawona_profiles_v1_delete(list ? list : "[]", cid ? cid : "");
+  if (list_own) {
+    (*env)->ReleaseStringUTFChars(env, listJson, list_own);
+  }
+  if (id_own) {
+    (*env)->ReleaseStringUTFChars(env, id, id_own);
+  }
+  return wwn_jni_domain_string_or_null(env, out);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_aspauldingcode_wawona_WawonaNative_nativeProfilesV1Validate(
+    JNIEnv *env, jobject thiz, jstring profileJson) {
+  (void)thiz;
+  const char *own = NULL;
+  const char *c = wwn_jni_cstr(env, profileJson, &own);
+  char *out = wawona_profiles_v1_validate(c ? c : "{}");
+  if (own) {
+    (*env)->ReleaseStringUTFChars(env, profileJson, own);
+  }
+  return wwn_jni_domain_string_or_null(env, out);
 }
 
 JNIEXPORT jstring JNICALL

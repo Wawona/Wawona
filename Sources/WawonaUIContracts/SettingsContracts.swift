@@ -58,7 +58,7 @@ public struct ConnectionSettingsState: Sendable, Hashable {
         sshUser: String = "",
         sshPortText: String = "22",
         sshPassword: String = "",
-        waypipeCommand: String = "weston-simple-shm",
+        waypipeCommand: String = "",
         latestDiagnosticsSummary: String = ""
     ) {
         self.waylandDisplay = waylandDisplay

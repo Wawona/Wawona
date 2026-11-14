@@ -37,6 +37,8 @@ extension WWNPreferencesManager {
             let lower = inputProfile.lowercased()
             if ["touchpad", "pointer", "virtual", "trackpad"].contains(lower) {
                 setTouchInputType("Touchpad")
+            } else if ["single-touch", "single touch", "single", "one-finger"].contains(lower) {
+                setTouchInputType("Single Touch")
             } else {
                 setTouchInputType("Multi-Touch")
             }

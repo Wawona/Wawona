@@ -39,32 +39,36 @@ env:
 
 jobs:
   # tip_key isolates from Gate: products / Ship: beta product-build groups.
+  # Filtered rows of the one product matrix (no apple-family on Release).
   product-macos:
     name: "Build: macOS"
-    uses: ./.github/workflows/product-macos-app.yml
+    uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.build_ref || github.event.inputs.tag) || github.sha }}
       tip_key: ship-assets-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      only: macos-app
     permissions:
       contents: read
       id-token: write
 
   product-android:
     name: "Build: Android"
-    uses: ./.github/workflows/product-android-apk.yml
+    uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.build_ref || github.event.inputs.tag) || github.sha }}
       tip_key: ship-assets-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      only: android-apk
     permissions:
       contents: read
       id-token: write
 
   product-appimage:
     name: "Build: Linux AppImages"
-    uses: ./.github/workflows/product-appimage.yml
+    uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.build_ref || github.event.inputs.tag) || github.sha }}
       tip_key: ship-assets-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      only: appimage
     permissions:
       contents: read
       id-token: write

@@ -12,7 +12,7 @@ the apps, archives and wrappers) is Cargo, Xcode and Gradle, driven by
 
 ```
 ┌──────────────────────────────────────────────────┐
-│  Apps: Wawona.xcodeproj, android/ (Gradle)       │
+│  Apps: Exact bun hosts (cargo xtask)             │
 │  cargo xtask build / archive / package           │
 ├──────────────────────────────────────────────────┤
 │  Rust backend: cargo xtask backend <slice>       │
@@ -76,12 +76,10 @@ root `Cargo.toml` names (patched waypipe, coreutils, libghostty).
 
 ## Apps
 
-The committed `Wawona.xcodeproj` and `android/` project are the only app
-projects. `cargo xtask build <target>` runs the target's Xcode scheme or
-Gradle task; `archive` makes the release archive and exports it;
-`package` makes the Mode B `.tipa` and Sileo debs and the macOS DMG.
-Fastlane calls these. CI pins Xcode with `cargo xtask ci select-xcode`
-(Xcode 27 only, never "newest installed").
+Exact `apps/wawona` (bun hosts) is the product Apple/Android surface.
+`cargo xtask build <target>` drives Exact; `archive` writes Exact IPA/AAB;
+`package` makes Mode B tipa/deb and the macOS DMG. Fastlane calls these.
+CI pins Xcode with `cargo xtask ci select-xcode` (Xcode 27 only).
 
 ## Nix products
 
@@ -111,5 +109,5 @@ There is no Nix derivation for an Apple or Android app.
 | `dependencies/wawona/workspace-src.nix` | Cargo workspace assembly for Nix |
 | `deps.lock` | Published slice digests |
 | `xtask/` | Every build verb (`cargo xtask --help`) |
-| `Wawona.xcodeproj/project.xcproj`, `android/app/build.gradle.kts` | The IDE projects |
+| Exact `apps/wawona` + `host/apple` / `host/android` | Product hosts |
 | `wwn-toolchain/dependencies/libs/*/` | Per-library cross-compilation recipes |

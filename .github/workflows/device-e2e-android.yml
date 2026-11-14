@@ -42,9 +42,10 @@ jobs:
   android-apk:
     name: "Android: Wawona.apk"
     if: ${{ !inputs.products_ready }}
-    uses: ./.github/workflows/product-android-apk.yml
+    uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref }}
+      only: android-apk
 
   android-emu-e2e:
     name: "Android emulator: adb runtime smoke"

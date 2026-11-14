@@ -3,8 +3,11 @@
 #   slice.json          the C libraries `cargo xtask backend android` builds against
 #   wawona.properties   wawona.nixDepIncludes / nixDepLibs (CMake)
 #   jniLibs/arm64-v8a   runtime .so files and the lib*_bin.so executables android_jni.c runs
-#   assets/             zsh, xkb, fonts, Weston PNGs, Vulkan ICD, applications catalog
-#   cpp/                shader_spv.h and weston-simple-shm sources (CMake)
+#   assets/             zsh, xkb, fonts, Vulkan ICD, applications catalog
+#   cpp/                shader_spv.h (CMake)
+#
+# Product keep-set only: shell + remote + Relay wasm + iland/ANGLE present.
+# No weston/niri/foot/cubes (optional-software → repo.wawona.io deb/wasm).
 {
   lib,
   pkgs,
@@ -12,58 +15,43 @@
   wawonaSrc,
   androidCC,
   coreutilsAndroid ? null,
-  westonSimpleShmPatchedSrcNix,
-  westonAndroidSignalPolyfill ? null,
-  westonToytoolkitLdflagsNix,
-  westonCompositorLdflagsNix,
   ilandGlAndroidLdflagsNix,
   xtask ? pkgs.buildPackages.callPackage ./xtask.nix { },
 }:
 let
   dep = name: buildModule.buildForAndroid name { };
   libwayland = dep "libwayland";
-  # GL clients: the toytoolkit link and the bundled clients compile against it.
-  weston = buildModule.buildForAndroid "weston" { enableGlClients = true; };
   zsh = dep "zsh";
   fastfetch = dep "fastfetch";
   wasm = dep "wawona-wasm";
   openssh = dep "openssh";
-  foot = (dep "foot").overrideAttrs (old: {
-    # NDK lld treats Darwin-indexed static archives as warnings; Meson's
-    # fatal warnings promote them to link errors.
-    preConfigure = (old.preConfigure or "") + ''
-      if [ -f android-cross-file.txt ]; then
-        sed -i "s|c_link_args = \[|c_link_args = \['-Wl,--no-fatal-warnings', |" android-cross-file.txt || true
-        sed -i "s|cpp_link_args = \[|cpp_link_args = \['-Wl,--no-fatal-warnings', |" android-cross-file.txt || true
-      fi
-    '';
-  });
-  toytoolkit = import ./mobile-toytoolkit-deps.nix { buildFn = buildModule.buildForAndroid; };
   catalog = pkgs.callPackage ../generators/applications-catalog.nix { inherit pkgs lib wawonaSrc; };
-  linked = map dep ([ "waypipe" "zstd" "lz4" "swiftshader" "pixman" "libwayland" "expat" "libffi" "libxml2" "xkbcommon" "openssl" "anowaw" ]
-    ++ lib.attrNames toytoolkit
-    ++ [ "weston" "weston-compositor" "libintl" "iland" "angle" "kmscube" "gbm-es2-demo" "iland-gl-clients" ]);
+  linked = map dep [
+    "waypipe"
+    "zstd"
+    "lz4"
+    "swiftshader"
+    "pixman"
+    "libwayland"
+    "expat"
+    "libffi"
+    "libxml2"
+    "xkbcommon"
+    "openssl"
+    "anowaw"
+    "iland"
+    "angle"
+  ];
   ldflags =
-    import westonToytoolkitLdflagsNix {
-      inherit lib;
-      deps = toytoolkit // { inherit weston; libintl = dep "libintl"; };
-      forceLoadWeston = true;
-      linkMode = "whole_archive";
-    }
-    ++ import westonCompositorLdflagsNix {
-      inherit lib;
-      deps = { weston-compositor = dep "weston-compositor-gl"; inherit libwayland; expat = dep "expat"; };
-      forceLoadCompositor = false;
-      linkMode = "whole_archive";
-    }
-    ++ import ilandGlAndroidLdflagsNix {
+    import ilandGlAndroidLdflagsNix {
       inherit lib;
       deps = {
-        iland = dep "iland"; angle = dep "angle"; kmscube = dep "kmscube"; "iland-gl-clients" = dep "kmscube";
-        "gbm-es2-demo" = dep "gbm-es2-demo"; "opengl-cube" = dep "opengl-cube"; vkcube = dep "vkcube";
+        iland = dep "iland";
+        angle = dep "angle";
       };
     };
-  includes = map (d: "-I${d}/include") linked ++ [ "-I${dep "pixman"}/include/pixman-1" "-I${weston}/include/weston-gen" ];  libs = map (d: "-L${d}/lib") linked ++ ldflags ++ [
+  includes = map (d: "-I${d}/include") linked ++ [ "-I${dep "pixman"}/include/pixman-1" ];
+  libs = map (d: "-L${d}/lib") linked ++ ldflags ++ [
     "-L${wasm}/lib" "-Wl,-u,wawona_wasm_run" "-Wl,-u,wawona_wasm_can_run"
     "-Wl,-u,wawona_wasm_request_interrupt" "-Wl,-u,wawona_wasm_is_running" "-lwawona_wasm" "-Wl,--allow-multiple-definition"
   ];
@@ -72,20 +60,9 @@ let
     inherit lib coreutilsAndroid;
     zshAndroid = zsh;
     fastfetchAndroid = fastfetch;
-    phoonAndroid = dep "phoon";
     wasmAndroid = wasm;
     waypipeAndroid = dep "waypipe";
-    niriAndroid = dep "niri";
-    fuzzelAndroid = dep "fuzzel";
-    footAndroid = foot;
     applicationsCatalog = catalog;
-  };
-  westonData = import ./android-weston-data.nix { inherit lib pkgs; };
-  bundledClients = import ./android-bundled-clients.nix {
-    inherit androidCC;
-    libwaylandAndroid = libwayland;
-    westonAndroid = weston;
-    footAndroid = foot;
   };
   backendLibs = map dep [ "xkbcommon" "libwayland" "zstd" "lz4" "pixman" "openssl" "libffi" "expat" "libxml2" "ffmpeg" ];
   sliceJson = pkgs.writeText "slice.json" (builtins.toJSON {
@@ -135,12 +112,7 @@ pkgs.runCommand "wawona-deps-android" { nativeBuildInputs = [ pkgs.glslang ]; } 
   ${shellTools.preBuildFragment}
   cp -RL ${pkgs.callPackage ../libs/xkb-trimmed.nix { }}/share/X11/xkb/. $out/assets/xkb/
   cp -L ${pkgs.callPackage ../libs/fonts { }}/share/fonts/truetype/*.ttf $out/assets/fonts/truetype/
-  ${westonData.preBuildFragment}
 
-  cp -r ${pkgs.callPackage westonSimpleShmPatchedSrcNix { }} $out/cpp/weston-simple-shm
-  chmod -R u+w $out/cpp
-  ${lib.optionalString (westonAndroidSignalPolyfill != null) "cp ${westonAndroidSignalPolyfill} $out/cpp/weston-simple-shm/wwn-android-signal-polyfill.h"}
-  ${bundledClients.preBuildFragment}
   PATH=${pkgs.buildPackages.glslang}/bin:$PATH ${xtask}/bin/xtask gen android-shaders ${lib.fileset.toSource {
     root = ../..;
     fileset = ../../src/platform/android/rendering/shaders;

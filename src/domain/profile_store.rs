@@ -122,7 +122,7 @@ mod tests {
         let json = r#"[{"id":"x","name":"Mini","type":"native"}]"#;
         let doc = ProfileDocument::from_json(json).unwrap();
         let p = doc.get("x").unwrap();
-        assert_eq!(p.remote_command, "weston-simple-shm");
+        assert_eq!(p.remote_command, "");
         assert_eq!(p.ssh_port, 22);
     }
 }

@@ -3,15 +3,24 @@ use crate::util::*;
 use anyhow::{Context, Result};
 use regex::Regex;
 
-const GRADLE_APP: &str = "android/app/build.gradle.kts";
+/// Exact Android host Gradle (product Compose host under android/app is deleted).
+const GRADLE_APP: &str = "../exact/host/android/app/build.gradle.kts";
 const JNI: &str = "src/platform/android/android_jni.c";
 
 /// wwn-toolchain builds the Android slices with the SDK and NDK in its
-/// sdk-config.nix; Gradle must compile against the same ones.
+/// sdk-config.nix; Exact's Android host must compile against the same ones.
 pub fn config(c: &mut Check, _: &Opts) -> Result<String> {
     let path = output(cmd("nix").current_dir(&c.root).args(["eval", ".#wwnSdkConfigPath", "--raw"]))?;
     let sdk = read(&path)?;
-    let Some(gradle) = c.text(GRADLE_APP) else { return Ok(String::new()) };
+    let gradle_path = c.root.join(GRADLE_APP);
+    let Some(gradle) = (if gradle_path.is_file() {
+        c.text(GRADLE_APP)
+    } else {
+        // Sibling Exact missing in this checkout: skip rather than fail closed.
+        return Ok(format!("{path} (Exact Android Gradle absent; skip pin check)"));
+    }) else {
+        return Ok(String::new());
+    };
     let value = |src: &str, key: &str, quoted: bool, sep: &str| -> Result<String> {
         let pat = if quoted { format!(r#"{key}\s*{sep}\s*"([^"]+)""#) } else { format!(r"{key}\s*{sep}\s*([0-9]+)") };
         Regex::new(&pat)?.captures(src).map(|m| m[1].to_string()).with_context(|| format!("missing {key}"))
@@ -113,7 +122,7 @@ pub fn meson_sandbox(c: &mut Check, _: &Opts) -> Result<String> {
 }
 
 pub fn shell_tools(c: &mut Check, _: &Opts) -> Result<String> {
-    flake_outputs(c, &["zsh-android", "fastfetch-android", "phoon-android", "waypipe-android"]);
+    flake_outputs(c, &["zsh-android", "fastfetch-android", "waypipe-android"]);
     let nix: String = ["dependencies/wawona/android-deps.nix", "dependencies/wawona/android-shell-tools.nix"]
         .iter()
         .filter_map(|r| c.text(r))
@@ -121,11 +130,9 @@ pub fn shell_tools(c: &mut Check, _: &Opts) -> Result<String> {
     for n in [
         "zshAndroid",
         "fastfetchAndroid",
-        "phoonAndroid",
         "waypipeAndroid",
         "libzsh_bin.so",
         "libfastfetch_bin.so",
-        "libphoon_bin.so",
         "libwaypipe_bin.so",
         "ssh:ssh",
         "ssh-keygen:ssh_keygen",
@@ -135,17 +142,25 @@ pub fn shell_tools(c: &mut Check, _: &Opts) -> Result<String> {
             c.fail(format!("Android recipes missing shell-tool wiring: {n}"));
         }
     }
-    for n in ["dropbearconvert", "libdropbearconvert_bin.so"] {
+    for n in [
+        "dropbearconvert",
+        "libdropbearconvert_bin.so",
+        "niriAndroid",
+        "westonAndroid",
+        "libniri_bin.so",
+        "libweston",
+        "forceLoadWeston",
+    ] {
         if nix.contains(n) {
-            c.fail(format!("Android recipes must not ship Dropbear leftover: {n}"));
+            c.fail(format!("Android product deps must not ship optional Wayland leftover: {n}"));
         }
     }
     c.need(
         JNI,
-        &["libzsh_bin.so", "libwaypipe_bin.so", "libphoon_bin.so", "StrictHostKeyChecking=accept-new"],
-        "the JNI shell resolves and installs the bundled tools and uses OpenSSH argv",
+        &["libzsh_bin.so", "libwaypipe_bin.so", "StrictHostKeyChecking=accept-new"],
+        "the JNI shell resolves and installs the keep-set tools and uses OpenSSH argv",
     );
-    Ok("OpenSSH portable; no Dropbear".into())
+    Ok("OpenSSH portable; no Dropbear; no weston/niri".into())
 }
 
 /// The checklist and the signatures `cargo xtask ci baseline` classifies.

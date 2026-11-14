@@ -183,7 +183,8 @@ public final class WawonaPreferences: ObservableObject {
     @Published public var sshKeyType: String = "ed25519"
     @Published public var waypipeSSHPassword: String = ""
     @Published public var logLevel: String = "info"
-    /// Canonical values: "Multi-Touch" or "Touchpad" (matches ObjC TouchInputType).
+    /// Canonical values: "Multi-Touch", "Single Touch", or "Touchpad"
+    /// (`HostSeatMode` 0 / 1 / 2).
     @Published public var defaultInputProfile: String = "Multi-Touch"
 
     /// Map legacy labels ("direct", "multitouch", …) onto TouchInputType.
@@ -193,6 +194,8 @@ public final class WawonaPreferences: ObservableObject {
         switch trimmed.lowercased() {
         case "touchpad", "pointer", "virtual", "virtual-pointer", "trackpad":
             return "Touchpad"
+        case "single-touch", "single touch", "single", "one-finger":
+            return "Single Touch"
         default:
             // "Multi-Touch", "multi-touch", "direct", "multitouch", …
             return "Multi-Touch"
@@ -659,7 +662,7 @@ public final class WawonaPreferences: ObservableObject {
             ),
             sshPassword: profile.sshPassword.isEmpty ? sshPassword : profile.sshPassword,
             waypipeSSHPassword: normalizedWaypipePassword.isEmpty ? waypipeSSHPassword : normalizedWaypipePassword,
-            remoteCommand: normalizedCommand.isEmpty ? "weston-simple-shm" : normalizedCommand,
+            remoteCommand: normalizedCommand,
             waypipeEnabled: resolvedWaypipeEnabled,
             bundledAppID: normalizedBundledApp.isEmpty ? defaultBundledAppID : normalizedBundledApp,
             inputProfile: normalizedInputProfile,

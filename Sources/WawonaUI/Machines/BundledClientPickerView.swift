@@ -2,8 +2,8 @@ import SwiftUI
 import WawonaModel
 
 /// Wayland software list for native machine profiles.
-/// Installed debs + wpm wasm first. In-app keep-set clients follow while unlink
-/// is incomplete. Store builds never list APT. See `wawona-optional-software`.
+/// Installed debs + wpm wasm first, then product keep-set (Native Shell / wasm).
+/// Store builds never list APT. See `wawona-optional-software`.
 struct BundledClientPickerView: View {
     @Binding var selection: String
     let clients: [ClientLauncher]

@@ -60,12 +60,13 @@ See [docs/compilation.md](../docs/compilation.md) for the full contributor workf
 
 ## Project dependencies
 
-`Wawona.xcodeproj` and the Gradle project (`settings.gradle.kts`) are committed.
-What they read that is not in git, `nix run .#deps -- <sdk>...` links into `.deps/`:
+Product Apple/Android hosts are Exact (`../exact/apps/wawona`). Slices that
+Exact links via `WAWONA_LINK_ARGS` land under `.deps/` from
+`cargo xtask deps get` (or `nix run .#deps -- <sdk>...`):
 
 ```bash
-nix run .#deps -- macosx iphonesimulator   # Apple slices (Xcode PLATFORM_NAME)
-nix run .#deps -- android                  # .deps/android for Android Studio / ./gradlew
+cargo xtask deps get macosx iphonesimulator   # Apple slices for Exact bun host
+cargo xtask deps get android                  # .deps/android for Exact Android host
 ```
 
 ## Key Concepts
@@ -74,4 +75,4 @@ nix run .#deps -- android                  # .deps/android for Android Studio / 
 |-----------|---------|
 | `wawona/` | Final apps, Rust backends, mobile dep factory |
 | `clients/` | Wawona-specific shell/tools wrappers |
-| `generators/` | Xcode/Gradle project generation (imports ldflags from wwn-* via flake) |
+| Exact `apps/wawona` | Product Contract chrome + Present NativeView |

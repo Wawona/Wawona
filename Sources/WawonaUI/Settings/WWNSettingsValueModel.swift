@@ -464,7 +464,7 @@ final class WWNSettingsValueModel: ObservableObject {
 
     func placeholder(for item: WWNSettingItem) -> String? {
         let key = itemKey(item)
-        if key == "WaypipeRemoteCommand" { return "e.g. weston-simple-shm" }
+        if key == "WaypipeRemoteCommand" { return "e.g. foot (installed)" }
         if key.contains("Host") { return "Remote host address" }
         if key.contains("User") { return "SSH username" }
         if key.contains("Path") { return "Enter path..." }
@@ -548,7 +548,7 @@ final class WWNSettingsValueModel: ObservableObject {
         case "SSHKeyPassphrase", "WaypipeSSHKeyPassphrase": return "Passphrase"
         case "WaypipeTitlePrefix": return "e.g. Remote:"
         case "WaypipeSecCtx": return "e.g. default"
-        case "RemoteCommand", "SSHCommand": return "e.g. weston-simple-shm"
+        case "RemoteCommand", "SSHCommand": return "e.g. foot (installed)"
         default: return ""
         }
     }

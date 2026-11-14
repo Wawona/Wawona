@@ -24,6 +24,23 @@ the Xcode prebuild phase before the product can be archived or uploaded. Bump
 `VERSION`, `Cargo.toml`, and the Wawona package entry in `Cargo.lock` together,
 then rerun the product gate. Do not bypass this check for a fresh release tip.
 
+## Day-to-day efficiency (P4)
+
+- **Local before Gate: products.** Prove link/UI locally (`cargo xtask build|tip`,
+  Exact `build.mjs`). Do not burn the queue on discoverable failures
+  (`wawona-local-before-ci`).
+- **Tip app for tests.** Appium / agent-device / sim smoke use
+  `cargo xtask tip <platform>` stamps. Never `/Applications/Wawona.app`
+  (`wawona-test-tip-app`).
+- **Appium on GH Mode A UI.** Not agent-device on runners (`wawona-appium-ui-gh`).
+- **Never cancel tip gates.** Soft supersede handles obsolete SHAs
+  (`wawona-ci-no-cancel`).
+- **ASC/Play.** Fastlane `app-store-connect` export + SwiftSupport asserts;
+  CalVer today. Mode B never via Ship: beta.
+- **Compile path.** `cargo xtask deps get` + `cargo xtask build|tip` + Exact
+  `build.mjs`. Nix stays L0/L1 slices + Linux CI (#68 track), not a second
+  Apple/Android app generator.
+
 ## How to read CI (10 seconds)
 
 1. Open the run.
@@ -88,7 +105,7 @@ Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). 
 | **Gate: wasm-wayland** (`wasm-wayland.yml`) | path filter push/PR | path filter push/PR | Wawona Runtime wiring + Weston headless SHM smoke against locked `wwn-wasm` (not a promote blocker) |
 | **Verification** (`verify-all.yml`) | push + PR | push + PR | Helpers / formal / vectors. Required ruleset check **Verification report**. Soft supersede on non-tip |
 | **Gate: products** (`device-gate.yml`) | path filter push | path filter push | Full matrix: iOS + **apple-family** (iPadOS/tvOS/watchOS/visionOS) + macOS + Android + AppImages + GUI smoke. Soft supersede on non-tip |
-| **Build: products** (`product-*.yml` / `product-build.yml`) | via Gate: products / Ship | via gate / Ship: GitHub assets | Thin per-platform producers (`product-ios-sim.yml`, â¦). `product-build.yml` dispatches slices for manual runs. Uses [setup-nix-flakehub](../.github/actions/setup-nix-flakehub/action.yml) |
+| **Build: products** (`product-build.yml`) | via Gate: products / Ship | via gate / Ship: GitHub assets | One matrix over [`.github/ci-product-matrix.json`](../.github/ci-product-matrix.json). Apple/Android: `cargo xtask`; AppImage: `nix build .#wawona-appimage`. Ship workflows rename and upload. |
 | **Build: GUI smoke** (`device-e2e-*.yml`) | via Gate: products (`products_ready`) | via gate | Runtime smokes use **platform tools** on runners: iOS `simctl`, Android `adb`/`uiautomator`, macOS compositor-host script. **No agent-device CLI in Gate.** Agent-device stays for local/lab/vphone. |
 | **Watch: graphics nightly** (`nightly-full-matrix.yml`) | schedule / dispatch | - | Graphics + protocol drift + Weston/XWayland capability (does **not** re-run Gate: products) |
 | **Watch: TestFlight feedback** (`testflight-feedback.yml`) | schedule / dispatch | schedule / dispatch | Poll ASC TestFlight screenshot/crash feedback â GitHub issues (PII stripped). `release-beta` secrets. Not a promote gate |
@@ -153,16 +170,16 @@ Promote only cares about a **success** tip Gate: products (full matrix), Gate: p
 1. Least privilege (`contents: read`; `id-token: write` only for FlakeHub Cache / publish).
 2. `timeout-minutes` on every job.
 3. Nix builds use [`.github/actions/setup-nix-flakehub`](../.github/actions/setup-nix-flakehub/action.yml) (Determinate + FlakeHub Cache).
-4. One producer per product artifact (thin `product-*.yml` slices; `product-build.yml` is a dispatcher for manual/legacy callers).
+4. One producer: `product-build.yml` matrix over [`.github/ci-product-matrix.json`](../.github/ci-product-matrix.json). Ship workflows only rename and upload.
 5. Path filters skip Darwin on docs-only tips; product-path tips rebuild the **full** product matrix.
 6. FlakeHub **Cache** on build jobs; FlakeHub **registry publish** is tags/dispatch only.
 
 ### Skipped jobs (what is still OK)
 
-Gate: products calls **one thin workflow per platform** (`product-ios-sim.yml`,
-`device-e2e-android.yml`, â¦). Those files only contain jobs that run for that
-platform. You should **not** see dozens of `Build: Android / macOS .app` skips
-or raw `${{ matrix.label }}` names.
+Gate: products calls **one product matrix** (`product-build.yml`). Apple and
+Android rows run `cargo xtask`; AppImage rows run `nix build .#wawona-appimage`
+(`mkProduct` in `dependencies/wawona/products.nix`). You should **not** see
+dozens of per-platform skip spam from deleted thin `product-*.yml` files.
 
 Expected skips that remain:
 
@@ -194,17 +211,30 @@ on the previous SHA. Until such a path is added, exercise the fix with
 
 ## Single-build product pipeline
 
-Pure ship/test binaries are built **once per SHA** by [`product-build.yml`](../.github/workflows/product-build.yml) (**Build: products**):
+Pure ship/test binaries are built **once per SHA** by
+[`product-build.yml`](../.github/workflows/product-build.yml) (**Build:
+products**) from one matrix:
+[`.github/ci-product-matrix.json`](../.github/ci-product-matrix.json).
+Apple / Android rows run `cargo xtask build`. Linux AppImage rows run
+`nix build .#wawona-appimage` via `mkProduct` in
+[`dependencies/wawona/products.nix`](../dependencies/wawona/products.nix).
+Ship workflows only rename and upload. Thin per-platform `product-*.yml`
+producers are gone.
 
-| Artifact | Attr | Consumers |
+| Artifact | Build | Consumers |
 |----------|------|-----------|
-| `product-ios-sim` | `.#wawona-ios` | Build: GUI smoke, Watch: idle memory |
-| `product-android-apk` | `.#wawona-android` | Build: GUI smoke (android-emu downloads it directly. No `wawona-apk` hop), Watch: idle memory, Ship: GitHub assets |
-| `product-macos-app` | `.#wawona-macos` | Build: GUI smoke, Watch: idle memory, Ship: GitHub assets (DMG wrap). Mode A only. **must not** ship `libwayland-mac.dylib` |
-| `wawona-macos-desktop-host` | `.#wawona-macos-desktop-host` | Developer ID / Desktop Replacement Mode B. Assert dylib present via `cargo xtask artifact mode-b` |
-| `product-appimage-<system>` | `.#wawona-appimage` | Ship: beta AppImages (reused cross-run via `workflow_run`, not rebuilt), Ship: GitHub assets |
+| `product-ios-sim` | `cargo xtask build ios` | Build: GUI smoke, Watch: idle memory |
+| `product-*-sim` (iPadOS / tvOS / watchOS / visionOS) | `cargo xtask build <target>` | Gate: products matrix |
+| `product-ios-modeb` | `cargo xtask package ios-mode-b` | Mode B tipa / Sileo debs |
+| `product-android-apk` | `cargo xtask build android` | Build: GUI smoke, Watch: idle memory, Ship: GitHub assets |
+| `product-macos-app` | `cargo xtask build macos` | Build: GUI smoke, Watch: idle memory, Ship: GitHub assets (DMG wrap). Mode A present + Mode B dylib on macOS |
+| `product-macos-desktop-host` | same macOS app (Mode B assert) | Developer ID / Desktop Replacement Mode B. Assert dylib present via `cargo xtask artifact mode-b` |
+| `product-appimage-<system>` | `nix build .#wawona-appimage` (`mkProduct`) | Ship: beta AppImages (reused cross-run via `workflow_run`, not rebuilt), Ship: GitHub assets |
 
-Helpers: `cargo xtask ci fetch-product`.
+Helpers: `cargo xtask ci fetch-product`. Filter with
+`workflow_dispatch` / `workflow_call` input `only`
+(`all` \| `ios-sim` \| `ios-modeb` \| `apple-family` \| `android-apk` \|
+`macos-app` \| `appimage`).
 
 Signed IPA/AAB remain **impure** Fastlane/Release steps (secrets; match + gym for Apple IPAs); they reuse FlakeHub-warmed pure intermediates (Rust via `cargo xtask xcode prebuild`).
 

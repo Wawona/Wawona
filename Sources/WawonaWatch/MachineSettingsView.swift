@@ -165,12 +165,13 @@ struct MachineSettingsView: View {
             }
             Picker("Touch Input Type", selection: touchInputTypeBinding) {
                 Text("Multi-Touch").tag("Multi-Touch")
+                Text("Single Touch").tag("Single Touch")
                 Text("Touchpad").tag("Touchpad")
             }
             .pickerStyle(.navigationLink)
             WatchMachineHelpRow(
                 title: "Touch Input Help",
-                detail: "Multi-Touch is required for many Wayland clients, including Weston panels and terminals. Touchpad uses a virtual pointer."
+                detail: "Multi-Touch is required for many Wayland clients, including Weston panels and terminals. Single Touch caps one contact and also drives the pointer. Touchpad uses a virtual pointer."
             )
             Toggle("Resize Display for Virtual Keyboard", isOn: resizeDisplayForVirtualKeyboardBinding)
         }

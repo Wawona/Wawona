@@ -670,7 +670,7 @@ pub fn build_editor_view(
             };
             let remote_command = if remote_command.is_empty() {
                 if is_waypipe {
-                    "weston-simple-shm".to_string()
+                    String::new()
                 } else {
                     String::new()
                 }

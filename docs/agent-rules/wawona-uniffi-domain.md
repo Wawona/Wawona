@@ -76,6 +76,15 @@ validation. Hosts persist the blob. Apple `WawonaModel` wraps via
 `wawona_profiles_v1_*` until generated UniFFI Swift is imported. Then
 launcher, wasm, session.
 
+**Second slice (landed):** when the native library is linked, Apple and Android
+profile load/put/delete fail closed through rust (`wawona_profiles_v1_*` /
+JNI). Codable / Kotlin data classes are adapters only. Android-only UI fields
+ride in `hostUiBlob`. Gate: `cargo xtask verify profile-schema-lift`.
+
+**Still open for #67 close:** import generated UniFFI `MachineProfile` as the
+in-memory type on Apple and Android (delete field ownership from Codable /
+Kotlin mirrors).
+
 Keep `wawona.machineProfiles.v1` JSON keys byte-compatible so old profiles
 still load.
 

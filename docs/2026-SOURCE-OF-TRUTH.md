@@ -41,14 +41,13 @@ Build targets per platform: [`testing/everywhere-matrix.md`](./testing/everywher
 
 ## X11 story (authoritative)
 
-Wawona has **no local X server** on any platform. X11 clients are served via:
-
-1. **Remote XWayland over waypipe** (`waypipe --xwls`). Primary, App Store safe.
-2. **Nested-Weston XWayland**. Only on non-store macOS builds (nested Weston can
-   spawn its own Xwayland).
-
-`xwayland_shell_v1` + `zwp_xwayland_keyboard_grab_manager_v1` are advertised so a
-remote/nested Xwayland can attach. Details: [`2026-x11-strategy.md`](./2026-x11-strategy.md).
+Wawona never ships full **Xorg** / **XQuartz**. In-compositor X11 =
+**`xwayland-satellite` only**. Peer-side remote X via `waypipe --xwls` stays
+a store-safe convenience on the SSH peer, not the in-compositor path.
+Nested-Weston XWayland remains non-store macOS only (prefer migrate to
+satellite). Protocols: `xwayland_shell_v1` +
+`zwp_xwayland_keyboard_grab_manager_v1`. Details:
+[`2026-x11-strategy.md`](./2026-x11-strategy.md).
 
 ## Settings inventory (drift control)
 
@@ -65,6 +64,24 @@ remote/nested Xwayland can attach. Details: [`2026-x11-strategy.md`](./2026-x11-
 - Settings semantics: [`settings.md`](./settings.md).
 - Desktop / LockScreen / Mode B keys and SIP gates:
   [`iland-mode-a-b-desktop.md`](./iland-mode-a-b-desktop.md).
+
+## Cross-platform UI contracts (#67)
+
+One presentation source + one domain source. Do not revive YAML UI codegen.
+
+| Layer | Owner |
+|---|---|
+| Machines / Settings chrome (labels, sections, tabs, a11y) | Exact Contract: sibling `exact/apps/wawona/app.contract` → Exact hosts |
+| Schema, store, SSH sanitize, editor validate | Rust `src/domain` + UniFFI / C trampolines (`wawona-uniffi-domain`) |
+| CloudKit / Present / rootfs | Native seams |
+
+Platform list: root [`platforms.json`](../platforms.json) (`ALL_TARGETS`).
+Close map: `exact/apps/wawona/docs/issue-67-exact-path.md`. Dual-run until
+M8: [`agent-rules/wawona-exact-dual-run.md`](./agent-rules/wawona-exact-dual-run.md)
+(Exact chrome forward path; product SwiftUI / Compose oracle). Live Android
+SSH sanitize goes through JNI → `wawona_editor_*` when `libwawona.so` is
+loaded; Apple uses `MachineProfileDomain` → the same rust. Frozen
+Kotlin/Swift mirrors stay analyzer / tip-ahead only.
 
 ## Related canonical docs
 

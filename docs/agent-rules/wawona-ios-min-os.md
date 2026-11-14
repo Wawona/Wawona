@@ -1,84 +1,51 @@
 # iOS minimum OS and latest SDK
 
-User decision, 2026-11-10: Wawona builds with Xcode 27 and SDK 27 only.
-Xcode 27 accepts iOS deployment targets from **15.0**, so every Wawona
-iOS/iPadOS app (App Store, TestFlight, Sileo `.deb`, TrollStore `.tipa`,
-simulator) targets 15.0. iOS 13 and 14 can no longer be built and are not
-supported. This supersedes the 2026-09-30 13.0 policy and older skill text.
+## Exact product floor (2026-11-14 cutover)
 
-Use the latest installed iPhoneOS SDK. When a newer SDK is available,
-validate it and use it. Never downgrade the SDK to reach an older minimum.
-"15 through 27+" is a compatibility objective, not proof that untested or
-future systems work.
+The **shipping** Apple-mobile binary is Exact `apps/wawona` assembled by
+`bun host/apple/build.mjs` / `cargo xtask archive ios`. Exact
+`host.ios.minimumOS` is **17.0**. Product IPA / TestFlight / App Store
+therefore floors at **iOS 17.0**. Bundle id stays `com.aspauldingcode.Wawona`
+(Exact `app.json`).
+
+Rust backend slices (`xtask/src/slices.rs`) and L0 archives may still compile
+at a lower Mach-O min so they link into Exact; they must not raise the Exact
+host floor.
+
+## Legacy dual-run note
+
+Before Exact product ship, SwiftUI dual-run apps targeted **15.0** against the
+iPhoneOS 27 SDK. That floor applied to `Wawona.xcodeproj` (deleted). Do not
+revive a 15.0 Xcode product project to "support iOS 15".
 
 ## Build contract
 
-- `Wawona.xcodeproj` sets `IPHONEOS_DEPLOYMENT_TARGET = 15.0` on every iOS
-  target, and `xtask/src/slices.rs` builds the iphoneos, iphoneos-modeb and
-  iphonesimulator Rust slices at 15.0. One Mode B build serves the TrollStore
-  `.tipa` and both Sileo `.deb`s (`Depends: firmware (>= 15.0)`).
-- `cargo xtask xcode prebuild` builds the backend at the slice minimum and
-  takes nothing from the environment that could raise it.
-- L0 `wwn-toolchain/dependencies/apple/default.nix` still builds dependency
-  archives at 13.0. An archive with an older minimum links into a 15.0 app;
-  one with a newer minimum than 15.0 must not be linked.
-- tvOS, watchOS, visionOS and macOS retain their own deployment targets.
-- Local dependency changes require an updated published pin or explicit local
-  input override before a consumer can claim to have built those changes.
-
-C flags and Meson `c_args` do not apply to `.m` / `.mm`. CMake must set
-`CMAKE_OBJC_FLAGS` / `CMAKE_OBJCXX_FLAGS` with the same
-`-miphoneos-version-min` as C. Meson cross files must set `objc_args` /
-`objcpp_args` the same way. Without that, clang targets the iPhoneOS SDK.
-It emits `_objc_release_xN`, which `libobjc` does not provide before iOS
-16, and dyld aborts on iOS 15. The check lives in `wwn-toolchain` CI.
+- Exact `apps/wawona/app.json` `host.ios.minimumOS` = `17.0`.
+- `cargo xtask deps get` / `backend` stage `.deps` + `.build/backend` for Exact
+  `WAWONA_LINK_ARGS`.
+- Use the latest installed iPhoneOS SDK (Xcode 27). Never downgrade the SDK.
+- tvOS, watchOS, visionOS and macOS retain Exact host deployment targets.
+- Mode B tipa/deb: Exact or `cargo xtask package` over Exact device build; ldid
+  on the Exact `.app`. Document `Depends: firmware (>= 17.0)` when packaging.
 
 ## Renderer and UI
 
-Use one native static ANGLE/Metal and one native static MoltenVK/Metal set.
-EGL and GLES go through ANGLE to Metal. Vulkan goes through MoltenVK to Metal.
-Runtime Metal feature policy stays in Rust. Swift in `Sources/WawonaApple`
-fills capabilities and bridges native APIs. No Objective-C product classes.
-
-SwiftUI APIs added after iOS 15 still need guarded use or a functional
-backport (`WawonaBackport`). Machine creation, per-machine RAM and storage
-settings, launch and lifecycle must work on the supported range.
+One native static ANGLE/Metal and one MoltenVK/Metal set when linked.
+Present is Exact `wayland-present` NativeView (`modules/apple/Present.swift`)
+plus `libwawona` when linked. No Objective-C product classes.
 
 ## Distribution channels
 
-All iOS binaries target 15.0. App Store Mode A stays no Cranelift, no
-`MAP_JIT`, no Hypervisor, no private Metal/IOMFB APIs, and no QEMU. iOS 27+
-Mode A Wasm may use Wasmer WASIX in WebKit. TrollStore and Sileo retain their
-separate installation and entitlement contracts. A deployment target does not
-extend TrollStore's installer window or the iOS Hypervisor window.
-`cargo xtask artifact ios` requires 15.0 on the app, the tipa and the Sileo
-executables.
-
-Compile success, device operation, App Store processing and review are
-separate gates. Do not describe the whole range or store acceptance as
-verified without evidence for the actual artifact.
+Exact IPA is Mode A store path. TrollStore / Sileo Mode B remain separate
+artifacts from `cargo xtask package`, never mixed into ASC uploads.
 
 ## Verification
 
-Audit linked Mach-O load commands and embedded framework minima in final
-artifacts. Exercise machine creation, settings, guest launch, graphics, input
-and background/resume on representative iPhone/iPad releases and hardware.
-Record failures explicitly.
+Audit Exact IPA load commands and ASC asserts (`assert_no_loose_dylibs!`,
+`assert_ipa_has_swift_support!`). Exercise Machines Start → Present surface
+(`wwn.compositor.surface`) on iOS 17+ simulators/devices.
 
 ## Ownership
 
-Toolchain: `wwn-toolchain`. Graphics recipes: `iLand`. App and UI: `Wawona`.
-Relay stays Rust and uses the floor supplied by its consuming toolchain.
-
-## App Store linkage
-
-App Store and TestFlight IPAs do not ship a product `.dylib`. Link static
-archives. Apple's `libswift*` / SwiftSupport is the store exception. macOS
-Desktop Mode B `libwayland-mac.dylib` stays in `.#wawona-macos-desktop-host`
-only. Do not rewrite `LC_BUILD_VERSION` to change an archive's minimum.
-
-Wawona Terminal grid is **libghostty-rs** from `github.com/Wawona/Terminal`
-(flake `terminal`), a static archive. UniFFI is the product contract. Never
-link published GhosttyKit (iOS 17). Never ship a product Terminal `.dylib` in
-store IPA. Shell backends: `wawona-terminal-shell-backend`. Rule:
-`wawona-ghostty-host`.
+Toolchain: `wwn-toolchain`. Graphics: `iLand`. Chrome: Exact. Glue: Wawona
+`cargo xtask` + Present module. Relay stays Rust.

@@ -5,8 +5,14 @@
 
 use serde::Serialize;
 
-/// Bundled client ids accepted by `--client` / `--list-clients`.
+/// Client ids accepted by `--client` / `--list-clients`.
+/// Keep-set plus known optional-software names (resolve from PATH / apt / wpm;
+/// not shipped inside the product bundle).
 pub const BUNDLED_CLIENT_IDS: &[&str] = &[
+    "wawona-shell",
+    "wawona-wasm",
+    "hello-wasi-gui",
+    "fastfetch",
     "weston",
     "niri",
     "weston-simple-egl",
@@ -17,12 +23,9 @@ pub const BUNDLED_CLIENT_IDS: &[&str] = &[
     "vkcube",
     "kmscube",
     "neovim",
-    "fastfetch",
     "phoon",
     "fuzzel",
     "gbm-es2-demo",
-    "wawona-wasm",
-    "hello-wasi-gui",
 ];
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

@@ -168,7 +168,7 @@ pub fn machine_configuration_summary(profile: &MachineProfile) -> String {
         ),
         MachineType::SshWaypipe => {
             let command = if profile.remote_command.is_empty() {
-                "weston-simple-shm"
+                "(unset)"
             } else {
                 &profile.remote_command
             };
@@ -453,7 +453,7 @@ mod tests {
         assert_eq!(machine_scope_label(ssh.machine_type), "Remote");
         assert_eq!(
             machine_configuration_summary(&ssh),
-            "Waypipe command: weston-simple-shm"
+            "Waypipe command: (unset)"
         );
     }
 }

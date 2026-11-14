@@ -41,9 +41,12 @@ public func WWNRefreshHostSeatForConnectedScreens() {
         return
     }
     let type = WWNPreferencesManager.sharedManager().touchInputType()
-    if type == "Touchpad" {
+    switch type {
+    case "Touchpad":
         bridge.setHostSeatMode(2)
-    } else {
+    case "Single Touch":
+        bridge.setHostSeatMode(1)
+    default:
         bridge.setHostSeatMode(0)
     }
 }

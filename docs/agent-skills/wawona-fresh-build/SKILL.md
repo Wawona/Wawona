@@ -14,11 +14,9 @@ first. `cargo xtask <verb> --help` names every flag.
 # Slices once per checkout (a stale one refetches)
 cargo xtask deps get macosx iphonesimulator android
 
-# IDEs: open Wawona.xcodeproj (scheme Wawona-macOS, Wawona-iOS, ...) or android/, then Run
-
-# Same projects from a shell
+# Exact bun product hosts (no Wawona.xcodeproj / root Gradle)
 cargo xtask build macos
-cargo xtask build ios            # simulator; --device for a phone
+cargo xtask build ios            # simulator; archive ios for device IPA
 cargo xtask build android
 
 # Tip for agent-device / Appium after product edits

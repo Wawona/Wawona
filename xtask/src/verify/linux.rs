@@ -144,10 +144,15 @@ pub fn package_wiring(c: &mut Check, _: &Opts) -> Result<String> {
 pub fn shell_tools(c: &mut Check, _: &Opts) -> Result<String> {
     c.need(
         "dependencies/wawona/linux.nix",
-        &["pkgs.zsh", "pkgs.fastfetch", "pkgs.weston", "pkgs.foot", "pkgs.kmscube", "pkgs.waypipe", "pkgs.openssh"],
-        "runtimeInputs the launcher spawns",
+        &["pkgs.zsh", "pkgs.fastfetch", "pkgs.waypipe", "pkgs.openssh"],
+        "keep-set runtimeInputs the launcher spawns",
     );
-    Ok("shell and client runtimes".into())
+    c.forbid(
+        "dependencies/wawona/linux.nix",
+        &["pkgs.weston", "pkgs.foot", "pkgs.kmscube", "westonSimpleShm"],
+        "optional Wayland clients are not product runtimeInputs",
+    );
+    Ok("shell keep-set runtimes".into())
 }
 
 /// Every patched dependency builds against one nixpkgs so source hashes

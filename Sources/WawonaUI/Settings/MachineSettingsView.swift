@@ -455,7 +455,7 @@ public struct MachineSettingsView: View {
                     .textContentType(.password)
             }
             NativeSettingsRow("Remote Command") {
-                WawonaTextField("", text: remoteCommandBinding, prompt: Text("e.g. weston-simple-shm"))
+                WawonaTextField("", text: remoteCommandBinding, prompt: Text("e.g. foot (installed)"))
                     .labelsHidden()
                     .wawonaTextFieldNoAutocaps()
                     .autocorrectionDisabled()
@@ -506,10 +506,11 @@ public struct MachineSettingsView: View {
             #else
             NativeSettingsRow(
                 "Touch Input",
-                help: "Multi-Touch sends native Wayland touch events and is required for many Wayland clients, including Weston panels and terminals. Touchpad uses a virtual pointer."
+                help: "Multi-Touch sends native Wayland touch events and is required for many Wayland clients, including Weston panels and terminals. Single Touch caps one contact and also drives the pointer. Touchpad uses a virtual pointer."
             ) {
                 Picker("", selection: touchInputTypeBinding) {
                     Text("Multi-Touch").tag("Multi-Touch")
+                    Text("Single Touch").tag("Single Touch")
                     Text("Touchpad").tag("Touchpad")
                 }
                 .labelsHidden()

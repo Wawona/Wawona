@@ -1,5 +1,5 @@
 {
-  "description": "Curated Gate: packages package matrix. Products are cargo xtask builds in the product-*.yml workflows, and deps.yml builds the prebuilt slices. See docs/ci.md.",
+  "description": "Curated Gate: packages package matrix. Products are the one matrix in product-build.yml (.github/ci-product-matrix.json); deps.yml builds the prebuilt slices. See docs/ci.md.",
   "include": [
     {
       "system": "aarch64-darwin",

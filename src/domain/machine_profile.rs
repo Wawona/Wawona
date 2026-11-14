@@ -418,6 +418,15 @@ pub struct MachineProfile {
         rename = "vmSettings"
     )]
     pub vm_settings: Option<VirtualMachineSettings>,
+    /// Host-private UI bag (Android flat waypipe / settingsOverrides during
+    /// schema lift). Opaque JSON string. Rust does not interpret it. Apple
+    /// leaves this unset. Removed once hosts import UniFFI records end-to-end.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "hostUiBlob"
+    )]
+    pub host_ui_blob: Option<String>,
 }
 
 impl Default for MachineProfile {
@@ -445,6 +454,7 @@ impl MachineProfile {
             runtime_overrides: MachineRuntimeOverrides::default(),
             container_settings: None,
             vm_settings: None,
+            host_ui_blob: None,
         }
     }
 
@@ -568,7 +578,7 @@ fn default_ssh_port() -> i32 {
 }
 
 fn default_remote_command() -> String {
-    "weston-simple-shm".to_string()
+    String::new()
 }
 
 /// Machines every product shows on a first launch.
@@ -778,6 +788,19 @@ mod tests {
     }
 
     #[test]
+    fn host_ui_blob_round_trips() {
+        let mut p = MachineProfile::new("Android bag");
+        p.host_ui_blob = Some(r#"{"waypipeCompress":"lz4"}"#.into());
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("hostUiBlob"), "{json}");
+        let back: MachineProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.host_ui_blob.as_deref(),
+            Some(r#"{"waypipeCompress":"lz4"}"#)
+        );
+    }
+
+    #[test]
     fn virtual_machine_settings_round_trip_with_swift_keys() {
         let settings = VirtualMachineSettings {
             provider: Some("relay".into()),
@@ -813,7 +836,7 @@ mod tests {
         assert_eq!(decoded.name, "Mini");
         assert_eq!(decoded.machine_type, MachineType::Native);
         assert_eq!(decoded.ssh_port, 22);
-        assert_eq!(decoded.remote_command, "weston-simple-shm");
+        assert_eq!(decoded.remote_command, "");
         assert_eq!(decoded.ssh_auth_method, 0);
         assert!(decoded.launchers.is_empty());
         assert!(!decoded.favorite);

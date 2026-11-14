@@ -57,39 +57,11 @@
       "version": "9.9p2"
     },
     {
-      "license": "MIT",
-      "name": "Weston",
-      "role": "Bundled nested compositor",
-      "url": "https://gitlab.freedesktop.org/wayland/weston",
-      "version": "14"
-    },
-    {
-      "license": "GPL-3.0-or-later",
-      "name": "Niri",
-      "role": "Bundled nested compositor",
-      "url": "https://github.com/YaLTeR/niri",
-      "version": "25"
-    },
-    {
-      "license": "MIT",
-      "name": "Foot",
-      "role": "Wayland terminal",
-      "url": "https://codeberg.org/dnkl/foot",
-      "version": "1.21"
-    },
-    {
       "license": "Zsh",
       "name": "zsh",
       "role": "Bundled local shell",
       "url": "https://www.zsh.org",
       "version": "5.9"
-    },
-    {
-      "license": "MIT",
-      "name": "kmscube",
-      "role": "GLES/Vulkan KMS demo",
-      "url": "https://gitlab.freedesktop.org/mesa/kmscube",
-      "version": "mesa"
     },
     {
       "license": "MIT",

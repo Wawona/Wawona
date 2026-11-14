@@ -1,5 +1,6 @@
-# Bundled interactive shell tools (zsh, fastfetch, waypipe, niri, fuzzel, foot)
-# for the Android APK.
+# Keep-set interactive shell tools (zsh, fastfetch, waypipe, wasm, coreutils)
+# for the Android APK. No niri/fuzzel/foot/phoon/weston (optional-software →
+# Termux / apt / wpm).
 #
 # Extracted from android.nix to keep that file under its maintainability budget.
 # `preBuildFragment` is spliced into the APK derivation's preBuild after
@@ -11,12 +12,8 @@
   zshAndroid ? null,
   fastfetchAndroid ? null,
   coreutilsAndroid ? null,
-  phoonAndroid ? null,
   wasmAndroid ? null,
   waypipeAndroid ? null,
-  niriAndroid ? null,
-  fuzzelAndroid ? null,
-  footAndroid ? null,
   applicationsCatalog ? null,
 }:
 {
@@ -55,18 +52,6 @@
     fi
     ''}
 
-    ${lib.optionalString (phoonAndroid != null) ''
-    # phoon (wwn-phoon-rs): clean-room Rust moon-phase utility. Android uses the
-    # fork/exec spawn model, so ship the PIE as libphoon_bin.so (android_jni.c
-    # symlinks usr/bin/phoon → this and posix_spawn()s it).
-    if [ -f "${phoonAndroid}/bin/phoon" ]; then
-      cp -L "${phoonAndroid}/bin/phoon" "$JNI_LIB_DIR/libphoon_bin.so"
-      chmod +x "$JNI_LIB_DIR/libphoon_bin.so"
-    else
-      echo "WARNING: Missing Android phoon binary at ${phoonAndroid}/bin/phoon"
-    fi
-    ''}
-
     ${lib.optionalString (wasmAndroid != null) ''
     # wwn-wasm: WASI P1/P2 runner (Pulley). Android fork/execs libwasm_bin.so.
     if [ -f "${wasmAndroid}/bin/wasm" ]; then
@@ -91,48 +76,15 @@
     fi
     ''}
 
-    ${lib.optionalString (niriAndroid != null) ''
-    # niri (wwn-niri): nested scrollable-tiling compositor. Shipped as a
-    # JNI-named PIE executable so the installer extracts it into the
-    # exec-allowed nativeLibraryDir (waypipe pattern); android_jni.c execs it
-    # with NIRI_BACKEND=nested against the Wawona Wayland socket.
-    if [ -f "${niriAndroid}/lib/libniri_bin.so" ]; then
-      cp -L "${niriAndroid}/lib/libniri_bin.so" "$JNI_LIB_DIR/libniri_bin.so"
-      chmod +x "$JNI_LIB_DIR/libniri_bin.so"
-    else
-      echo "WARNING: Missing Android niri binary at ${niriAndroid}/lib/libniri_bin.so"
-    fi
-    ''}
-
-    ${lib.optionalString (fuzzelAndroid != null) ''
-    # fuzzel (wwn-niri): niri Mod+D launcher. Same waypipe/jniLibs PIE pattern
-    # as niri. PATH symlink usr/bin/fuzzel → libfuzzel_bin.so (issue #78).
-    if [ -f "${fuzzelAndroid}/lib/libfuzzel_bin.so" ]; then
-      cp -L "${fuzzelAndroid}/lib/libfuzzel_bin.so" "$JNI_LIB_DIR/libfuzzel_bin.so"
-      chmod +x "$JNI_LIB_DIR/libfuzzel_bin.so"
-    elif [ -f "${fuzzelAndroid}/bin/fuzzel" ]; then
-      cp -L "${fuzzelAndroid}/bin/fuzzel" "$JNI_LIB_DIR/libfuzzel_bin.so"
-      chmod +x "$JNI_LIB_DIR/libfuzzel_bin.so"
-    else
-      echo "WARNING: Missing Android fuzzel binary at ${fuzzelAndroid}"
-    fi
-    ''}
-
-    ${lib.optionalString (footAndroid != null) ''
-    # foot (wwn-foot): PATH symlink usr/bin/foot → libfoot_bin.so is created at
-    # runtime by android_jni.c. The PIE itself is bundled exclusively by
-    # android-bundled-clients.nix (avoids a read-only double-copy race here).
-    ''}
-
     ${lib.optionalString (applicationsCatalog != null) ''
-    # Freedesktop applications catalog for fuzzel (share/applications + hicolor).
-    # Extracted into wawona-rootfs/usr/share by WawonaShellRootfs (issue #78).
+    # Freedesktop applications catalog for installed launchers (share/applications
+    # + hicolor). Extracted into wawona-rootfs/usr/share by WawonaShellRootfs.
     if [ -d "${applicationsCatalog}/share/applications" ]; then
       mkdir -p app/src/main/assets/applications app/src/main/assets/icons
       cp -R "${applicationsCatalog}/share/applications/." app/src/main/assets/applications/
       cp -R "${applicationsCatalog}/share/icons/hicolor" app/src/main/assets/icons/
       chmod -R u+w app/src/main/assets/applications app/src/main/assets/icons
-      echo "Bundled fuzzel applications catalog into APK assets"
+      echo "Bundled applications catalog into APK assets"
     fi
     ''}
   '';

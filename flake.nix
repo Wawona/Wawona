@@ -666,13 +666,7 @@
         wawonaSrc = rustSrc;
         androidCC = toolchainsAndroid.androidToolchain.androidCC;
         coreutilsAndroid = coreutils-multicall-android;
-        inherit
-          westonSimpleShmPatchedSrcNix
-          westonAndroidSignalPolyfill
-          westonToytoolkitLdflagsNix
-          westonCompositorLdflagsNix
-          ilandGlAndroidLdflagsNix
-          ;
+        inherit ilandGlAndroidLdflagsNix;
       };
 
       androidToolchainSanity = import androidToolchainSanityNix {
@@ -841,7 +835,7 @@
           vulkan-cts-android = vulkan-cts-android;
           gl-cts-android = gl-cts-android;
         })
-        // (pkgs.lib.optionalAttrs isLinuxHost {
+        // (pkgs.lib.optionalAttrs isLinuxHost (let
           wawona-linux-ui-bin = pkgs.callPackage ./dependencies/wawona/linux-ui-prebuilt.nix {
             inherit wawonaVersion;
             waypipeSrc = waypipe-src;
@@ -850,64 +844,37 @@
             terminalSrc = inputs.terminal;
             inherit libghosttyRsSrc;
           };
-          wawona-linux = pkgs.callPackage ./dependencies/wawona/linux.nix {
-            inherit wawonaVersion;
-            wawonaLinuxUiBin = self.packages.${system}.wawona-linux-ui-bin;
+          # One mkProduct { platform } for every Linux shippable attr.
+          # Apple/Android stay cargo xtask (see .github/ci-product-matrix.json).
+          products = pkgs.callPackage ./dependencies/wawona/products.nix {
+            inherit wawonaVersion nix-appimage;
+            inherit (pkgs) lib;
+            wawonaLinuxUiBin = wawona-linux-ui-bin;
+            inherit system;
           };
-          # Self-contained, glibc-portable AppImage of the GTK UI. The bundled
-          # binary auto-selects the GDK x11/wayland backend at startup based on
-          # the host's $WAYLAND_DISPLAY socket, so a single artifact serves both
-          # X11 and Wayland hosts. Built reproducibly via the Determinate Linux
-          # builder for x86_64 and aarch64.
-          # Product-build short name (arch only). Ship: GitHub assets renames to
-          # Wawona-{calver}-Linux-{arch}.AppImage in release.yml (aarch64→arm64).
-          wawona-appimage = nix-appimage.lib.${system}.mkAppImage {
-            program = "${self.packages.${system}.wawona-linux-ui-bin}/bin/wawona-linux-ui";
-            name = "Wawona-${pkgs.lib.head (pkgs.lib.splitString "-" system)}.AppImage";
-          };
-          wawona-linux-compositor-host = pkgs.callPackage ./dependencies/wawona/linux-host.nix {
-            inherit wawonaVersion;
-            wawonaLinuxUiBin = self.packages.${system}.wawona-linux-ui-bin;
-          };
-          wawona-linux-tray = pkgs.callPackage ./dependencies/wawona/linux-tray.nix {
-            inherit wawonaVersion;
-            wawonaLinuxUiBin = self.packages.${system}.wawona-linux-ui-bin;
-          };
-          wawona-linux-vm = pkgs.callPackage ./dependencies/wawona/linux-vm.nix {
-            inherit wawonaVersion;
-          };
-          # p26-vm-nixos: prebuilt NixOS guest (kernel+initrd+rootfs) for the
-          # native Virtualization.framework bridge (wawona-vz on the macOS host).
-          # Built here on the Linux/NixOS host and copied to the Mac, since VZ
-          # direct-kernel boot needs aarch64-linux artifacts. See
-          # docs/2026-nixos-vm-bridge.md.
-          wawona-nixos-guest = import ./dependencies/wawona/nixos-guest.nix {
-            inherit nixpkgs pkgs wawonaVersion;
-            system = pkgs.system;
-          };
-          install = pkgs.writeShellScriptBin "install" ''
-            set -euo pipefail
-            exec ${pkgs.nix}/bin/nix profile install "${self.outPath}#wawona" "$@"
-          '';
-          # Same prebuilt UI wiring as wawona-linux. Without wawonaLinuxUiBin,
-          # linux.nix exits 1 ("wawonaLinuxUiBin missing") and breaks
-          # `nix run .#wawona`, `.#default`, and `nix profile install .#wawona`.
-          default = pkgs.callPackage ./dependencies/wawona/linux.nix {
-            inherit wawonaVersion;
-            wawonaLinuxUiBin = self.packages.${system}.wawona-linux-ui-bin;
-          };
-          # Consumer-facing package name for use as a flake input or overlay,
-          # matching the nixpkgs convention of installing `pkgs.wawona`.
-          wawona = pkgs.callPackage ./dependencies/wawona/linux.nix {
-            inherit wawonaVersion;
-            wawonaLinuxUiBin = self.packages.${system}.wawona-linux-ui-bin;
-          };
-          # Host-native phoon CLI for Linux (`nix run .#phoon`).
-          phoon-linux = toolchains.buildForLinux "phoon" {};
-          phoon = toolchains.buildForLinux "phoon" {};
-          wawona-wasm-linux = toolchains.buildForLinux "wawona-wasm" {};
-          wawona-wasm = toolchains.buildForLinux "wawona-wasm" {};
-        })
+        in
+          {
+            inherit wawona-linux-ui-bin;
+            # p26-vm-nixos: prebuilt NixOS guest (kernel+initrd+rootfs) for the
+            # native Virtualization.framework bridge (wawona-vz on the macOS host).
+            # Built here on the Linux/NixOS host and copied to the Mac, since VZ
+            # direct-kernel boot needs aarch64-linux artifacts. See
+            # docs/2026-nixos-vm-bridge.md.
+            wawona-nixos-guest = import ./dependencies/wawona/nixos-guest.nix {
+              inherit nixpkgs pkgs wawonaVersion;
+              system = pkgs.system;
+            };
+            install = pkgs.writeShellScriptBin "install" ''
+              set -euo pipefail
+              exec ${pkgs.nix}/bin/nix profile install "${self.outPath}#wawona" "$@"
+            '';
+            # Host-native phoon CLI for Linux (`nix run .#phoon`).
+            phoon-linux = toolchains.buildForLinux "phoon" {};
+            phoon = toolchains.buildForLinux "phoon" {};
+            wawona-wasm-linux = toolchains.buildForLinux "wawona-wasm" {};
+            wawona-wasm = toolchains.buildForLinux "wawona-wasm" {};
+          }
+          // products.linuxPackages))
         // (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin (let
           teamId = let
             value = builtins.getEnv "TEAM_ID";
@@ -983,7 +950,6 @@
             lib = pkgs.lib;
             inherit pkgs;
           };
-          macosToytoolkitDeps = import ./dependencies/wawona/macos-toytoolkit-deps.nix {inherit pkgs;};
           macosDeps =
             {
               libwayland = toolchains.buildForMacOS "libwayland" {};
@@ -997,17 +963,11 @@
               openssh = toolchains.buildForMacOS "openssh" {};
               iland = toolchains.buildForMacOS "iland" {};
               angle = toolchains.buildForMacOS "angle" {};
-              kmscube = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
-              "iland-gl-clients" = pkgs.callPackage kmscubeMacosNix {buildModule = toolchains;};
-              "gbm-es2-demo" = toolchains.buildForMacOS "gbm-es2-demo" {};
-              vkcube = toolchains.buildForMacOS "vkcube" {};
-              "opengl-cube" = toolchains.buildForMacOS "opengl-cube" {};
-              weston = toolchains.buildForMacOS "weston" {};
-              "weston-compositor" = toolchains.buildForMacOS "weston-compositor-drm" {};
+              # Optional Wayland clients (weston/niri/foot/cubes) install later
+              # via repo.wawona.io. Do not force them into the macOS product slice.
               "wawona-wasm" = toolchains.buildForMacOS "wawona-wasm" {};
               "wawona-relay" = toolchains.buildForMacOS "wawona-relay" {};
-            }
-            // macosToytoolkitDeps;
+            };
           # Cross-build Relay C ABI for every Apple-mobile dep set. Prefer
           # Relay's own recipes/relay-staticlib.nix (keeps import/wasm for the
           # relay-wasm → wpm path). L4 only wraps iosToolchain per platform.
@@ -1233,7 +1193,7 @@
               watchsimulator = mobile watchosSimDeps;
             };
             macosExtras =
-              pkgs.lib.genAttrs ["fastfetch" "moltenvk" "kosmickrisp" "foot" "niri" "fuzzel" "phoon" "weston-simple-egl" "iland-baremetal"]
+              pkgs.lib.genAttrs ["fastfetch" "moltenvk" "kosmickrisp" "iland-baremetal"]
               (n: toolchains.buildForMacOS n {})
               // {
                 zsh = pkgs.zsh;

@@ -19,23 +19,19 @@ pub fn sdk_warm(c: &mut Check, _: &Opts) -> Result<String> {
     if !action.contains(select) {
         c.fail("setup-xtask must run `cargo xtask ci select-xcode`");
     }
-    for wf in ["product-ios-sim.yml", "product-apple-family.yml", "device-e2e-ios.yml"] {
+    for wf in ["product-build.yml", "device-e2e-ios.yml"] {
         c.need(&format!("{WORKFLOWS}/{wf}"), &[warm], "warm the simulator SDKs");
     }
-    if let Some(t) = c.text(&format!("{WORKFLOWS}/product-apple-family.yml")) {
-        if !t.contains("ci warm-sdk all") {
-            for p in ["ipados", "tvos", "watchos", "visionos"] {
-                if !Regex::new(&format!(r"ci warm-sdk[^\n]*\b{p}\b"))?.is_match(&t) {
-                    c.fail(format!("product-apple-family.yml: warm-sdk must be passed {p} or all"));
-                }
-            }
+    if let Some(t) = c.text(&format!("{WORKFLOWS}/product-build.yml")) {
+        if !t.contains("ci warm-sdk") {
+            c.fail("product-build.yml: must warm simulator SDKs via `ci warm-sdk`");
+        }
+        if !t.contains("ci-product-matrix.json") {
+            c.fail("product-build.yml: must read .github/ci-product-matrix.json");
         }
     }
     let pinned = [
-        "product-ios-sim.yml",
-        "product-apple-family.yml",
-        "product-macos-app.yml",
-        "product-ios-modeb.yml",
+        "product-build.yml",
         "device-e2e-ios.yml",
         "nix.yml",
         "release-beta.yml",
@@ -127,6 +123,36 @@ pub fn ios_shell_tools(c: &mut Check, _: &Opts) -> Result<String> {
     let deps = "dependencies/wawona/deps.nix";
     c.need(deps, &["libwawona-zsh.a", "libfastfetch.a", "libwwn-ssh-cli.a"], "shell-tool wiring");
     c.forbid(deps, &["libssh-inprocess.a"], "Apple mobile never links OpenSSH");
+    c.forbid(
+        deps,
+        &["d.weston", "share/weston", "share/niri", "weston-simple-egl", "/bin/niri", "/bin/foot"],
+        "macOS product bundle must not ship weston/niri/foot",
+    );
+    if let Some(flake) = c.text("flake.nix") {
+        if flake.contains("macosExtras =")
+            && (flake.contains("\"niri\"") || flake.contains("\"foot\"") || flake.contains("\"weston-simple-egl\""))
+            && flake.contains("genAttrs [\"fastfetch\"")
+        {
+            // Narrow: the macosExtras genAttrs list must stay keep-set only.
+            let re = Regex::new(r#"genAttrs\s*\[\s*"fastfetch"[^\]]*\]"#)?;
+            if let Some(m) = re.find(&flake) {
+                let list = m.as_str();
+                for bad in ["niri", "foot", "fuzzel", "phoon", "weston-simple-egl", "weston"] {
+                    if list.contains(&format!("\"{bad}\"")) {
+                        c.fail(format!("flake.nix macosExtras still bundles {bad}"));
+                    }
+                }
+            }
+        }
+        if let Some(start) = flake.find("macosDeps =") {
+            let slice = &flake[start..start.saturating_add(2500).min(flake.len())];
+            if slice.contains("weston = toolchains.buildForMacOS \"weston\"")
+                || slice.contains("\"weston-compositor\"")
+            {
+                c.fail("flake.nix macosDeps must not build weston / weston-compositor for the product slice");
+            }
+        }
+    }
     let mobile = "dependencies/wawona/mobile-platform-deps.nix";
     if let Some(t) = c.text(mobile) {
         if !t.contains("buildFn \"ssh-cli\"") && !t.contains("\"ssh-cli\" = buildFn") {
@@ -331,11 +357,14 @@ pub fn settings_in_app(c: &mut Check, _: &Opts) -> Result<String> {
     ] {
         c.must_not_exist(p, "retired OS Settings host");
     }
-    c.forbid(
-        "Wawona.xcodeproj/project.xcproj",
-        &["Wawona-PrefPane", "Settings.bundle", "Settings-Watch.bundle", "WWN_PREFPANE", "Bundle Preference Pane"],
-        "retired OS Settings host",
-    );
+    // Exact product ship: Wawona.xcodeproj is deleted. Prefer Exact app.json.
+    if std::path::Path::new("Wawona.xcodeproj/project.xcproj").is_file() {
+        c.forbid(
+            "Wawona.xcodeproj/project.xcproj",
+            &["Wawona-PrefPane", "Settings.bundle", "Settings-Watch.bundle", "WWN_PREFPANE", "Bundle Preference Pane"],
+            "retired OS Settings host",
+        );
+    }
     for f in [
         "Sources/WawonaUI/Settings/PlatformGlobalSettings.swift",
         "Sources/WawonaUI/Settings/WawonaSystemSettings.swift",
@@ -343,7 +372,6 @@ pub fn settings_in_app(c: &mut Check, _: &Opts) -> Result<String> {
         "Sources/WawonaApple/Lifecycle/WawonaMenuBarController.swift",
         "Sources/WawonaApple/Lifecycle/WawonaSystemSettingsBridge.swift",
         "Darwin/Sources/Main.swift",
-        "android/app/src/main/AndroidManifest.xml",
     ] {
         c.forbid(
             f,

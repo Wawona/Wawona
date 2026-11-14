@@ -42,6 +42,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-store-archive-preflight` | Apple beta release archive/export all targets and IPA checks before the first ASC upload; simulator-only gates miss embedded Watch device compile failures. |
 | `wawona-swiftui-backports` | iOS 15 `WawonaBackport` shims. Wins over upstream SwiftUI skill modernization. |
 | `wawona-icon-composer` | Layered icon drafts, native rendering, shared IDE tooling. |
+| `wawona-exact-contract` | Exact Machines/Settings Contract UI. Load with Exact `llp-orient`. `no-tells` + ALL_TARGETS. Dual-run M1-M8: `wawona-exact-dual-run`. |
+| Exact `llp-orient` / `llp-create` / `exact-panel` / `exact-orchestrate` | Exact checkout skills (symlinked into `~/.agents/skills`). |
 
 ## Rules (hard gates)
 
@@ -49,6 +51,7 @@ skill, add one row. Capture flow: `wawona-learn`.
 |------|------|
 | `wawona-mission` | Ambiguous product call |
 | `wawona-context` | Stack priors + MCP tool map |
+| `wawona-all-targets` | `ALL_TARGETS` / aliases; read `platforms.json` |
 | `wawona-agent-learn` | This learn loop |
 | `wawona-caveman-full` | AlwaysApply: caveman full, not lite |
 | `wawona-mission-critical-assurance` | Risk-tiered evidence for critical and AI-authored changes |

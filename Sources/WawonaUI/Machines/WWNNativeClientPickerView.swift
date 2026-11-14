@@ -46,7 +46,7 @@ struct WWNNativeClientPickerView: View {
     .onAppear {
       if draftId.isEmpty {
         draftId = selectedClientId == kNativeClientCustomId
-          ? "weston-simple-shm"
+          ? "wawona-shell"
           : selectedClientId
       }
     }

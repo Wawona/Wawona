@@ -292,8 +292,70 @@ public final class WWNMachineProfileStore: NSObject {
 
     @objc public static func resolvedNestedCompositorCursorActive() -> String { "auto" }
 
-    @objc public static func resolvedShowHostCursorActive() -> Bool { true }
-    @objc public static func resolvedShowVirtualPointerActive() -> Bool { false }
+    /// Host cursor visibility for the focused session. Prefer Rust
+    /// `sessionInputPolicy` / nested-cursor policy over a hard-coded YES.
+    @objc public static func resolvedShowHostCursorActive() -> Bool {
+        if let focused = focusedProfileForInputPolicy() {
+            let nested = profileIndicatesNestedCompositor(focused)
+            let showVirtual = UserDefaults.standard.object(forKey: "ShowVirtualCursor") as? Bool ?? false
+            if let policy = WawonaDomainBridge.sessionInputPolicy(
+                isNestedCompositor: nested,
+                showVirtualCursor: showVirtual,
+                touchInputOverride: focused.runtimeOverrides["TouchInputType"] as? String
+                    ?? UserDefaults.standard.string(forKey: "TouchInputType"),
+                surface: presentSurfaceClassRaw()
+            ) {
+                return !policy.hideHost
+            }
+            if let cursor = WawonaDomainBridge.nestedCursorPolicy(
+                isNestedCompositor: nested,
+                showVirtualCursor: showVirtual
+            ) {
+                return !cursor.hideHost
+            }
+        }
+        return true
+    }
+
+    @objc public static func resolvedShowVirtualPointerActive() -> Bool {
+        if let focused = focusedProfileForInputPolicy() {
+            let nested = profileIndicatesNestedCompositor(focused)
+            let showVirtual = UserDefaults.standard.object(forKey: "ShowVirtualCursor") as? Bool ?? false
+            if let policy = WawonaDomainBridge.sessionInputPolicy(
+                isNestedCompositor: nested,
+                showVirtualCursor: showVirtual,
+                touchInputOverride: focused.runtimeOverrides["TouchInputType"] as? String
+                    ?? UserDefaults.standard.string(forKey: "TouchInputType"),
+                surface: presentSurfaceClassRaw()
+            ) {
+                return policy.showVirtual
+            }
+            if let cursor = WawonaDomainBridge.nestedCursorPolicy(
+                isNestedCompositor: nested,
+                showVirtualCursor: showVirtual
+            ) {
+                return cursor.showVirtual
+            }
+        }
+        return false
+    }
+
+    private static func focusedProfileForInputPolicy() -> WWNMachineProfile? {
+        let id = UserDefaults.standard.string(forKey: "WWNFocusedMachineId")
+            ?? UserDefaults.standard.string(forKey: "FocusedMachineId")
+        guard let id, !id.isEmpty else { return nil }
+        return loadProfiles().first { $0.machineId == id }
+    }
+
+    private static func presentSurfaceClassRaw() -> String {
+        if UserDefaults.standard.bool(forKey: "WWNPresentPointerRemote") {
+            return "pointer_remote"
+        }
+        if UserDefaults.standard.bool(forKey: "WWNPresentLimitedTouch") {
+            return "limited_touch"
+        }
+        return "primary"
+    }
 
     @objc(resolvedAlwaysOnTopForProfile:)
     public static func resolvedAlwaysOnTop(for profile: WWNMachineProfile?) -> Bool {

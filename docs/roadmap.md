@@ -83,3 +83,19 @@ On-device terminal connected to the kernel with real shell features.
 - **Donations ([#26](https://github.com/Wawona/Wawona/issues/26)):** live via
   [`.github/FUNDING.yml`](../.github/FUNDING.yml). GitHub Sponsors (one-time and
   monthly) and Ko-fi.
+
+## Remaining-work sequence (2026-11)
+
+Phased map from Exact chrome to Relay-backed product. One lane at a time.
+
+| Phase | Goal | Status |
+|---|---|---|
+| **P0** Exact Machines home + shared Add/Edit | Search under title, tab safe-area, header Save, no backend dump | Exact `app.contract` + iOS agent PNGs (`apps/wawona/diary/artifacts/2026-11-14-p0-*.png`) |
+| **P1** Kind→Session wizard + Rust input policy | Three kinds; sessions under Native Shell; auto touch/cursor/grab | Contract wizard + `domain::launch_resolve::resolve_session_input` |
+| **P2** Exact rewrite / [#67](https://github.com/Wawona/Wawona/issues/67) | EXACT_HOSTS green; UniFFI owns schema; close when Codable/Kotlin mirrors lifted | Exact chrome green; schema lift still open |
+| **P3** Relay | One NixOS guest → waypipe → Wawona Wayland → iland (Mode A then Mode B HV) | Planned; VM/Container UI stays “coming soon” until boot green |
+| **P4** GPU + CI + ship | ANGLE/MVK matrix; Appium; ASC/Play; `cargo xtask` day-to-day | Gates named in `docs/ci.md` |
+| **P5** Mode B keep-set | tipa / Sileo / desktop-host; Desktop + Swinging Bridge planned tracks | Separate artifacts; never in store IPA |
+
+Canonical Exact close path: [`exact/apps/wawona/docs/issue-67-exact-path.md`](../../exact/apps/wawona/docs/issue-67-exact-path.md).
+Session input: [`docs/agent-rules/wawona-session-input-policy.md`](./agent-rules/wawona-session-input-policy.md).

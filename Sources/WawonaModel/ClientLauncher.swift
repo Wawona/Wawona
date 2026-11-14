@@ -77,32 +77,11 @@ public extension ClientLauncher {
         return fallbackPresets
     }
 
+    /// Product keep-set only. Nested compositors and demos install later via
+    /// `wpm` / apt (`InstalledOptionalSoftware`).
     static let fallbackPresets: [ClientLauncher] = [
         ClientLauncher(name: "wawona-shell", executablePath: "wawona-shell", displayName: "Native Shell"),
         ClientLauncher(name: "wawona-wasm", executablePath: "wasm", displayName: "Hello WASI GUI / Runtime (.wasm)"),
-        ClientLauncher(name: "weston-terminal", executablePath: "weston-terminal", displayName: "Weston Terminal"),
-        ClientLauncher(name: "foot", executablePath: "foot", displayName: "Foot Terminal"),
-        ClientLauncher(name: "weston-simple-shm", executablePath: "weston-simple-shm", displayName: "Weston Simple SHM"),
-        ClientLauncher(name: "weston", executablePath: "weston", displayName: "Weston"),
-        ClientLauncher(name: "niri", executablePath: "niri", displayName: "Niri"),
-        ClientLauncher(name: "weston-flower", executablePath: "weston-flower", displayName: "Weston Flower"),
-        ClientLauncher(name: "kmscube", executablePath: "kmscube", displayName: "KMS Cube", requiresGpuStack: true),
-        ClientLauncher(name: "gbm-es2-demo", executablePath: "gbm-es2-demo", displayName: "GBM ES2 Demo", requiresGpuStack: true),
-        ClientLauncher(name: "opengl-cube", executablePath: "opengl-cube", displayName: "OpenGL Cube", requiresGpuStack: true),
-        ClientLauncher(name: "vkcube", executablePath: "vkcube", displayName: "Vulkan Cube", requiresGpuStack: true),
-        ClientLauncher(name: "weston-simple-egl", executablePath: "weston-simple-egl", displayName: "Weston Simple EGL", requiresGpuStack: true),
-        ClientLauncher(name: "weston-smoke", executablePath: "weston-smoke", displayName: "Weston Smoke"),
-        ClientLauncher(name: "weston-clickdot", executablePath: "weston-clickdot", displayName: "Weston Clickdot"),
-        ClientLauncher(name: "weston-eventdemo", executablePath: "weston-eventdemo", displayName: "Weston Event Demo"),
-        ClientLauncher(name: "weston-resizor", executablePath: "weston-resizor", displayName: "Weston Resizor"),
-        ClientLauncher(name: "weston-cliptest", executablePath: "weston-cliptest", displayName: "Weston Cliptest"),
-        ClientLauncher(name: "weston-transformed", executablePath: "weston-transformed", displayName: "Weston Transformed"),
-        ClientLauncher(name: "weston-stacking", executablePath: "weston-stacking", displayName: "Weston Stacking"),
-        ClientLauncher(name: "weston-dnd", executablePath: "weston-dnd", displayName: "Weston DnD"),
-        ClientLauncher(name: "weston-image", executablePath: "weston-image", displayName: "Weston Image"),
-        ClientLauncher(name: "weston-scaler", executablePath: "weston-scaler", displayName: "Weston Scaler"),
-        ClientLauncher(name: "weston-editor", executablePath: "weston-editor", displayName: "Weston Editor"),
-        ClientLauncher(name: "weston-constraints", executablePath: "weston-constraints", displayName: "Weston Constraints"),
     ]
 
     /// Clients runnable on this platform (GPU demos dropped when the stack is

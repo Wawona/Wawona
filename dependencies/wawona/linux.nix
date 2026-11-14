@@ -6,10 +6,7 @@
   coreutilsSrc ? null,
   terminalSrc ? null,
   wawonaLinuxUiBin ? null,
-  westonSimpleShmLinuxNix,
-  # phoon (wwn-phoon-rs): clean-room Rust moon-phase utility. Bundled on Linux
-  # via the toolchain build; falls back to absent if not provided.
-  phoon ? null,
+  # Keep-set runtimeInputs only. weston/niri/foot/cubes/phoon install via apt.
   ...
 }:
 
@@ -37,17 +34,13 @@ pkgs.writeShellApplication {
     pkgs.vulkan-loader
     pkgs.openssh
     pkgs.waypipe
-    pkgs.weston
-    (pkgs.callPackage westonSimpleShmLinuxNix {})
-    pkgs.foot
     pkgs.fastfetch
     pkgs.zsh
-    pkgs.kmscube
     pkgs.systemd
     pkgs.coreutils
     pkgs.lldb
     pkgs.cloud-hypervisor
-  ] ++ pkgs.lib.optional (phoon != null) phoon;
+  ];
   # Strip CR so a CRLF-checked-out tree (issue #164) cannot poison the wrapper
   # (`syntax error near unexpected token $'in\r'`).
   text = builtins.replaceStrings ["\r"] [""] ''

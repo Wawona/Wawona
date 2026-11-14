@@ -733,49 +733,12 @@ final class WWNMachineEditorDraft: ObservableObject {
   }
 
   func sanitizeSSHHost(_ raw: String) -> String {
-    var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    if value.isEmpty { return "" }
-    if let schemeRange = value.range(of: "://") {
-      value = String(value[schemeRange.upperBound...])
-    }
-    if let slash = value.firstIndex(of: "/") {
-      value = String(value[..<slash])
-    }
-    if let query = value.firstIndex(of: "?") {
-      value = String(value[..<query])
-    }
-    if let fragment = value.firstIndex(of: "#") {
-      value = String(value[..<fragment])
-    }
-    let disallowed = CharacterSet.whitespacesAndNewlines
-      .union(CharacterSet(charactersIn: "\"'`$;&|<>\\"))
-    value = value.unicodeScalars
-      .filter { !disallowed.contains($0) }
-      .map(String.init)
-      .joined()
-    if value.hasPrefix("[") {
-      if let closing = value.firstIndex(of: "]"),
-         value.index(after: closing) < value.endIndex,
-         value[value.index(after: closing)] == ":" {
-        let suffix = value[value.index(closing, offsetBy: 2)...]
-        if suffix.allSatisfy(\.isNumber) {
-          value = String(value[...closing])
-        }
-      }
-    } else if let colon = value.lastIndex(of: ":") {
-      let hostPart = value[..<colon]
-      let portPart = value[value.index(after: colon)...]
-      if !hostPart.contains(":") && !portPart.isEmpty && portPart.allSatisfy(\.isNumber) {
-        value = String(hostPart)
-      }
-    }
-    return value
+    // Rust domain via MachineProfileDomain (#67). No local second owner.
+    MachineProfileDomain.sanitizeSSHHost(raw)
   }
 
   func normalizeSSHPort(_ raw: String) -> Int {
-    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard let parsed = Int(trimmed), (1...65535).contains(parsed) else { return 22 }
-    return parsed
+    MachineProfileDomain.normalizeSSHPort(raw, fallback: 22)
   }
 
   func boundedInteger(

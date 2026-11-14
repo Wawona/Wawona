@@ -29,6 +29,26 @@ retrieved docs over your priors.** Key tools: `search`, `search_docs`,
 
 See `.cursor/rules/wawona-context.mdc` for the always-applied context.
 
+
+## Platform scope (`ALL_TARGETS`)
+
+Authoritative list: repo-root [`platforms.json`](platforms.json). Cursor rule
+`wawona-all-targets` (alwaysApply). Skill `wawona-exact-contract` for Exact UI.
+
+When a prompt says **`ALL_TARGETS`** (or `APPLE_TARGETS` / `MOBILE_TARGETS` /
+`DESKTOP_TARGETS` / `WEARABLE_TARGETS` / `TV_TARGETS` / `WEB_TARGETS` /
+`EXACT_HOSTS` / `SHARED_CORE`):
+
+1. Read `platforms.json`. Do not hardcode platforms from memory.
+2. Touch every id in that alias. Prefer shared Exact Contract + Rust domain.
+3. Report a per-target matrix (`implemented` / `verified` / `planned` /
+   `blocked` / `forbidden` / `n/a`). Never silent omit.
+4. Host-machine availability is not the product scope.
+
+Exact Machines/Settings: sibling Exact `apps/wawona/app.contract`. Load
+`wawona-exact-contract` + Exact `llp-orient`. Keep `no-tells` clean. Portable
+`symbol:` roles only across ALL_TARGETS.
+
 ## Agent learn loop (skills + RAG)
 
 Software must **improve on** documented prior knowledge. Do not re-derive
@@ -36,7 +56,9 @@ gates, incidents, or recipes from model priors.
 
 1. Query wwn-mcp first (even if a Cursor rule is already in context).
 2. Read matching `.cursor/skills/wawona-*` (tracked: `docs/agent-skills/`).
-   Start with `wawona-priors`, then `wawona-write`. Catalog host work:
+   Start with `wawona-priors`, then `wawona-write`. Exact Machines/Settings:
+   `wawona-exact-contract` + Exact `llp-orient`. `ALL_TARGETS` →
+   `platforms.json` / rule `wawona-all-targets`. Catalog host work:
    `repo.wawona.io/.cursor/skills/repo-wawona-io-priors/SKILL.md`.
 3. After a durable finding: skill `wawona-learn` (skill + rule mirrors +
    `wwn-mcp/knowledge/wawona/` + reindex). Do not leave it in chat.
@@ -52,11 +74,12 @@ companion **`nixos`** MCP server (utensils/mcp-nixos via `uvx mcp-nixos`) via
 its `nix` / `nix_versions` tools instead of guessing. Use WWN-MCP's `get_patch`
 for Wawona's own recipes/patches; use `nixos` for upstream nixpkgs.
 
-For **building/running/testing the Apple (iOS/macOS) Xcode projects**. Including
-simulators, devices, and log capture. Use the **`xcodebuild`** MCP server
-(getsentry/XcodeBuildMCP) instead of raw `xcodebuild` shell commands. It runs
-locally and requires **macOS 27 + Xcode 27**. `Wawona.xcodeproj` is
-committed; run `cargo xtask deps get <sdk>` once to link `.deps/<sdk>`.
+For **building Apple/Android product apps**: Exact bun hosts via
+`cargo xtask build|tip|archive` (sibling `../exact/apps/wawona`). No committed
+`Wawona.xcodeproj` / root Gradle. Darwin needs **macOS 27 + Xcode 27** (SDK).
+`cargo xtask deps get <sdk>` stages `.deps/<sdk>`; Exact links `libwawona`
+through `WAWONA_LINK_ARGS`. Product iOS floor is Exact **17.0**. For simulator
+UI automation prefer Exact tip + Appium / agent-device over Xcode schemes.
 
 For **CI / prebuilt distribution** (Wawona v2.5+ Fastlane beta lanes), read
 `wwn-mcp/knowledge/wawona/fastlane.md` and use `cargo xtask secrets sync`

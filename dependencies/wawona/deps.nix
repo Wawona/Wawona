@@ -15,8 +15,9 @@
   # { <sdk> = { deps, native }; } for every Apple-mobile SDK, plus macosx.
   # native: the libraries the backend's crates link.
   slices,
-  # macOS-only bundled software: fastfetch zsh igetty moltenvk kosmickrisp foot
-  # niri fuzzel phoon weston-simple-egl, and Mode B's iland-baremetal and iowatchdog.
+  # macOS-only keep-set extras: fastfetch zsh igetty moltenvk kosmickrisp, and
+  # Mode B's iland-baremetal and iowatchdog. No weston/niri/foot/cubes (optional
+  # software → repo.wawona.io deb/wasm).
   macosExtras,
   modeB, # { iomfb, igetty }, linked only by Wawona-iOS-ModeB
 }: let
@@ -86,8 +87,8 @@
     "${p d.libwayland}/include" "${p d.libwayland}/include/wayland" "${p d.xkbcommon}/include"
     "$(SRCROOT)/src" "$(SRCROOT)/src/platform/macos/ui" "$(SRCROOT)/src/platform/macos/ui/Machines"
     "$(SRCROOT)/src/platform/macos/ui/Settings" "$(SRCROOT)/src/platform/macos"
-  ] ++ pixmanHeaders d ++ [ "${p d.iland}/include" "${p d.iland}/include/EGL" "${p d.iland}/include/GLES2" ]
-    ++ map (n: "${p d.${n}}/include") [ "angle" "kmscube" "vkcube" "opengl-cube" ];
+  ]     ++ pixmanHeaders d ++ [ "${p d.iland}/include" "${p d.iland}/include/EGL" "${p d.iland}/include/GLES2" ]
+    ++ [ "${p d.angle}/include" ];
 
   line = k: v: "${k} = $(inherited) ${lib.concatStringsSep " " v}\n";
   xcconfig = sdk: d: let
@@ -138,31 +139,25 @@
 
   # macOS bundle root: Contents/. cargo xtask xcode embed signs and relocates what lands here.
   # Helpers sit on the terminal's PATH (Resources/bin); the ones Wawona spawns
-  # by bundle path are also beside the executable (MacOS).
+  # by bundle path are also beside the executable (MacOS). Keep-set only:
+  # waypipe, ssh, zsh, fastfetch, wasm/wpm. No weston/niri/foot/cubes.
   macosBundle = d: let
-    x = macosExtras; r = "bundle/Resources"; w = d.weston; mb = "bundle/Library/Wawona";
+    x = macosExtras; r = "bundle/Resources"; mb = "bundle/Library/Wawona";
     bins = ps: lib.concatStringsSep " " ps;
   in ''
-    mkdir -p ${r}/bin ${r}/lib ${r}/share/icons/Adwaita/cursors ${r}/share/niri ${r}/vulkan/icd.d \
+    mkdir -p ${r}/bin ${r}/lib ${r}/share/icons/Adwaita/cursors ${r}/vulkan/icd.d \
       bundle/MacOS bundle/Frameworks ${mb}/iland ${mb}/lib
-    for b in ${w}/bin/weston* ${w}/libexec/weston-* ${bins [
+    for b in ${bins [
       "${d.waypipe}/bin/waypipe" "${d.sshpass}/bin/sshpass" "${x.fastfetch}/bin/fastfetch" "${x.zsh}/bin/zsh"
-      "${x.phoon}/bin/phoon" "${d.wawona-wasm}/bin/wasm" "${d.wawona-wasm}/bin/wpm" "${d.kmscube}/bin/kmscube"
-      "${x.weston-simple-egl}/bin/weston-simple-egl" ]}; do
+      "${d.wawona-wasm}/bin/wasm" "${d.wawona-wasm}/bin/wpm"
+    ]}; do
       case $b in *.so | *.dylib) continue ;; esac
       ln -s $b ${r}/bin/
       ln -s $b bundle/MacOS/
     done
-    for b in ${bins ([
-      "${x.foot}/bin/foot" "${x.foot}/bin/.foot-wrapped" "${x.niri}/bin/niri" "${x.fuzzel}/bin/fuzzel"
-      "${d.opengl-cube}/bin/opengl-cube" "${d.vkcube}/bin/vkcube" "${d.vkcube}/bin/vkcube-kms"
-      "${d.gbm-es2-demo}/bin/gbm-es2-demo" ]
-      ++ map (t: "${d.openssh}/bin/${t}") [ "ssh" "ssh-keygen" "scp" "sftp" "ssh-agent" "ssh-add" ])}; do
+    for b in ${bins (map (t: "${d.openssh}/bin/${t}") [ "ssh" "ssh-keygen" "scp" "sftp" "ssh-agent" "ssh-add" ])}; do
       ln -s $b ${r}/bin/
     done
-    ln -s ${w}/share/weston ${r}/share/weston
-    ln -s ${w}/lib/weston ${w}/lib/libweston-13 ${r}/lib/
-    ln -s ${x.niri}/share/niri/default-config.kdl ${r}/share/niri/
     ln -s ${x.iland-baremetal}/lib/libwayland-mac.dylib ${mb}/iland/
     ln -s ${x.iowatchdog}/bin/wwn-iowatchdog ${x.iowatchdog}/bin/wwn-iowatchdog-claim-install \
       ${x.iowatchdog}/bin/wwn-iowatchdog-claim ${x.iowatchdog}/lib/libwwn_watchdogd_hook.dylib ${mb}/

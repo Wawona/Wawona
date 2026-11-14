@@ -471,7 +471,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         sshAuthMethod: Int = 0,
         sshKeyPath: String = "",
         sshKeyPassphrase: String = "",
-        remoteCommand: String = "weston-simple-shm",
+        remoteCommand: String = "",
         launchers: [ClientLauncher] = [],
         favorite: Bool = false,
         runtimeOverrides: MachineRuntimeOverrides = MachineRuntimeOverrides(),
@@ -508,7 +508,7 @@ public struct MachineProfile: Codable, Identifiable, Hashable, Sendable {
         sshAuthMethod = try container.decodeIfPresent(Int.self, forKey: .sshAuthMethod) ?? 0
         sshKeyPath = try container.decodeIfPresent(String.self, forKey: .sshKeyPath) ?? ""
         sshKeyPassphrase = try container.decodeIfPresent(String.self, forKey: .sshKeyPassphrase) ?? ""
-        remoteCommand = try container.decodeIfPresent(String.self, forKey: .remoteCommand) ?? "weston-simple-shm"
+        remoteCommand = try container.decodeIfPresent(String.self, forKey: .remoteCommand) ?? ""
         // vmSubtype / containerSubtype were removed (Residual E): backend
         // selection is fixed per build target, not user-editable. Any such keys
         // in legacy JSON are ignored on decode.
@@ -660,6 +660,12 @@ public final class MachineProfileStore: ObservableObject {
             save()
             return
         }
+        // Tip-ahead / SPM without rust only. When rust is linked, refuse a
+        // second Codable-owned decode path (#67).
+        if MachineProfileDomain.rustAvailable {
+            profiles = []
+            return
+        }
         do {
             let decoded = try JSONDecoder().decode([MachineProfile].self, from: data)
             profiles = decoded.filter { !$0.isIgettyConsoleNotAMachine }
@@ -671,8 +677,10 @@ public final class MachineProfileStore: ObservableObject {
 
     public func save() {
         let defaults = UserDefaults.standard
-        if let data = MachineProfileDomain.encodeProfilesV1(profiles)
-            ?? (try? JSONEncoder().encode(profiles))
+        if let data = MachineProfileDomain.encodeProfilesV1(profiles) {
+            defaults.set(data, forKey: Self.profilesKey)
+        } else if !MachineProfileDomain.rustAvailable,
+                  let data = try? JSONEncoder().encode(profiles)
         {
             defaults.set(data, forKey: Self.profilesKey)
         }
@@ -763,6 +771,11 @@ public final class MachineProfileStore: ObservableObject {
             save()
             return
         }
+        // Fail closed when rust is linked (#67). Tip-ahead / SPM tests only
+        // keep the Codable fallback.
+        if MachineProfileDomain.rustAvailable {
+            return
+        }
         if profile.isIgettyConsoleNotAMachine {
             delete(id: profile.id)
             return
@@ -784,6 +797,9 @@ public final class MachineProfileStore: ObservableObject {
                 activeMachineId = nil
             }
             save()
+            return
+        }
+        if MachineProfileDomain.rustAvailable {
             return
         }
         profiles = profiles.filter { $0.id != id }

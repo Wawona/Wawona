@@ -52,5 +52,22 @@ runs:
       if: inputs.android == 'true'
       shell: bash
       run: |
-        NDK=$(sed -n 's/.*ndkVersion *= *"\([^"]*\)".*/\1/p' android/app/build.gradle.kts)
+        # Exact Android host owns the pin (root android/app Gradle is deleted).
+        for f in \
+          "${EXACT_ROOT:-../exact}/host/android/app/build.gradle.kts" \
+          "$GITHUB_WORKSPACE/../exact/host/android/app/build.gradle.kts" \
+          host/android/app/build.gradle.kts
+        do
+          if [ -f "$f" ]; then
+            NDK=$(sed -n 's/.*ndkVersion *= *"\([^"]*\)".*/\1/p' "$f" | head -1)
+            [ -n "$NDK" ] && break
+          fi
+        done
+        if [ -z "${NDK:-}" ] && [ -n "${ANDROID_NDK_VERSION:-}" ]; then
+          NDK="$ANDROID_NDK_VERSION"
+        fi
+        if [ -z "${NDK:-}" ]; then
+          echo "::error::ndkVersion not found (Exact host/android or ANDROID_NDK_VERSION)"
+          exit 1
+        fi
         yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK" >/dev/null

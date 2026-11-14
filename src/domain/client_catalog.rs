@@ -1,5 +1,7 @@
-//! Bundled Wayland / wasm client catalog. Shared by Apple, Android, Linux.
+//! Product keep-set client catalog. Shared by Apple, Android, Linux.
 //! Swift `ClientLauncher` and Darwin `--list-clients` read this list.
+//! Optional Wayland clients (weston/niri/foot/cubes) install later via
+//! `wpm` / apt and appear under InstalledOptionalSoftware, not here.
 
 use serde::Serialize;
 
@@ -12,26 +14,12 @@ pub struct ClientPreset {
     pub requires_wasm: bool,
 }
 
-/// Full product catalog. Never include modeb-tty / igetty.
+/// Product keep-set only. Never include modeb-tty / igetty / weston / niri.
 pub const ALL_PRESETS: &[ClientPreset] = &[
     ClientPreset {
-        id: "weston-terminal",
-        display_name: "Weston Terminal",
-        executable: "weston-terminal",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "foot",
-        display_name: "Foot Terminal",
-        executable: "foot",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-simple-shm",
-        display_name: "Weston Simple SHM",
-        executable: "weston-simple-shm",
+        id: "wawona-shell",
+        display_name: "Native Shell",
+        executable: "wawona-shell",
         requires_gpu: false,
         requires_wasm: false,
     },
@@ -42,148 +30,10 @@ pub const ALL_PRESETS: &[ClientPreset] = &[
         requires_gpu: false,
         requires_wasm: true,
     },
-    ClientPreset {
-        id: "weston",
-        display_name: "Weston",
-        executable: "weston",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "niri",
-        display_name: "Niri",
-        executable: "niri",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-flower",
-        display_name: "Weston Flower",
-        executable: "weston-flower",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "kmscube",
-        display_name: "KMS Cube",
-        executable: "kmscube",
-        requires_gpu: true,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "gbm-es2-demo",
-        display_name: "GBM ES2 Demo",
-        executable: "gbm-es2-demo",
-        requires_gpu: true,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "opengl-cube",
-        display_name: "OpenGL Cube",
-        executable: "opengl-cube",
-        requires_gpu: true,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "vkcube",
-        display_name: "Vulkan Cube",
-        executable: "vkcube",
-        requires_gpu: true,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-simple-egl",
-        display_name: "Weston Simple EGL",
-        executable: "weston-simple-egl",
-        requires_gpu: true,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-smoke",
-        display_name: "Weston Smoke",
-        executable: "weston-smoke",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-clickdot",
-        display_name: "Weston Clickdot",
-        executable: "weston-clickdot",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-eventdemo",
-        display_name: "Weston Event Demo",
-        executable: "weston-eventdemo",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-resizor",
-        display_name: "Weston Resizor",
-        executable: "weston-resizor",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-cliptest",
-        display_name: "Weston Cliptest",
-        executable: "weston-cliptest",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-transformed",
-        display_name: "Weston Transformed",
-        executable: "weston-transformed",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-stacking",
-        display_name: "Weston Stacking",
-        executable: "weston-stacking",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-dnd",
-        display_name: "Weston DnD",
-        executable: "weston-dnd",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-image",
-        display_name: "Weston Image",
-        executable: "weston-image",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-scaler",
-        display_name: "Weston Scaler",
-        executable: "weston-scaler",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-editor",
-        display_name: "Weston Editor",
-        executable: "weston-editor",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
-    ClientPreset {
-        id: "weston-constraints",
-        display_name: "Weston Constraints",
-        executable: "weston-constraints",
-        requires_gpu: false,
-        requires_wasm: false,
-    },
 ];
 
+/// GLES demo ids (optional-software). Empty keep-set; gate still named for
+/// PlatformCapabilities mirrors that classify installed clients.
 pub const GLES_CLIENT_IDS: &[&str] = &[
     "kmscube",
     "gbm-es2-demo",

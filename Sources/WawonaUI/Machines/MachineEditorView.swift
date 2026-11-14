@@ -443,7 +443,7 @@ struct MachineEditorView: View {
                     if nativeShellKind == .waypipe {
                         Section {
                             WawonaTextField(
-                                "e.g. weston-simple-shm",
+                                "e.g. foot (installed)",
                                 text: $remoteCommand
                             )
                             .wawonaTextFieldNoAutocaps()

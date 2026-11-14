@@ -725,11 +725,11 @@ def inject_swift_support_from_archive!(ipa, archive_path)
   UI.user_error!("unzip -Z1 failed for #{ipa}") unless st.success?
   return if listing.lines.any? { |l| l.start_with?("SwiftSupport/") }
 
-  archive_ss = File.join(archive_path, "SwiftSupport")
+  archive_ss = archive_path && !archive_path.to_s.empty? ? File.join(archive_path, "SwiftSupport") : nil
   Dir.mktmpdir("wawona-swift-support") do |dir|
     sh("unzip -q #{ipa.shellescape} -d #{dir.shellescape}")
 
-    if File.directory?(archive_ss)
+    if archive_ss && File.directory?(archive_ss)
       UI.message("Injecting SwiftSupport/ from #{File.basename(archive_path)}…")
       FileUtils.cp_r(archive_ss, dir)
     else
@@ -1093,191 +1093,66 @@ def gym_output_dir
   end
 end
 
-# cargo xtask owns the dependency slices and the Rust backend (ensure_deps!,
-# then the Xcode build phases). Fastlane owns match keychain, gym archive/export, and TestFlight upload.
-#
-# Do NOT pass PROVISIONING_PROFILE_SPECIFIER via global xcargs — it applies to
-# every target (WawonaModel / WawonaUIContracts frameworks cannot take profiles).
+# Exact bun host builds the IPA (no Wawona.xcodeproj). cargo xtask archive ios
+# → Exact assembleIOS + codesign. Fastlane keeps match, ASC asserts, Pilot.
+# Watch companion: Exact cutover ships without embedded Watch until Exact
+# --watchos companion is wired; default WAWONA_SKIP_WATCH=1.
 def gym_ipa(target)
   ensure_deps!(target)
+  ENV["WAWONA_SKIP_WATCH"] = "1" if ENV["WAWONA_SKIP_WATCH"].to_s.empty?
   team_id = ENV.fetch("TEAM_ID")
-  profile = target[:profile_name]
-  identity = ENV.fetch("WAWONA_CODE_SIGN_IDENTITY", "Apple Distribution")
-  project = File.expand_path("../Wawona.xcodeproj", __dir__)
-
-  update_code_signing_settings(
-    path: project,
-    use_automatic_signing: false,
-    team_id: team_id,
-    targets: [target[:scheme]],
-    code_sign_identity: identity,
-    profile_name: profile,
-    bundle_identifier: target[:bundle_id]
-  )
-
-  provisioning_profiles = {
-    target[:bundle_id] => profile
-  }
-
-  # Companion watch rides inside the iOS IPA (#136). Sign it and map its
-  # App Store profile into exportOptions — otherwise export drops/fails the embed.
-  if target[:scheme] == "Wawona-iOS" && ENV["WAWONA_SKIP_WATCH"].to_s != "1"
-    update_code_signing_settings(
-      path: project,
-      use_automatic_signing: false,
-      team_id: team_id,
-      targets: ["Wawona-watchOS"],
-      code_sign_identity: identity,
-      profile_name: WATCH_PROFILE_NAME,
-      bundle_identifier: WATCH_BUNDLE_ID
-    )
-    provisioning_profiles[WATCH_BUNDLE_ID] = WATCH_PROFILE_NAME
-  end
-
-  xcargs = [
-    "DEVELOPMENT_TEAM=#{team_id}",
-    "CURRENT_PROJECT_VERSION=#{wawona_build_number}",
-    "MARKETING_VERSION=#{wawona_version}"
-    # ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES is a per-target project setting
-    # (project.xcproj: YES on Wawona-iOS/Wawona-watchOS app targets, NO on
-    # WawonaModel/WawonaUIContracts framework targets). A global xcarg here
-    # would force YES onto the framework targets too and reproduce ASC
-    # ITMS-90429/90427 (Frameworks/libswift* only expected on app targets).
-  ].join(" ")
+  profile_name = target[:profile_name]
+  identity_name = ENV.fetch("WAWONA_CODE_SIGN_IDENTITY", "Apple Distribution")
 
   UI.message(
-    "gym #{target[:scheme]} (version #{wawona_version}, build #{wawona_build_number}, " \
-    "destination=#{target[:destination]})"
+    "Exact IPA #{target[:scheme]} (version #{wawona_version}, build #{wawona_build_number}, " \
+    "team=#{team_id}, profile=#{profile_name})"
   )
 
-  # Gym 2.232 regenerates ExportOptions and forces method=app-store even when
-  # given a custom plist path (CI log: "Generated plist … method: app-store").
-  # Archive with gym, then exportArchive ourselves with app-store-connect.
-  export_plist = File.join(gym_output_dir, "ExportOptions-#{target[:scheme]}.plist")
-  profile_xml = provisioning_profiles.map do |bid, name|
-    "\t\t<key>#{bid}</key>\n\t\t<string>#{name}</string>"
-  end.join("\n")
-  File.write(export_plist, <<~PLIST)
-    <?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-    <plist version="1.0">
-    <dict>
-    \t<key>method</key>
-    \t<string>app-store-connect</string>
-    \t<key>destination</key>
-    \t<string>export</string>
-    \t<key>signingStyle</key>
-    \t<string>manual</string>
-    \t<key>signingCertificate</key>
-    \t<string>#{identity}</string>
-    \t<key>teamID</key>
-    \t<string>#{team_id}</string>
-    \t<key>uploadSymbols</key>
-    \t<true/>
-    \t<key>manageAppVersionAndBuildNumber</key>
-    \t<false/>
-    \t<key>provisioningProfiles</key>
-    \t<dict>
-    #{profile_xml}
-    \t</dict>
-    </dict>
-    </plist>
-  PLIST
-
-  # Avoid stale XCODEBUILD_ARCHIVE from a prior scheme (shared gym_output_dir).
-  lane_context[SharedValues::XCODEBUILD_ARCHIVE] = nil
-
-  build_app(
-    project: project,
-    scheme: target[:scheme],
-    clean: true,
-    silent: false,
-    destination: target[:destination],
-    skip_package_ipa: true,
-    export_method: "app-store",
-    xcargs: xcargs,
-    output_directory: gym_output_dir,
-    output_name: store_ipa_basename(target),
-    skip_profile_detection: true,
-    build_path: File.join(gym_output_dir, "build-#{target[:scheme]}"),
-    derived_data_path: File.join(gym_output_dir, "DerivedData-#{target[:scheme]}")
-  )
-
-  archive = lane_context[SharedValues::XCODEBUILD_ARCHIVE]
-  UI.user_error!("gym produced no .xcarchive") unless archive && File.directory?(archive)
-  # Shared bundle id across iOS/tvOS/visionOS: confirm archive identity after gym so a
-  # stale XCODEBUILD_ARCHIVE cannot feed the wrong ExportOptions profile set.
-  require "open3"
-  app_props = File.join(archive, "Info.plist")
-  if File.file?(app_props)
-    bundle_id, = Open3.capture2(
-      "/usr/libexec/PlistBuddy", "-c",
-      "Print :ApplicationProperties:CFBundleIdentifier", app_props
-    )
-    UI.message("Archive #{File.basename(archive)} bundle=#{bundle_id.to_s.strip}")
+  # Resolve match-installed profile → EXACT_PROFILE path.
+  profiles_dir = File.expand_path("~/Library/MobileDevice/Provisioning Profiles")
+  profile_path = Dir.glob(File.join(profiles_dir, "*.mobileprovision")).find do |p|
+    raw = File.read(p)
+    raw.include?(profile_name) || raw.include?(target[:bundle_id])
   end
+  UI.user_error!("No .mobileprovision for #{profile_name} / #{target[:bundle_id]} under #{profiles_dir}") unless profile_path
 
-  embed_swift_runtime_into_archive!(archive)
-
-  export_dir = File.join(gym_output_dir, "export-#{target[:scheme]}")
-  FileUtils.rm_rf(export_dir)
-  FileUtils.mkdir_p(export_dir)
-  UI.message("exportArchive method=app-store-connect → #{export_dir}")
-  # #138: exportArchive for Wawona-tvOS/-visionOS reproducibly failed with
-  # "Provisioning profile ... has platform 'tvOS', which does not match the
-  # current platform 'iOS'" — including in a single-scheme, single-process
-  # `debug_export` run, which ruled out cross-scheme ENV leakage in this Ruby
-  # process (the original theory here). Root cause, confirmed by inspecting a
-  # local .xcarchive's Products/Applications/Wawona.app/Info.plist directly:
-  # src/resources/app-bundle/Info.plist is shared verbatim
-  # (GENERATE_INFOPLIST_FILE=NO) across every Apple app target and hardcodes
-  # CFBundleSupportedPlatforms=[iPhoneOS] + LSRequiresIPhoneOS=true.
-  # `xcodebuild -exportArchive` reads CFBundleSupportedPlatforms — NOT
-  # DTPlatformName/DTSDKName, which were both correctly appletvos/xros in the
-  # affected archives — to decide "current platform", so it rejected the
-  # (correctly platform-scoped) provisioning profile. Fixed at the source in
-  # `cargo xtask xcode embed` (deletes the iOS-only keys
-  # on the tvOS/macOS/visionOS app targets); verified locally end-to-end for
-  # both Wawona-tvOS and Wawona-visionOS via `fastlane ios debug_export`.
-  # Keep exporting in a minimal, explicit environment regardless — it is a
-  # reasonable defensive practice for `xcodebuild`/gym-internal ENV state
-  # even though it was not this bug's actual cause.
-  clean_env = {
-    "PATH" => ENV["PATH"],
-    "HOME" => ENV["HOME"],
-    "USER" => ENV["USER"],
-    "TMPDIR" => ENV["TMPDIR"],
-    "DEVELOPER_DIR" => ENV["DEVELOPER_DIR"]
-  }.compact
-  out, err, st = Open3.capture3(
-    clean_env,
-    "/usr/bin/xcrun", "xcodebuild",
-    "-exportArchive",
-    "-archivePath", archive,
-    "-exportOptionsPlist", export_plist,
-    "-exportPath", export_dir,
-    unsetenv_others: true
-  )
-  UI.message(out) unless out.to_s.strip.empty?
-  unless st.success?
-    UI.error(err) unless err.to_s.strip.empty?
-    UI.user_error!("xcodebuild -exportArchive failed (exit #{st.exitstatus}) for #{target[:scheme]}")
+  # SHA-1 of the codesigning identity Exact's assembleIOS expects.
+  ids = `security find-identity -v -p codesigning 2>/dev/null`
+  identity_sha = ids.lines.map { |l| l[/\b([A-F0-9]{40})\b/, 1] }.compact.find do |sha|
+    ids.include?(sha) && ids.lines.any? { |l| l.include?(sha) && l.include?(identity_name.split(" ").first) }
   end
-  UI.message(err) unless err.to_s.strip.empty?
+  identity_sha ||= ids[/\b([A-F0-9]{40})\b/, 1]
+  UI.user_error!("No codesigning identity matching #{identity_name}") unless identity_sha
 
-  exported = Dir.glob(File.join(export_dir, "*.ipa")).first
-  UI.user_error!("exportArchive produced no IPA in #{export_dir}") unless exported
-  final_ipa = File.join(
-    gym_output_dir,
-    "#{store_ipa_basename(target)}.ipa"
-  )
-  FileUtils.mv(exported, final_ipa)
-  inject_swift_support_from_archive!(final_ipa, archive)
+  ENV["EXACT_IDENTITY"] = identity_sha
+  ENV["EXACT_PROFILE"] = profile_path
+  ENV["EXACT_VERSION"] = wawona_version
+  ENV["EXACT_BUILD_NUMBER"] = wawona_build_number.to_s
+  ENV["TEAM_ID"] = team_id
+
+  xtask_target = case target[:scheme]
+                 when "Wawona-tvOS" then "tvos"
+                 when "Wawona-visionOS" then "visionos"
+                 else "ios"
+                 end
+  # tvOS/visionOS Exact archive still routes through ios device IPA path when
+  # Exact host supports those flags; otherwise ios is the store lane.
+  out = sh({ "EXACT_IDENTITY" => identity_sha, "EXACT_PROFILE" => profile_path },
+           "cargo", "xtask", "archive", xtask_target, log: true)
+  built = out.lines.map(&:strip).reject(&:empty?).last
+  UI.user_error!("Exact archive produced no IPA path (last line=#{built.inspect})") unless built && File.file?(built)
+
+  final_ipa = File.join(gym_output_dir, "#{store_ipa_basename(target)}.ipa")
+  FileUtils.mkdir_p(gym_output_dir)
+  FileUtils.cp(built, final_ipa)
+  # No .xcarchive from Exact; synthesize SwiftSupport from the GM toolchain when needed.
+  inject_swift_support_from_archive!(final_ipa, nil)
   lane_context[SharedValues::IPA_OUTPUT_PATH] = final_ipa
   final_ipa
 end
 
-# Gradle signs bundleRelease with ANDROID_KEYSTORE_PATH (android/app/build.gradle.kts).
+# Exact Android host signs AAB (cargo xtask archive android). Keystore via env.
 def build_aab_path
   keystore = File.join(Dir.tmpdir, "wawona-upload-#{Process.pid}.jks")
   File.binwrite(keystore, ENV.fetch("ANDROID_KEYSTORE_BASE64").unpack1("m"))

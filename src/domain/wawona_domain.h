@@ -9,6 +9,20 @@ extern "C" {
 
 void wawona_domain_string_free(char *s);
 
+/* SSH editor sanitize / port. Policy is rust `src/domain/sanitize_ssh_host`. */
+char *wawona_editor_sanitize_ssh_host(const char *raw);
+int wawona_editor_normalize_ssh_port(const char *raw, int fallback);
+/* JSON {"host":"...","port":N}. Caller frees with wawona_domain_string_free. */
+char *wawona_editor_split_ssh_host_port(
+    const char *raw_host, const char *raw_port, int fallback);
+/* JSON array of issue tokens. Caller frees. */
+char *wawona_editor_validate(
+    const char *name,
+    const char *type_raw,
+    const char *ssh_host,
+    const char *ssh_user,
+    const char *ssh_port_text);
+
 /* Comma-separated settings sidebar slugs for host
  * (`macos`, `ios`, `tvos`, `watchos`, `visionos`, `android`, `linux`).
  * Caller frees with wawona_domain_string_free. */
@@ -39,6 +53,12 @@ char *wawona_launch_resolve_backend(
     const char *pref, int classic_own_display, const char *cli_override);
 char *wawona_launch_nested_cursor_policy(
     int is_nested_compositor, int show_virtual_cursor);
+/* Session input (touch / cursor / grab). surface: primary | limited_touch | pointer_remote. */
+char *wawona_launch_session_input_policy(
+    int is_nested_compositor,
+    int show_virtual_cursor,
+    const char *touch_input_override,
+    const char *surface);
 
 /* CloudKit sync policy. Hosts own CKRecord transport only. */
 int wawona_cloud_sync_is_synced_key(const char *key);

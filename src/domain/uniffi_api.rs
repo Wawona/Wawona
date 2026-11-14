@@ -6,7 +6,8 @@ use super::error::DomainError;
 use super::machine_profile::MachineProfile;
 use super::profile_store::ProfileDocument;
 use super::validation::{
-    normalize_ssh_port, sanitize_ssh_host, validate_editor, validate_profile, EditorStateView,
+    normalize_ssh_port, sanitize_ssh_host, split_ssh_host_and_port, validate_editor,
+    validate_profile, EditorStateView, SshHostPort,
 };
 
 #[derive(uniffi::Object)]
@@ -92,6 +93,30 @@ pub fn sanitize_ssh_host_uniffi(raw: String) -> String {
 #[uniffi::export]
 pub fn normalize_ssh_port_uniffi(raw: String, fallback: i32) -> i32 {
     normalize_ssh_port(&raw, fallback)
+}
+
+#[derive(uniffi::Record)]
+pub struct SshHostPortView {
+    pub host: String,
+    pub port: i32,
+}
+
+impl From<SshHostPort> for SshHostPortView {
+    fn from(value: SshHostPort) -> Self {
+        Self {
+            host: value.host,
+            port: value.port,
+        }
+    }
+}
+
+#[uniffi::export]
+pub fn split_ssh_host_and_port_uniffi(
+    raw_host: String,
+    raw_port: Option<String>,
+    fallback: i32,
+) -> SshHostPortView {
+    split_ssh_host_and_port(&raw_host, raw_port.as_deref(), fallback).into()
 }
 
 #[uniffi::export]
@@ -206,6 +231,45 @@ pub fn launch_nested_cursor_policy_json(
     show_virtual_cursor: bool,
 ) -> String {
     super::launch_resolve::nested_cursor_json(is_nested_compositor, show_virtual_cursor)
+}
+
+/// Resolve touch / cursor / grab for Start and Focus.
+/// `surface`: `primary` | `limited_touch` | `pointer_remote`.
+#[uniffi::export]
+pub fn launch_session_input_policy_json(
+    is_nested_compositor: bool,
+    show_virtual_cursor: bool,
+    touch_input_override: Option<String>,
+    surface: String,
+) -> String {
+    use super::launch_resolve::PresentSurfaceClass;
+    let surface = match surface.trim().to_ascii_lowercase().as_str() {
+        "limited_touch" | "limited" | "carplay" => PresentSurfaceClass::LimitedTouch,
+        "pointer_remote" | "airplay" | "remote" => PresentSurfaceClass::PointerRemote,
+        _ => PresentSurfaceClass::Primary,
+    };
+    super::launch_resolve::session_input_json(
+        is_nested_compositor,
+        show_virtual_cursor,
+        touch_input_override.as_deref(),
+        surface,
+    )
+}
+
+/// Add/Edit Kind picker labels (Native Shell / VM / Container only).
+#[uniffi::export]
+pub fn machine_kind_picker_json() -> String {
+    use super::machine_profile::MachineType;
+    let rows: Vec<serde_json::Value> = MachineType::selectable_for_ui()
+        .iter()
+        .map(|t| {
+            serde_json::json!({
+                "id": serde_json::to_value(t).unwrap_or(serde_json::Value::Null),
+                "label": t.user_facing_name(),
+            })
+        })
+        .collect();
+    serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into())
 }
 
 #[uniffi::export]

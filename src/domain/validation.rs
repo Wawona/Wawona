@@ -4,7 +4,9 @@
 //! Swift fallback for SPM tests). Do not add rules only in Swift or Kotlin.
 
 use super::machine_profile::{MachineProfile, MachineType};
-pub use super::sanitize_ssh_host::{normalize_ssh_port, sanitize_ssh_host};
+pub use super::sanitize_ssh_host::{
+    normalize_ssh_port, sanitize_ssh_host, split_ssh_host_and_port, SshHostPort,
+};
 
 /// UserDefaults / SharedPreferences key. Byte-identical across Apple, Android, Linux.
 pub const PROFILES_KEY: &str = "wawona.machineProfiles.v1";

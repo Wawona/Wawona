@@ -65,10 +65,11 @@ jobs:
   product-ios:
     name: "Build: iOS"
     if: ${{ !inputs.products_ready && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'ios' || github.event_name == 'schedule') }}
-    uses: ./.github/workflows/product-ios-sim.yml
+    uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: leak-idle-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
+      only: ios-sim
     permissions:
       contents: read
       id-token: write
@@ -76,10 +77,11 @@ jobs:
   product-android:
     name: "Build: Android"
     if: ${{ !inputs.products_ready && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'android' || github.event_name == 'schedule') }}
-    uses: ./.github/workflows/product-android-apk.yml
+    uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: leak-idle-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
+      only: android-apk
     permissions:
       contents: read
       id-token: write
@@ -87,10 +89,11 @@ jobs:
   product-macos:
     name: "Build: macOS"
     if: ${{ !inputs.products_ready && ((inputs.lanes || 'all') == 'all' || (inputs.lanes || 'all') == 'macos' || github.event_name == 'schedule') }}
-    uses: ./.github/workflows/product-macos-app.yml
+    uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: leak-idle-${{ inputs.tip_key || inputs.checkout_ref || github.ref_name }}
+      only: macos-app
     permissions:
       contents: read
       id-token: write

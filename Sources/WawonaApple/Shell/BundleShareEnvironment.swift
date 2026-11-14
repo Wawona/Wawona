@@ -4,7 +4,7 @@ import CoreText
 import UIKit
 #endif
 
-/// Point in-process weston / toytoolkit at bundled `share/` assets.
+/// Point optional installed clients at bundled `share/` assets when present.
 /// Restores the former `WWNConfigureBundledFontsIfNeeded` + WESTON_DATA_DIR
 /// path that Watch already had; iOS/iPadOS/tvOS/visionOS must call this
 /// before `weston_compositor_main` so clients inherit FONTCONFIG_* and

@@ -896,6 +896,7 @@ struct WWNMachineInputEditorSection: View {
         WWNEditorFieldRow("Touch Input Type", icon: "hand.tap") {
           Picker("", selection: $draft.touchInputType) {
             Text("Multi-Touch").tag("Multi-Touch")
+            Text("Single Touch").tag("Single Touch")
             Text("Touchpad").tag("Touchpad")
           }
           .wwnPlatformPickerStyle()

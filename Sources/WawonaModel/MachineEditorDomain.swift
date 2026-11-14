@@ -25,7 +25,7 @@ public enum MachineEditorDomain {
             if remote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 remote = ""
             }
-            launcher = ClientLauncher.presets.first?.name ?? "weston-simple-shm"
+            launcher = ClientLauncher.presets.first?.name ?? "wawona-shell"
         }
         return MachineEditorState(
             id: profile.id,
@@ -133,7 +133,7 @@ public enum MachineEditorDomain {
             if session.kind == .terminal {
                 profile.remoteCommand = trimmedRemote
             } else if session.kind == .waypipe {
-                profile.remoteCommand = trimmedRemote.isEmpty ? "weston-simple-shm" : trimmedRemote
+                profile.remoteCommand = trimmedRemote
             } else {
                 profile.remoteCommand = ""
             }

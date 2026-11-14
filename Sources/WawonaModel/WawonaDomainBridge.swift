@@ -148,6 +148,65 @@ public enum WawonaDomainBridge {
         )
     }
 
+    /// Touch / cursor / grab for Start and Focus. Rust owns the table.
+    /// `surface`: `primary`, `limited_touch`, or `pointer_remote`.
+    public static func sessionInputPolicy(
+        isNestedCompositor: Bool,
+        showVirtualCursor: Bool,
+        touchInputOverride: String?,
+        surface: String = "primary"
+    ) -> (touchMode: String, hideHost: Bool, showVirtual: Bool, grabCursor: Bool)? {
+        typealias Fn = @convention(c) (
+            Int32, Int32, UnsafePointer<CChar>?, UnsafePointer<CChar>?
+        ) -> UnsafeMutablePointer<CChar>?
+        guard let sym = symbol("wawona_launch_session_input_policy"),
+              let freeSym = symbol("wawona_domain_string_free")
+        else {
+            return nil
+        }
+        let fn = unsafeBitCast(sym, to: Fn.self)
+        let freeFn = unsafeBitCast(freeSym, to: FreeFn.self)
+        return surface.withCString { cSurface in
+            let invoke: (UnsafePointer<CChar>?) -> (
+                touchMode: String, hideHost: Bool, showVirtual: Bool, grabCursor: Bool
+            )? = { cTouch in
+                guard let raw = fn(
+                    isNestedCompositor ? 1 : 0,
+                    showVirtualCursor ? 1 : 0,
+                    cTouch,
+                    cSurface
+                ) else {
+                    return nil
+                }
+                defer { freeFn(raw) }
+                let json = String(cString: raw)
+                guard let data = json.data(using: .utf8),
+                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else {
+                    return nil
+                }
+                let modeRaw = (obj["touch_mode"] as? String) ?? "multi_touch"
+                let touchMode: String = {
+                    switch modeRaw {
+                    case "single_touch": return "Single Touch"
+                    case "pointer": return "Touchpad"
+                    default: return "Multi-Touch"
+                    }
+                }()
+                return (
+                    touchMode: touchMode,
+                    hideHost: (obj["hide_host_cursor"] as? Bool) ?? false,
+                    showVirtual: (obj["show_virtual_pointer"] as? Bool) ?? false,
+                    grabCursor: (obj["grab_cursor"] as? Bool) ?? false
+                )
+            }
+            if let touchInputOverride {
+                return touchInputOverride.withCString { invoke($0) }
+            }
+            return invoke(nil)
+        }
+    }
+
     private typealias FreeFn = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
 
     static func symbol(_ name: String) -> UnsafeMutableRawPointer? {

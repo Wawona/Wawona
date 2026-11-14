@@ -87,20 +87,19 @@ See [Usage Guide](docs/usage.md) and [Settings Reference](docs/settings.md).
 
 ### Building
 
-Apple and Android builds need Xcode 27 or Android Studio, Rust (rustup reads
-`rust-toolchain.toml`) and nothing else:
+Product Apple/Android hosts are **Exact** (`../exact/apps/wawona`). Darwin
+still needs Xcode 27 (SDK). Rust via `rust-toolchain.toml`. Sibling Exact
+checkout + Bun required.
 
 ```bash
 cargo xtask deps get macosx iphonesimulator android   # prebuilt dependency slices
-open Wawona.xcodeproj                                 # or open android/ in Android Studio
+cargo xtask build macos                               # Exact bun host + libwawona
+cargo xtask build ios
+cargo xtask archive ios                               # Exact IPA for Fastlane
 ```
 
-Press Run. The Xcode and Gradle projects build the Rust backend themselves,
-so a Rust edit needs no extra step. `cargo xtask build <target>` does the same
-from a shell (`macos`, `ios`, `ipados`, `ios-modeb`, `tvos`, `visionos`,
-`watchos`, `android`); `cargo xtask --help` lists the rest: tests, archives,
-the Mode B `.tipa` and Sileo debs, the macOS DMG. Details:
-[Compilation Guide](docs/compilation.md).
+`cargo xtask tip macos` / `tip ios` for Appium. Mode B: `cargo xtask package
+ios-mode-b`. Details: [Compilation Guide](docs/compilation.md).
 
 **Nested Weston on iOS** presents in-process via Settings → Compositor clients. Two backends are available:
 

@@ -209,11 +209,8 @@ let
       (pkg "ANGLE" v.angleIos "OpenGL ES on Metal")
       (pkgDef "MoltenVK" v.moltenvk)
       (pkg "iland" v.iland "Userspace DRM/KMS/GBM (Mode A)")
-      (pkgDef "Weston" v.weston)
-      (pkgDef "Niri" v.niri)
       (pkg "zsh" v.zsh "In-process local shell")
-      (pkgDef "Foot" v.foot)
-      (pkgDef "Fuzzel" v.fuzzel)
+      (pkgDef "fastfetch" v.fastfetch)
     ];
     ipados = ios;
     macos = v: (substrate v) ++ [
@@ -225,11 +222,8 @@ let
       (pkgDef "KosmicKrisp" v.kosmickrisp)
       (pkgDef "SwiftShader" v.swiftshader)
       (pkg "iland" v.iland "Userspace DRM/KMS/GBM (Mode A)")
-      (pkgDef "Weston" v.weston)
-      (pkgDef "Niri" v.niri)
       (pkg "zsh" v.zsh "Bundled local shell")
-      (pkgDef "Foot" v.foot)
-      (pkgDef "Fuzzel" v.fuzzel)
+      (pkgDef "fastfetch" v.fastfetch)
     ];
     tvos = v: (substrate v) ++ [
       (pkgDef "Waypipe" v.waypipe)
@@ -238,20 +232,16 @@ let
       (pkg "ANGLE" v.angleMacos "OpenGL ES on Metal")
       (pkgDef "MoltenVK" v.moltenvk)
       (pkg "iland" v.iland "Userspace DRM/KMS/GBM (Mode A)")
-      (pkgDef "Weston" v.weston)
-      (pkgDef "Niri" v.niri)
       (pkg "zsh" v.zsh "In-process local shell")
-      (pkgDef "Foot" v.foot)
+      (pkgDef "fastfetch" v.fastfetch)
     ];
     watchos = v: (substrate v) ++ [
       (pkgDef "Waypipe" v.waypipe)
       (pkg "libssh2" v.libssh2 "In-process SSH (Apple mobile)")
       (pkgDef "epoll-shim" v.epollShim)
       (pkg "iland" v.iland "SHM clients; SpriteKit present (GL/VK blocked)")
-      (pkgDef "Weston" v.weston)
-      (pkgDef "Niri" v.niri)
       (pkg "zsh" v.zsh "In-process local shell")
-      (pkgDef "Foot" v.foot)
+      (pkgDef "fastfetch" v.fastfetch)
     ];
     visionos = ios;
     android = v: (substrate v) ++ [
@@ -261,18 +251,13 @@ let
       (pkg "ANGLE" v.angleAndroid "OpenGL ES on Vulkan/EGL")
       (pkgDef "SwiftShader" v.swiftshader)
       (pkg "iland" v.iland "Userspace DRM/KMS/GBM over AHardwareBuffer")
-      (pkgDef "Weston" v.weston)
-      (pkgDef "Niri" v.niri)
       (pkg "zsh" v.zsh "In-process local shell")
+      (pkgDef "fastfetch" v.fastfetch)
     ];
     linux = v: (substrate v) ++ [
       (pkgDef "Waypipe" v.waypipe)
       (pkg "OpenSSH" v.openssh "Host SSH client")
-      (pkgDef "Weston" v.weston)
-      (pkgDef "Niri" v.niri)
-      (pkgDef "Foot" v.foot)
       (pkg "zsh" v.zsh "Bundled local shell")
-      (pkgDef "kmscube" v.kmscube)
       (pkgDef "fastfetch" v.fastfetch)
     ];
   };

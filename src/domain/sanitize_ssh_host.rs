@@ -67,6 +67,92 @@ pub fn normalize_ssh_port(raw: &str, fallback: i32) -> i32 {
     }
 }
 
+/// Host + port after cleanup, before `sanitize_ssh_host` drops an embedded port.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SshHostPort {
+    pub host: String,
+    pub port: i32,
+}
+
+/// Strip scheme / path / query / metacharacters but keep a trailing `:port` so
+/// callers can split. Matches the former Kotlin `cleanupHost` shape.
+fn cleanup_ssh_host_keep_port(raw: &str) -> String {
+    let mut value = raw.trim().to_string();
+    if value.is_empty() {
+        return String::new();
+    }
+    if let Some(idx) = value.find("://") {
+        value = value[idx + 3..].to_string();
+    }
+    if let Some(idx) = value.find('/') {
+        value.truncate(idx);
+    }
+    if let Some(idx) = value.find('?') {
+        value.truncate(idx);
+    }
+    if let Some(idx) = value.find('#') {
+        value.truncate(idx);
+    }
+    value
+        .chars()
+        .filter(|c| !c.is_whitespace() && !is_ssh_host_metachar(*c))
+        .collect()
+}
+
+/// Split `host:port` (and `[ipv6]:port`) from raw host text. Port field wins when
+/// present; otherwise an embedded `:digits` suffix is taken. Product hosts call
+/// this instead of mirroring Kotlin `splitHostAndPort`.
+pub fn split_ssh_host_and_port(
+    raw_host: &str,
+    raw_port: Option<&str>,
+    fallback_port: i32,
+) -> SshHostPort {
+    let explicit = raw_port
+        .map(|p| normalize_ssh_port(p, fallback_port))
+        .unwrap_or(fallback_port);
+    let cleaned = cleanup_ssh_host_keep_port(raw_host);
+    if cleaned.is_empty() {
+        return SshHostPort {
+            host: String::new(),
+            port: explicit,
+        };
+    }
+    if cleaned.starts_with('[') {
+        if let Some(closing) = cleaned.find(']') {
+            let after = closing + 1;
+            if after < cleaned.len() && cleaned.as_bytes()[after] == b':' {
+                let suffix = &cleaned[after + 1..];
+                if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
+                    return SshHostPort {
+                        host: cleaned[..=closing].to_string(),
+                        port: normalize_ssh_port(suffix, explicit),
+                    };
+                }
+            }
+            return SshHostPort {
+                host: cleaned,
+                port: explicit,
+            };
+        }
+    } else if let Some(colon) = cleaned.rfind(':') {
+        let host_part = &cleaned[..colon];
+        let port_part = &cleaned[colon + 1..];
+        if !host_part.contains(':')
+            && !port_part.is_empty()
+            && port_part.chars().all(|c| c.is_ascii_digit())
+        {
+            return SshHostPort {
+                host: host_part.to_string(),
+                port: normalize_ssh_port(port_part, explicit),
+            };
+        }
+    }
+    SshHostPort {
+        host: cleaned,
+        port: explicit,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,6 +185,31 @@ mod tests {
         assert_eq!(normalize_ssh_port("0", 22), 22);
         assert_eq!(normalize_ssh_port("65536", 22), 22);
         assert_eq!(normalize_ssh_port("abc", 22), 22);
+    }
+
+    #[test]
+    fn split_keeps_embedded_port() {
+        assert_eq!(
+            split_ssh_host_and_port("ssh://host.example:2222/path", None, 22),
+            SshHostPort {
+                host: "host.example".into(),
+                port: 2222,
+            }
+        );
+        assert_eq!(
+            split_ssh_host_and_port("[::1]:2222", Some("22"), 22),
+            SshHostPort {
+                host: "[::1]".into(),
+                port: 2222,
+            }
+        );
+        assert_eq!(
+            split_ssh_host_and_port("host.example", Some("443"), 22),
+            SshHostPort {
+                host: "host.example".into(),
+                port: 443,
+            }
+        );
     }
 }
 

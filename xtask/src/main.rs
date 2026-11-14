@@ -5,6 +5,7 @@ mod artifact;
 mod backend;
 mod ci;
 mod deps;
+mod exact_host;
 mod gen;
 mod install;
 mod lab;
@@ -46,11 +47,11 @@ enum Cmd {
         #[command(flatten)]
         get: deps::GetArgs,
     },
-    /// Build an app (simulator unless --device) through its Xcode scheme or Gradle.
+    /// Build an app via Exact bun host (simulator unless --device).
     Build(product::Args),
-    /// Run tests: rust, ios (XCTest on a simulator) or android (unit tests).
+    /// Run tests: rust, ios (Exact host) or android.
     Test(product::Args),
-    /// Archive an app for release; --export signs and exports it.
+    /// Archive via Exact IPA/AAB (Fastlane consumes the IPA).
     Archive(product::ArchiveArgs),
     /// Mode B wrappers and the macOS DMG.
     #[command(subcommand)]
@@ -99,7 +100,7 @@ enum Cmd {
     Cli(install::Cli),
     /// Build (when stale), check and clean-launch the tip app every UI proof uses.
     Tip(tip::Args),
-    /// Wawona.xcodeproj build phases.
+    /// Legacy Xcode build-phase shims (no-op / backend staging after Exact cutover).
     #[command(subcommand)]
     Xcode(xcode::Cmd),
 }

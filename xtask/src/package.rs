@@ -4,7 +4,6 @@
 
 mod dmg;
 
-use crate::product::{self, target};
 use crate::util::{cmd, output, read, root, run, write};
 use anyhow::{Context, Result};
 use std::io::Write as _;
@@ -137,18 +136,18 @@ const MODE_B_STRIP: &[&str] = &[
     "wawona-rootfs/usr/share/zsh/Completion/Unix/Command/_qemu",
 ];
 
-/// Build Wawona-iOS-ModeB and stage it ldid-signed.
+/// Build Exact Mode B device app and stage it ldid-signed (no xcodebuild).
 fn mode_b_app(stage: &Path) -> Result<()> {
-    product::build(product::Args {
-        target: "ios-modeb".into(),
-        device: true,
-        release: true,
-        sign: false,
-        settings: Vec::new(),
-    })?;
+    let t = crate::exact_host::target("ios-modeb")?;
+    let app = crate::exact_host::build_apple(&t)?;
+    // Keep a stable tip path for package/lab consumers of Target::app.
+    let tip = root().join(".build/exact/ios-modeb/Wawona.app");
+    let _ = std::fs::remove_dir_all(&tip);
+    std::fs::create_dir_all(tip.parent().unwrap())?;
+    run(cmd("ditto").arg(&app).arg(&tip))?;
     let _ = std::fs::remove_dir_all(stage);
     std::fs::create_dir_all(stage.parent().unwrap())?;
-    run(cmd("ditto").arg(target("ios-modeb")?.app(true, true)).arg(stage))?;
+    run(cmd("ditto").arg(&app).arg(stage))?;
     crate::xcode::make_writable(stage)?;
     for p in MODE_B_STRIP {
         let p = stage.join(p);
@@ -167,8 +166,7 @@ fn mode_b_app(stage: &Path) -> Result<()> {
     Ok(())
 }
 
-/// One build serves the debs and the tipa: the iOS 27 SDK floors every
-/// target at 15.0 (docs/agent-rules/wawona-ios-min-os.md).
+/// One Exact device build serves tipa + Sileo debs (Exact product floor 17.0).
 fn ios_mode_b() -> Result<()> {
     let (v, out) = (version()?, dist()?);
     let stage = root().join(".build/package/ios-mode-b/Wawona.app");
@@ -177,7 +175,7 @@ fn ios_mode_b() -> Result<()> {
         let control = format!(
             "Package: com.aspauldingcode.wawona.modeb\nName: Wawona\nVersion: {v}\nArchitecture: {arch}\n\
              Maintainer: Wawona <hello@wawona.io>\nDescription: Wawona Mode B ({scheme}). JIT + IOMFB Desktop. Not App Store.\n\
-             Section: Applications\nPriority: optional\nDepends: firmware (>= 15.0)\nHomepage: https://wawona.io\n"
+             Section: Applications\nPriority: optional\nDepends: firmware (>= 17.0)\nHomepage: https://wawona.io\n"
         );
         deb(&control, prefix, &stage, &out.join(format!("Wawona-{v}-iOS-arm64-{scheme}.deb")))?;
     }
@@ -221,7 +219,7 @@ fn demo() -> Result<()> {
         .arg(src.join("modeb_demo_support.c"))
         .arg("-o")
         .arg(stage.join("support.o")))?;
-    let swift = ["-sdk", &sdk, "-target", "arm64-apple-ios15.0"];
+    let swift = ["-sdk", &sdk, "-target", "arm64-apple-ios17.0"];
     run(xcrun("swiftc")
         .args(swift)
         .args(["-parse-as-library", "-O", "-emit-object", "-wmo", "-import-objc-header"])
@@ -252,7 +250,7 @@ fn demo() -> Result<()> {
             "Package: {DEMO_ID}\nName: Wawona Mode B Demo\nVersion: {v}-{build}\nArchitecture: {arch}\n\
              Maintainer: {maint}\nAuthor: {maint}\nDescription: Mode B framebuffer and JIT demo ({scheme}). \
              IOMFB plasma, Hello text, fib HUD. Not App Store.\nSection: Utilities\nPriority: optional\n\
-             Depends: firmware (>= 15.0)\nHomepage: https://wawona.io\nTag: role::developer\n"
+             Depends: firmware (>= 17.0)\nHomepage: https://wawona.io\nTag: role::developer\n"
         );
         let deb_path = out.join(format!("wawona-modeb-demo_{v}-{build}_{arch}.deb"));
         deb(&control, prefix, &app, &deb_path)?;

@@ -180,12 +180,8 @@ const PRODUCERS: &[&str] = &[
     "device-gate.yml",
     "release.yml",
     "product-build.yml",
-    "product-ios-sim.yml",
-    "product-android-apk.yml",
-    "product-macos-app.yml",
-    "product-appimage.yml",
-    "product-apple-family.yml",
-    "product-ios-modeb.yml",
+    "bundled-clients-matrix.yml",
+    "leak-idle-gate.yml",
 ];
 
 /// Downloads a product artifact a successful run built for `sha`, waiting

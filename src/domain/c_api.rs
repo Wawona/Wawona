@@ -7,7 +7,8 @@ use std::os::raw::c_char;
 use super::machine_profile::MachineProfile;
 use super::profile_store::ProfileDocument;
 use super::validation::{
-    normalize_ssh_port, sanitize_ssh_host, validate_editor, validate_profile, EditorStateView,
+    normalize_ssh_port, sanitize_ssh_host, split_ssh_host_and_port, validate_editor,
+    validate_profile, EditorStateView,
 };
 
 fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
@@ -127,6 +128,25 @@ pub extern "C" fn wawona_editor_normalize_ssh_port(raw: *const c_char, fallback:
         return fallback;
     };
     normalize_ssh_port(text, fallback)
+}
+
+/// JSON `{"host":"...","port":N}`. Caller frees with `wawona_domain_string_free`.
+#[no_mangle]
+pub extern "C" fn wawona_editor_split_ssh_host_port(
+    raw_host: *const c_char,
+    raw_port: *const c_char,
+    fallback: i32,
+) -> *mut c_char {
+    let host = cstr_to_str(raw_host).unwrap_or("");
+    let port = cstr_to_str(raw_port);
+    let split = split_ssh_host_and_port(host, port, fallback);
+    match serde_json::to_string(&serde_json::json!({
+        "host": split.host,
+        "port": split.port,
+    })) {
+        Ok(out) => to_cstring(out),
+        Err(_) => std::ptr::null_mut(),
+    }
 }
 
 /// JSON array of issue raw values (`missingName`, …).
@@ -410,6 +430,35 @@ pub extern "C" fn wawona_launch_nested_cursor_policy(
     to_cstring(super::launch_resolve::nested_cursor_json(
         is_nested_compositor != 0,
         show_virtual_cursor != 0,
+    ))
+}
+
+/// Session input policy JSON (touch / cursor / grab). Caller frees with
+/// `wawona_domain_string_free`. `surface`: primary | limited_touch | pointer_remote.
+#[no_mangle]
+pub extern "C" fn wawona_launch_session_input_policy(
+    is_nested_compositor: i32,
+    show_virtual_cursor: i32,
+    touch_input_override: *const c_char,
+    surface: *const c_char,
+) -> *mut c_char {
+    use super::launch_resolve::PresentSurfaceClass;
+    let touch = cstr_to_str(touch_input_override);
+    let surface = match cstr_to_str(surface)
+        .unwrap_or("primary")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "limited_touch" | "limited" | "carplay" => PresentSurfaceClass::LimitedTouch,
+        "pointer_remote" | "airplay" | "remote" => PresentSurfaceClass::PointerRemote,
+        _ => PresentSurfaceClass::Primary,
+    };
+    to_cstring(super::launch_resolve::session_input_json(
+        is_nested_compositor != 0,
+        show_virtual_cursor != 0,
+        touch,
+        surface,
     ))
 }
 

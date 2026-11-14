@@ -48,7 +48,7 @@ enum WatchMachineSessionBridge {
                 logger.endCapture()
                 return false
             }
-            let command = profile.remoteCommand.isEmpty ? "weston-simple-shm" : profile.remoteCommand
+            let command = profile.remoteCommand
             logger.appendLine(
                 "$ waypipe ssh -p \(profile.sshPort) \(profile.sshUser)@\(profile.sshHost) \(command)"
             )

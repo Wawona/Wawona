@@ -229,19 +229,48 @@ fn xcode_libclang() -> Result<PathBuf> {
     Ok(Path::new(&dev).join("Toolchains/XcodeDefault.xctoolchain/usr/lib"))
 }
 
-/// The NDK Android Studio installed, at the version android/app pins.
+/// NDK from Exact Android host, ANDROID_NDK_VERSION, or sdk-config.
 pub fn android_ndk(root: &Path) -> Result<PathBuf> {
-    let gradle = read(root.join("android/app/build.gradle.kts"))?;
-    let ver = regex::Regex::new(r#"ndkVersion\s*=\s*"([^"]+)""#)?
-        .captures(&gradle)
-        .map(|c| c[1].to_string())
-        .context("ndkVersion in android/app/build.gradle.kts")?;
+    let ver = ndk_version_pin(root)?;
     let sdk = android_sdk()?;
     let ndk = sdk.join("ndk").join(&ver);
     if !ndk.exists() {
         bail!("NDK {ver} is missing. Install it from Android Studio (SDK Manager, SDK Tools, NDK) or: sdkmanager \"ndk;{ver}\"");
     }
     Ok(ndk)
+}
+
+fn ndk_version_pin(root: &Path) -> Result<String> {
+    if let Ok(v) = std::env::var("ANDROID_NDK_VERSION") {
+        if !v.is_empty() {
+            return Ok(v);
+        }
+    }
+    let re = regex::Regex::new(r#"ndkVersion\s*=\s*"([^"]+)""#)?;
+    let candidates = [
+        root.parent().unwrap().join("exact/host/android/app/build.gradle.kts"),
+        root.join("../exact/host/android/app/build.gradle.kts"),
+    ];
+    for p in candidates {
+        if let Ok(gradle) = read(&p) {
+            if let Some(c) = re.captures(&gradle) {
+                return Ok(c[1].to_string());
+            }
+        }
+    }
+    // Last resort: wwnSdkConfig from the flake.
+    if let Ok(path) = crate::util::output(
+        crate::util::cmd("nix")
+            .current_dir(root)
+            .args(["eval", ".#wwnSdkConfigPath", "--raw"]),
+    ) {
+        let sdk = read(path.trim())?;
+        let re2 = regex::Regex::new(r#"ndkVersion\s*=\s*"([^"]+)""#)?;
+        if let Some(c) = re2.captures(&sdk) {
+            return Ok(c[1].to_string());
+        }
+    }
+    bail!("ndkVersion not found (Exact host/android, ANDROID_NDK_VERSION, or .#wwnSdkConfigPath)")
 }
 
 pub fn android_sdk() -> Result<PathBuf> {

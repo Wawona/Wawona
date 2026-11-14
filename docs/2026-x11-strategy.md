@@ -2,41 +2,48 @@
 
 Authority for scope: [`2026-SOURCE-OF-TRUTH.md`](./2026-SOURCE-OF-TRUTH.md).
 
-## Principle: no local X server
+## Principle: no full Xorg / XQuartz
 
-Wawona never ships or runs an X server (`Xorg`/`XQuartz`) on any platform. A
-local X server is incompatible with App Store sandboxing (raw device access,
-`setuid`, arbitrary module loading) and duplicates work Wayland already does.
-X11 clients are served through XWayland, hosted out-of-process.
+Wawona never ships or runs a full X server (`Xorg` / `XQuartz`) on any
+platform. A full local X server is incompatible with App Store sandboxing
+(raw device access, `setuid`, arbitrary module loading) and duplicates work
+Wayland already does. Wawona stays a **Wayland compositor**.
 
-## Delivery paths for X11 clients
+## In-compositor X11 (product path)
 
-### 1. Remote XWayland over waypipe (primary, store-safe)
-`waypipe --xwls` starts XWayland on the **remote** host inside the waypipe
-server. The X11 client talks to remote XWayland; waypipe proxies the resulting
-Wayland surfaces back to Wawona. Everything X11-specific stays on the remote
-Linux box; the Apple/Android client only ever speaks Wayland.
+**Implementation: `xwayland-satellite` only.**
 
-- Enabled by the `waypipeXwls` preference (`WWNWaypipeRunner` appends `--xwls`).
-- Works on every platform that supports waypipe (watchOS included: native compositor plus remote).
-- Fully App Store compliant. No local X server, no JIT.
+Satellite attaches X11 clients onto Wawona’s Wayland seat. It is the
+in-compositor X11 path. Not full Xorg. Not XQuartz. Not embedding an X
+server into the Wawona process as a second display server.
 
-### 2. Nested-Weston XWayland (non-store macOS only)
-On developer/desktop macOS builds, the bundled nested Weston can launch its own
-Xwayland. X11 clients connect to the nested compositor's `DISPLAY`; the nested
-Weston presents as a single surface into Wawona. Not used on store builds.
+Advertise so satellite / XWayland can attach:
 
-## Protocol support
-
-The compositor advertises the pieces XWayland needs to attach:
-
-- `xwayland_shell_v1`. XWayland surface association.
+- `xwayland_shell_v1`. Surface association.
 - `zwp_xwayland_keyboard_grab_manager_v1`. X11 keyboard grabs.
 
-(Both appear in [`protocol-status.md`](./protocol-status.md).) Wawona itself is
-the Wayland side; it does not implement the X11 wire protocol. XWayland does.
+(Both appear in [`protocol-status.md`](./protocol-status.md).) Wawona is the
+Wayland side; it does not implement the X11 wire protocol.
+
+## Peer-side remote X (store-safe convenience)
+
+`waypipe --xwls` starts XWayland on the **remote** Linux host inside the
+waypipe server. The X11 client talks to remote XWayland; waypipe proxies
+Wayland surfaces back to Wawona. Apple/Android clients only speak Wayland.
+
+- Preference: `waypipeXwls` (`WWNWaypipeRunner` appends `--xwls`).
+- Fully App Store compliant. No local X server on the device.
+- This is **peer-side only**. It is not the in-compositor X11
+  implementation (that remains `xwayland-satellite`).
+
+## Nested-Weston XWayland (non-store macOS only)
+
+On developer/desktop macOS builds, nested Weston may launch its own
+Xwayland. Prefer migrating that path to **xwayland-satellite** against
+Wawona. Not used on store builds.
 
 ## Non-goals
 
+- No full Xorg / XQuartz as Wawona’s X11 server.
 - No iOS "X11 server" via jailbreak/procursus packages (violates store policy).
-- No local `DISPLAY` socket on Apple platforms.
+- No treating remote `waypipe --xwls` as the in-compositor X11 implementation.

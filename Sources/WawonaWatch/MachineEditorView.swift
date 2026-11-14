@@ -253,7 +253,7 @@ struct MachineEditorView: View {
                     if shows(.remoteCommand) {
                         Section {
                             TextField(
-                                type == .sshWaypipe ? "e.g. weston-simple-shm" : "e.g. bash -l",
+                                type == .sshWaypipe ? "e.g. foot (installed)" : "e.g. bash -l",
                                 text: $remoteCommand
                             )
                             .textInputAutocapitalization(.never)

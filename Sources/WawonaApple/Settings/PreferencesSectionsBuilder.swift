@@ -139,9 +139,9 @@ public final class WWNPreferencesSectionsBuilder: NSObject {
         case .touchInputType:
             return popup(
                 "Touch Input Type", kWWNPrefsTouchInputType, "Multi-Touch",
-                ["Multi-Touch", "Touchpad"],
-                ["Multi-Touch", "Touchpad"],
-                "Multi-Touch injects wl_touch. Touchpad uses a virtual pointer.")
+                ["Multi-Touch", "Single Touch", "Touchpad"],
+                ["Multi-Touch", "Single Touch", "Touchpad"],
+                "Multi-Touch injects wl_touch. Single Touch caps one contact and also drives the pointer. Touchpad uses a virtual pointer only.")
         case .touchPointerEmulation:
             return sw("Pointer Emulation for Touch", kWWNPrefsTouchPointerEmulation, false,
                       "Map some touch gestures to pointer buttons.")

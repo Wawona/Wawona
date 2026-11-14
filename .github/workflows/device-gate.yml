@@ -44,14 +44,10 @@ on:
       - ".github/workflows/device-e2e-linux.yml"
       - ".github/workflows/device-gate.yml"
       - ".github/workflows/product-build.yml"
-      - ".github/workflows/product-ios-sim.yml"
-      - ".github/workflows/product-ios-modeb.yml"
-      - ".github/workflows/product-apple-family.yml"
-      - ".github/workflows/product-android-apk.yml"
-      - ".github/workflows/product-macos-app.yml"
-      - ".github/workflows/product-appimage.yml"
+      - ".github/ci-product-matrix.json"
       - "xtask/src/ci/**"
       - ".github/ci-package-matrix.json"
+      - "dependencies/wawona/products.nix"
 
 concurrency:
   group: device-gate-${{ inputs.checkout_ref || github.sha }}
@@ -83,70 +79,23 @@ jobs:
           WAWONA_CI_INTENDED_REF: ${{ inputs.checkout_ref }}
         run: cargo xtask ci tip
 
-  product-ios:
-    name: "Build: iOS"
+  products:
+    name: "Build: products"
     needs: tip
     if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/product-ios-sim.yml
+    uses: ./.github/workflows/product-build.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
       tip_key: ${{ inputs.checkout_ref || github.ref_name }}
-    permissions:
-      contents: read
-      id-token: write
-
-  product-apple-family:
-    name: "Build: iPadOS tvOS watchOS visionOS"
-    needs: tip
-    if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/product-apple-family.yml
-    with:
-      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
-      tip_key: ${{ inputs.checkout_ref || github.ref_name }}
-    permissions:
-      contents: read
-      id-token: write
-
-  product-android:
-    name: "Build: Android"
-    needs: tip
-    if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/product-android-apk.yml
-    with:
-      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
-      tip_key: ${{ inputs.checkout_ref || github.ref_name }}
-    permissions:
-      contents: read
-      id-token: write
-
-  product-macos:
-    name: "Build: macOS"
-    needs: tip
-    if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/product-macos-app.yml
-    with:
-      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
-      tip_key: ${{ inputs.checkout_ref || github.ref_name }}
-    permissions:
-      contents: read
-      id-token: write
-
-  product-appimage:
-    name: "Build: Linux AppImages"
-    needs: tip
-    if: needs.tip.outputs.is_tip == 'true'
-    uses: ./.github/workflows/product-appimage.yml
-    with:
-      checkout_ref: ${{ inputs.checkout_ref || github.sha }}
-      tip_key: ${{ inputs.checkout_ref || github.ref_name }}
+      only: all
     permissions:
       contents: read
       id-token: write
 
   e2e-ios:
     name: "Test: iOS opens"
-    needs: [tip, product-ios]
-    if: needs.tip.outputs.is_tip == 'true'
+    needs: [tip, products]
+    if: needs.tip.outputs.is_tip == 'true' && needs.products.result == 'success'
     uses: ./.github/workflows/device-e2e-ios.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
@@ -159,8 +108,8 @@ jobs:
 
   e2e-android:
     name: "Test: Android opens"
-    needs: [tip, product-android]
-    if: needs.tip.outputs.is_tip == 'true'
+    needs: [tip, products]
+    if: needs.tip.outputs.is_tip == 'true' && needs.products.result == 'success'
     uses: ./.github/workflows/device-e2e-android.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
@@ -173,8 +122,8 @@ jobs:
 
   e2e-macos:
     name: "Test: macOS opens"
-    needs: [tip, product-macos]
-    if: needs.tip.outputs.is_tip == 'true'
+    needs: [tip, products]
+    if: needs.tip.outputs.is_tip == 'true' && needs.products.result == 'success'
     uses: ./.github/workflows/device-e2e-macos.yml
     with:
       checkout_ref: ${{ inputs.checkout_ref || github.sha }}
@@ -187,7 +136,7 @@ jobs:
 
   e2e-linux:
     name: "Test: Linux catalog"
-    needs: tip
+    needs: [tip, products]
     if: needs.tip.outputs.is_tip == 'true'
     uses: ./.github/workflows/device-e2e-linux.yml
     with:
@@ -203,12 +152,11 @@ jobs:
     name: "RESULT: PASS or FAIL?"
     needs:
       - tip
+      - products
       - e2e-ios
       - e2e-android
       - e2e-macos
       - e2e-linux
-      - product-appimage
-      - product-apple-family
     if: always() && !cancelled()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -232,8 +180,7 @@ jobs:
           E2E_ANDROID: ${{ needs.e2e-android.result }}
           E2E_MACOS: ${{ needs.e2e-macos.result }}
           E2E_LINUX: ${{ needs.e2e-linux.result }}
-          APPIMAGE: ${{ needs.product-appimage.result }}
-          APPLE_FAMILY: ${{ needs.product-apple-family.result }}
+          PRODUCTS: ${{ needs.products.result }}
         run: |
           set -euo pipefail
           word() {
@@ -252,21 +199,19 @@ jobs:
             echo ""
             echo "| What | Result |"
             echo "|---|---|"
-            echo "| iOS build + opens | $(word "$E2E_IOS") |"
-            echo "| Android build + opens | $(word "$E2E_ANDROID") |"
-            echo "| macOS build + opens | $(word "$E2E_MACOS") |"
+            echo "| Product matrix (ci-product-matrix.json) | $(word "$PRODUCTS") |"
+            echo "| iOS opens | $(word "$E2E_IOS") |"
+            echo "| Android opens | $(word "$E2E_ANDROID") |"
+            echo "| macOS opens | $(word "$E2E_MACOS") |"
             echo "| Linux catalog | $(word "$E2E_LINUX") |"
-            echo "| Linux AppImages | $(word "$APPIMAGE") |"
-            echo "| iPadOS + tvOS + watchOS + visionOS | $(word "$APPLE_FAMILY") |"
             echo ""
           } >>"$GITHUB_STEP_SUMMARY"
           for pair in \
+            "Products:$PRODUCTS" \
             "iOS:$E2E_IOS" \
             "Android:$E2E_ANDROID" \
             "macOS:$E2E_MACOS" \
-            "Linux catalog:$E2E_LINUX" \
-            "Linux AppImages:$APPIMAGE" \
-            "Apple family:$APPLE_FAMILY"; do
+            "Linux catalog:$E2E_LINUX"; do
             name="${pair%%:*}"
             result="${pair#*:}"
             echo "$name -> $(word "$result")"
