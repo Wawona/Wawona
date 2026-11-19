@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "name": "Wawona UI Quality Rubric",
+  "release_gate_score": 90,
+  "criteria": [
+    { "id": "native_fidelity", "label": "Platform-native fidelity", "weight": 15 },
+    { "id": "visual_hierarchy", "label": "Visual hierarchy and clarity", "weight": 15 },
+    { "id": "navigation", "label": "Navigation and discoverability", "weight": 10 },
+    { "id": "layout", "label": "Layout, spacing, and alignment", "weight": 10 },
+    { "id": "functional", "label": "Functional correctness", "weight": 15 },
+    { "id": "accessibility", "label": "Accessibility", "weight": 10 },
+    { "id": "adaptive", "label": "Responsive and adaptive behavior", "weight": 10 },
+    { "id": "state", "label": "State handling and feedback", "weight": 5 },
+    { "id": "consistency", "label": "Consistency and design-system compliance", "weight": 5 },
+    { "id": "polish", "label": "Visual polish and restraint", "weight": 5 }
+  ],
+  "hard_gates": [
+    "broken_critical_interaction",
+    "crash_or_data_loss",
+    "inaccessible_essential",
+    "critical_clip_or_overlap",
+    "unrecoverable_navigation",
+    "misleading_state",
+    "regression_of_critical_workflow"
+  ],
+  "invariants": [
+    "UI-001-native-first",
+    "UI-002-one-primary-action",
+    "UI-003-state-driven-controls",
+    "UI-004-semantic-labels",
+    "UI-005-no-unexplained-empty",
+    "UI-006-stable-layout",
+    "UI-007-progressive-disclosure",
+    "UI-008-functional-verification",
+    "UI-009-semantic-parity",
+    "UI-010-accessibility-default",
+    "UI-011-regression-prevention",
+    "UI-012-evidence-based-completion"
+  ],
+  "notes": [
+    "Grade each platform against its own native guidelines.",
+    "An unrun target is a coverage gap, never a pass.",
+    "A screenshot alone is not a pass."
+  ]
+}

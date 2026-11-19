@@ -1,0 +1,28 @@
+{
+  "stamp": "2026-11-17T201224",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 90,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Liquid Glass: machine-add/settings/sessions buttonStyle=glass \u2192 layout native control style=glass drawn=glass (NSButton.BezelStyle.glass when LinkedDesign.liquidGlass)",
+    "Dense browser list stays opaque; glass only on chrome actions",
+    "P1 residual: catalog NSToolbar Exact-host; VoiceOver rotor; Settings window product-deferred",
+    "gate_met false until NSToolbar or accepted deferral recorded in release checklist"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T201224",
+    "liquid_glass": "layout machine-add \u2192 style=glass drawn=glass view=NSButton",
+    "danger_zone": "docs/ui-quality/history/artifacts/2026-11-17T200838-inspector-danger.png",
+    "dark": [
+      "docs/ui-quality/history/artifacts/dark-catalog.png",
+      "docs/ui-quality/history/artifacts/dark-inspector-planned.png"
+    ]
+  },
+  "hard_gates_failed": [
+    "catalog NSToolbar (Exact placeholder beside nil)",
+    "VoiceOver rotor not run"
+  ]
+}

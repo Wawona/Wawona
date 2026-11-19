@@ -1,11 +1,12 @@
-# Per-SDK inputs of the committed Wawona.xcodeproj, named by Xcode's
-# PLATFORM_NAME. CI packs each one (`cargo xtask deps pack`) and
-# `cargo xtask deps get <sdk>` unpacks it into .deps/<sdk>:
-#   slice.json        the C libraries `cargo xtask backend` builds against
-#   Wawona.xcconfig   WWN_HEADERS_<target> and WWN_LDFLAGS_<target>,
-#                     included by src/resources/xcode/wwn-version.xcconfig
-#   zsh, fastfetch    archives `cargo xtask xcode prebuild` stages
-#   bundle/           what `cargo xtask xcode embed` copies into the app
+# Per-SDK dependency slices for Exact Apple/Android hosts and the dual-run
+# quarantine, named by Xcode PLATFORM_NAME. CI packs each one
+# (`cargo xtask deps pack`) and `cargo xtask deps get <sdk>` unpacks into
+# .deps/<sdk>:
+#   slice.json        C libraries `cargo xtask backend` builds against
+#   Wawona.xcconfig   WWN_HEADERS_<target> / WWN_LDFLAGS_<target> for Exact
+#                     and any remaining Darwin dual-run link
+#   zsh, fastfetch    archives staged into the Exact / tip app
+#   bundle/           resources Exact / tip embed into the product app
 {
   lib,
   pkgs,

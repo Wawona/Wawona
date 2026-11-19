@@ -1,0 +1,29 @@
+{
+  "iteration": 6,
+  "extracted_at": "2026-11-17T16:59:08-08:00",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --chrome platform",
+  "build": ".build/exact/macos/Wawona.app",
+  "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T165908-",
+  "screens": [
+    { "screen": "machines-catalog", "score": 95, "result": "pass" },
+    { "screen": "settings-catalog", "score": 96, "note": "Sheet 560pt via width peg; Desktop auto; parent title Machines.", "result": "pass" },
+    { "screen": "settings-display", "score": 90, "note": "Section push still ~427 until section peg lands.", "result": "pass" },
+    { "screen": "add-machine", "score": 95, "result": "pass" },
+    { "screen": "tab-overview", "score": 92, "result": "pass" },
+    { "screen": "machine-inspector", "score": 93, "result": "pass" }
+  ],
+  "aggregate_score": 95,
+  "release_gate": true,
+  "evidence": [
+    "find_wawona_app prefers target/clients over stale tip mirror",
+    "settings logical width 560",
+    "wawona-settings-width-peg in tree",
+    "settings-section-desktop present"
+  ],
+  "open_issues_ranked": [
+    "Settings section push sheet width (~427) needs same peg",
+    "1px width peg is a Fit-sheet workaround; prefer authored width alone once Exact honors it for auto lists"
+  ],
+  "summary": "Stale tip mirror fixed. Settings sheet 560. Gate 95."
+}

@@ -11,6 +11,7 @@ use crate::verify::report;
 use anyhow::{bail, Context, Result};
 use serde_json::json;
 use std::collections::BTreeSet;
+use std::ffi::OsString;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -21,6 +22,9 @@ const KANI: &str = "0.68.0";
 const VERUS: &str = "0.2026.09.27.3cf1832";
 /// The nightly Miri runs on.
 const MIRI_NIGHTLY: &str = "nightly-2026-09-29";
+/// Bend 2 release the laws were checked with. Specification only.
+const BEND: &str = "2.0.40";
+const BEND_DIR: &str = "verification/bend";
 const HELPERS: &str = "verification/helpers-check/Cargo.toml";
 
 #[derive(clap::Args)]
@@ -47,6 +51,8 @@ enum LaneName {
     Swift(Out),
     /// Android unit tests, detekt, lint, JBMC and Java PathFinder.
     Kotlin(Out),
+    /// Bend 2 laws for the `wawona-laws` helpers. Specification only. No product C.
+    Bend(Out),
     /// Install a Kani release tarball and its toolchain (Linux CI).
     InstallKani {
         #[arg(default_value = KANI)]
@@ -63,6 +69,12 @@ struct Out {
     out: Option<PathBuf>,
 }
 
+/// Checker plus kernel verdict for `verification/bend`. No product output.
+pub fn bend_gate() -> Result<()> {
+    std::env::set_current_dir(root())?;
+    bend(Lane::new("bend", root().join("verification-out/bend.ndjson"))?)
+}
+
 pub fn main(a: Args) -> Result<()> {
     std::env::set_current_dir(root())?;
     let out = |name: &str, o: Out| o.out.unwrap_or_else(|| root().join(format!("verification-out/{name}.ndjson")));
@@ -75,6 +87,7 @@ pub fn main(a: Args) -> Result<()> {
         LaneName::C(o) => native::c(Lane::new("c", out("c", o))?),
         LaneName::Swift(o) => native::swift(Lane::new("swift", out("swift", o))?),
         LaneName::Kotlin(o) => native::kotlin(Lane::new("kotlin", out("kotlin", o))?),
+        LaneName::Bend(o) => bend(Lane::new("bend", out("bend", o))?),
         LaneName::InstallKani { version, target } => install_kani(&version, &target),
     }
 }
@@ -511,6 +524,183 @@ fn install_kani(version: &str, target: &str) -> Result<()> {
         eprintln!("note: the lanes run Kani {KANI}; {version} is unpacked beside it");
     }
     run(kani().context("Kani did not unpack")?.arg("--version"))
+}
+
+/// Bend 2 checker and `--verdict` on `verification/bend`. Generated C stays out.
+fn bend(lane: Lane) -> Result<()> {
+    let dir = root().join(BEND_DIR);
+    if let Err(drift) = bend_law_lock(&dir) {
+        lane.error(
+            "bend",
+            "verification/bend/laws.lock",
+            "law-lock",
+            &drift,
+            "keep LAWS.bend; update laws.lock only when a law change is approved",
+        );
+    }
+    for entry in std::fs::read_dir(&dir).with_context(|| format!("read {}", dir.display()))? {
+        let path = entry?.path();
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if matches!(ext, "c" | "h" | "o" | "js") {
+            let rel = path.strip_prefix(root()).unwrap_or(&path).display().to_string();
+            lane.error(
+                "bend",
+                &rel,
+                "no-product-c",
+                "Bend output is in the laws directory",
+                "delete it; cargo xtask prove bend does not pass -o",
+            );
+        }
+    }
+    let Some(bin) = bend_bin() else {
+        lane.error(
+            "bend",
+            BEND_DIR,
+            "missing-tool",
+            "bend is not installed",
+            "curl -fsSL https://bend-lang.com/install.sh -o install-bend.sh && sh install-bend.sh",
+        );
+        return lane.finish();
+    };
+    let version = bend_cmd(&bin).arg("version").output()?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&version.stdout),
+        String::from_utf8_lossy(&version.stderr)
+    );
+    if !text.contains(BEND) {
+        lane.error(
+            "bend",
+            BEND_DIR,
+            "version",
+            &format!("want bend {BEND}, got {}", text.trim()),
+            "install Bend 2.0.40 into ~/.bend",
+        );
+    }
+    for args in [vec!["PROOF.bend"], vec!["PROOF.bend", "--verdict"]] {
+        let out = bend_cmd(&bin)
+            .args(&args)
+            .current_dir(&dir)
+            .output()
+            .with_context(|| format!("run {}", args.join(" ")))?;
+        if !out.status.success() {
+            let combined = format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            lane.error(
+                "bend",
+                "verification/bend/PROOF.bend",
+                args.last().copied().unwrap_or("check"),
+                &combined.chars().take(500).collect::<String>(),
+                "bend PROOF.bend",
+            );
+        }
+    }
+    lane.finish()
+}
+
+/// `laws.lock` is the approval record for `LAWS.bend`. A dropped, renamed, or
+/// rewritten law fails this lane until the lock changes in the same edit.
+fn bend_law_lock(dir: &Path) -> Result<(), String> {
+    let laws = std::fs::read_to_string(dir.join("LAWS.bend")).map_err(|e| e.to_string())?;
+    let mut found: Vec<(String, String)> = Vec::new();
+    let mut name: Option<String> = None;
+    let mut body: Vec<String> = Vec::new();
+    let flush = |name: &mut Option<String>, body: &mut Vec<String>, found: &mut Vec<(String, String)>| {
+        let Some(n) = name.take() else { return };
+        let text = body.join("\n");
+        body.clear();
+        let digest = hex_sha256(&text);
+        found.push((n, digest));
+    };
+    for line in laws.lines() {
+        if let Some(rest) = line.strip_prefix("law ") {
+            flush(&mut name, &mut body, &mut found);
+            let n = rest.trim_end_matches(':').trim();
+            if n.is_empty() || n.contains(' ') {
+                return Err(format!("bad law header: {line}"));
+            }
+            name = Some(n.to_string());
+            body.push(line.to_string());
+        } else if name.is_some() && !line.is_empty() && !line.starts_with('#') {
+            body.push(line.to_string());
+        }
+    }
+    flush(&mut name, &mut body, &mut found);
+    let lock = std::fs::read_to_string(dir.join("laws.lock")).map_err(|e| e.to_string())?;
+    let mut locked: Vec<(String, String)> = Vec::new();
+    for line in lock.lines() {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let (Some(n), Some(h), None) = (parts.next(), parts.next(), parts.next()) else {
+            return Err(format!("bad laws.lock line: {line}"));
+        };
+        locked.push((n.to_string(), h.to_string()));
+    }
+    if found == locked {
+        return Ok(());
+    }
+    let mut notes = Vec::new();
+    let n = found.len().max(locked.len());
+    for i in 0..n {
+        match (found.get(i), locked.get(i)) {
+            (Some((a, ah)), Some((b, bh))) if a == b && ah != bh => {
+                notes.push(format!("{a} body changed"));
+            }
+            (Some((a, _)), Some((b, _))) if a != b => notes.push(format!("file {a} lock {b}")),
+            (Some((a, _)), None) => notes.push(format!("file has extra {a}")),
+            (None, Some((b, _))) => notes.push(format!("lock has extra {b}")),
+            _ => {}
+        }
+    }
+    Err(format!("LAWS.bend and laws.lock differ: {}", notes.join("; ")))
+}
+
+fn hex_sha256(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(text.as_bytes());
+    hasher.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn bend_cmd(bin: &Path) -> Command {
+    let mut cmd = Command::new(bin);
+    cmd.env("BEND_NO_TELEMETRY", "1");
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        let mut path = OsString::from(home.join(".elan/bin"));
+        path.push(":");
+        path.push(home.join(".bend/bin"));
+        path.push(":");
+        path.push(std::env::var_os("PATH").unwrap_or_default());
+        cmd.env("PATH", path);
+    }
+    cmd
+}
+
+fn bend_bin() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("BEND") {
+        let p = PathBuf::from(p);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    let home = std::env::var("BEND_HOME")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".bend")))?;
+    let installed = home.join("bin/bend");
+    if installed.is_file() {
+        return Some(installed);
+    }
+    if have("bend") {
+        return Some(PathBuf::from("bend"));
+    }
+    None
 }
 
 #[cfg(test)]

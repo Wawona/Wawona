@@ -1,0 +1,23 @@
+{
+  "stamp": "2026-11-17T200725",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 89,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Header flex-wrap + search flex=1 min-width=160 (fixes tap outside detail pane)",
+    "Danger Zone delete copy; About section for summary",
+    "Sidebar badges; Term compose; profiles gap=8",
+    "Open: NSToolbar Exact-host; VoiceOver rotor; Liquid Glass; Settings window deferred"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T200725",
+    "dark": [
+      "docs/ui-quality/history/artifacts/dark-catalog.png",
+      "docs/ui-quality/history/artifacts/dark-inspector-planned.png"
+    ]
+  },
+  "hard_gates_failed": []
+}

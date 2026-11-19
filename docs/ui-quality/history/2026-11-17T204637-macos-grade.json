@@ -1,0 +1,32 @@
+{
+  "stamp": "2026-11-17T204637",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 89,
+  "scorecard": {
+    "information_architecture": 88,
+    "navigation_discoverability": 90,
+    "desktop_interaction": 92,
+    "layout_spacing": 88,
+    "visual_hierarchy": 86,
+    "native_macos_conventions": 92,
+    "state_action_clarity": 90,
+    "typography_legibility": 78,
+    "visual_consistency": 85
+  },
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Wide+compact NSToolbar",
+    "P0 closed",
+    "VO rotor UNVERIFIED \u2192 gate_met false",
+    "Dedicated Settings deferred"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T204637"
+  },
+  "hard_gates_failed": [
+    "VoiceOver rotor"
+  ]
+}

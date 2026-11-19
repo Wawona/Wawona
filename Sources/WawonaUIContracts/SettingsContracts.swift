@@ -321,6 +321,8 @@ public enum GlobalSettingsFieldID: String, Sendable, CaseIterable {
 /// Prefer the C trampoline (`wawona_settings_visible_sections`) when
 /// `libwawona.a` is linked. UniFFI `settings_visible_sections` is the
 /// same list once bindgen can run. SPM / Watch tests keep the fallback.
+/// FROZEN quarantine layout oracle. Exact `app.contract` owns product Settings
+/// chrome (`wawona-exact-forced`). Do not grow sections here for product tip.
 public struct GlobalSettingsCatalog: Sendable {
     public static var currentHost: GlobalSettingsHost {
         #if os(macOS)

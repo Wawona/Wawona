@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "app": "wawona",
+  "contract": "exact/apps/wawona/app.contract",
+  "screens": [
+    { "id": "machines-catalog", "route": "all", "states": ["empty", "populated", "filtered", "pinned"] },
+    { "id": "machine-inspector", "route": "machine", "states": ["stopped", "running", "dirty"] },
+    { "id": "session", "route": "session", "states": ["running", "stopped"] },
+    { "id": "tab-overview", "route": "tabs", "states": ["empty", "populated"] },
+    { "id": "add-machine", "route": "add", "states": ["blank", "valid"] },
+    { "id": "create-tag", "route": "createTag", "states": ["blank", "valid"] },
+    { "id": "settings-catalog", "route": "settings", "states": ["default"] },
+    { "id": "settings-section", "route": "section", "states": ["display", "input", "graphics", "waypipe", "ssh", "about"] }
+  ],
+  "edges": [
+    { "from": "machines-catalog", "action": "openMachine", "to": "machine-inspector" },
+    { "from": "machines-catalog", "action": "openSettings", "to": "settings-catalog" },
+    { "from": "machines-catalog", "action": "openAdd", "to": "add-machine" },
+    { "from": "machines-catalog", "action": "openTabOverview", "to": "tab-overview" },
+    { "from": "machine-inspector", "action": "openSessionTab", "to": "session" },
+    { "from": "machine-inspector", "action": "openSessionWindow", "to": "session" },
+    { "from": "settings-catalog", "action": "openSection", "to": "settings-section" },
+    { "from": "settings-catalog", "action": "back", "to": "machines-catalog" },
+    { "from": "settings-section", "action": "back", "to": "settings-catalog" }
+  ]
+}

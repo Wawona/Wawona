@@ -1,0 +1,22 @@
+{
+  "stamp": "2026-11-17T201819",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 90,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Inspector Start Unavailable / Settings / Save / Open use buttonStyle=glass",
+    "layout drawn=glass on chrome",
+    "gate_met false: NSToolbar + VoiceOver rotor"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T201819",
+    "liquid_glass": "NSButton glass on catalog+inspector chrome"
+  },
+  "hard_gates_failed": [
+    "catalog NSToolbar",
+    "VoiceOver rotor"
+  ]
+}

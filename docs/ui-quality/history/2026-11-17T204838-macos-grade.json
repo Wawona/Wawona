@@ -1,0 +1,34 @@
+{
+  "stamp": "2026-11-17T204838",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 90,
+  "scorecard": {
+    "information_architecture": 90,
+    "navigation_discoverability": 92,
+    "desktop_interaction": 94,
+    "layout_spacing": 88,
+    "visual_hierarchy": 88,
+    "native_macos_conventions": 94,
+    "state_action_clarity": 92,
+    "typography_legibility": 80,
+    "visual_consistency": 86
+  },
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "NSToolbar wide+compact",
+    "Running Stop glass",
+    "Danger Zone red Delete",
+    "PrefSwitch pin",
+    "VO rotor UNVERIFIED"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T204838",
+    "running": "docs/ui-quality/history/artifacts/2026-11-17T204637-inspector-running.png"
+  },
+  "hard_gates_failed": [
+    "VoiceOver rotor"
+  ]
+}

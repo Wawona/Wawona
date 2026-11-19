@@ -1,0 +1,32 @@
+{
+  "iteration": "audit-p0",
+  "extracted_at": "2026-11-17T17:27:05-08:00",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --rebuild --chrome platform",
+  "audit_baseline": 38,
+  "re_score_estimate": 58,
+  "release_gate": false,
+  "screens": [
+    { "screen": "machines-browser", "score": 62, "note": "Real browser + toolbar; not empty-state cluster.", "result": "pass" },
+    { "screen": "inspector-planned", "score": 72, "note": "Start Unavailable; Execution vs Readiness.", "result": "pass" },
+    { "screen": "inspector-native", "score": 68, "result": "pass" },
+    { "screen": "settings", "score": 55, "note": "Still modal sheet; dedicated Settings scene open.", "result": "pass" }
+  ],
+  "p0_closed": [
+    "machine-browser",
+    "commands-out-of-empty-state",
+    "start-gated-for-planned",
+    "execution-vs-readiness",
+    "pin-tags-affordance"
+  ],
+  "p0_open": [],
+  "p1_open": [
+    "native-nstoolbar",
+    "settings-scene-cmd-comma",
+    "sessions-destination",
+    "sidebar-sourceList-density",
+    "keyboard-context-menus"
+  ],
+  "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T172705-",
+  "summary": "Audit F addressed at P0 structure. Heuristic ~58. Gate 90 not claimed."
+}

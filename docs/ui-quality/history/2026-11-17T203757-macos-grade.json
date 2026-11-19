@@ -1,0 +1,24 @@
+{
+  "stamp": "2026-11-17T203757",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 93,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Compact/narrow catalog projects NSToolbar New/Settings/Sessions",
+    "Wide placeholder catalog still painted glass (Exact host)",
+    "Inspector detail projects NSToolbarItem",
+    "gate_met false: wide catalog NSToolbar + VoiceOver rotor"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T203757",
+    "narrow_nstoolbar": "docs/ui-quality/history/artifacts/2026-11-17T203757-catalog-narrow.png",
+    "narrow_state": "toolbar items exact.command.55/58/60 headerKept=null"
+  },
+  "hard_gates_failed": [
+    "wide catalog NSToolbar (Exact placeholder)",
+    "VoiceOver rotor"
+  ]
+}

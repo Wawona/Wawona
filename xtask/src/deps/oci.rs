@@ -13,13 +13,39 @@ const CHUNK: usize = 32 << 20;
 
 fn token(scope: &str, basic: Option<String>) -> Result<String> {
     let url = format!("https://{REGISTRY}/token?scope=repository:{REPOSITORY}:{scope}&service={REGISTRY}");
-    let mut req = ureq::get(&url);
-    if let Some(b) = basic {
+    let mut req = ureq::get(&url).config().http_status_as_error(false).build();
+    if let Some(b) = &basic {
         req = req.header("Authorization", &format!("Basic {b}"));
     }
     let mut res = req.call().context("GHCR token")?;
-    let v: serde_json::Value = serde_json::from_str(&res.body_mut().read_to_string()?)?;
+    let status = res.status();
+    let body = res.body_mut().read_to_string().context("GHCR token body")?;
+    if !status.is_success() {
+        let snippet: String = body.chars().take(180).collect();
+        bail!("GHCR token HTTP {status}: {snippet}");
+    }
+    let v: serde_json::Value = serde_json::from_str(&body).context("GHCR token response")?;
     Ok(v["token"].as_str().context("GHCR token response")?.to_string())
+}
+
+fn github_basic() -> Result<String> {
+    let user = crate::util::env_or("GITHUB_ACTOR", "wawona");
+    let pass = std::env::var("GITHUB_TOKEN")
+        .or_else(|_| crate::util::output(crate::util::cmd("gh").args(["auth", "token"])))
+        .context("GITHUB_TOKEN (packages:read) or `gh auth token`")?;
+    Ok(base64(format!("{user}:{pass}").as_bytes()))
+}
+
+/// Anonymous GHCR pulls 403 when the package is private. Retry with `gh`.
+fn pull_token() -> Result<String> {
+    match token("pull", None) {
+        Ok(t) => Ok(t),
+        Err(anon) => {
+            eprintln!("GHCR anonymous pull refused ({anon}); trying gh auth");
+            let basic = github_basic().context("GHCR rejected anonymous pull")?;
+            token("pull", Some(basic)).with_context(|| anon.to_string())
+        }
+    }
 }
 
 /// A directory of blobs named by sha256 that stands in for GHCR (an offline
@@ -28,12 +54,16 @@ fn mirror() -> Option<std::path::PathBuf> {
     std::env::var_os("WAWONA_DEPS_MIRROR").filter(|v| !v.is_empty()).map(Into::into)
 }
 
+pub fn mirrored(sha256: &str) -> bool {
+    mirror().is_some_and(|m| m.join(sha256).is_file())
+}
+
 pub fn blob(sha256: &str) -> Result<Box<dyn Read>> {
     if let Some(m) = mirror() {
         let p = m.join(sha256);
         return Ok(Box::new(std::fs::File::open(&p).with_context(|| format!("open {}", p.display()))?));
     }
-    let t = token("pull", None)?;
+    let t = pull_token()?;
     let url = format!("https://{REGISTRY}/v2/{REPOSITORY}/blobs/sha256:{sha256}");
     let res = ureq::get(&url)
         .header("Authorization", &format!("Bearer {t}"))
@@ -46,11 +76,7 @@ pub fn blob(sha256: &str) -> Result<Box<dyn Read>> {
 }
 
 fn push_token() -> Result<String> {
-    let user = crate::util::env_or("GITHUB_ACTOR", "wawona");
-    let pass = std::env::var("GITHUB_TOKEN")
-        .or_else(|_| crate::util::output(crate::util::cmd("gh").args(["auth", "token"])))
-        .context("GITHUB_TOKEN (packages:write) or gh auth")?;
-    token("pull,push", Some(base64(format!("{user}:{pass}").as_bytes())))
+    token("pull,push", Some(github_basic().context("GITHUB_TOKEN (packages:write) or gh auth")?))
 }
 
 fn absolute(location: &str) -> String {

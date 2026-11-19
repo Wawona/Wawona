@@ -1,0 +1,29 @@
+{
+  "stamp": "2026-11-18T103536",
+  "host": "macos",
+  "concept": "docs/ui-quality/platform-concepts/macos/machines-concept.jpg",
+  "aggregate": 62,
+  "gate": 90,
+  "pass": false,
+  "notes": "Library destinations + card browser + Overview inspector landed. Settings remains gear. Sidebar no longer lists all machines. Gaps: brand strip, toolbar Cmd+F, persistent 3rd column while browsing, Platform Targets, Transfers, dark vibrancy (system/adapter).",
+  "artifacts": {
+    "catalog": "docs/ui-quality/history/artifacts/2026-11-18T103536-catalog.png",
+    "inspector": "docs/ui-quality/history/artifacts/2026-11-18T103536-inspector.png",
+    "tabs": "docs/ui-quality/history/artifacts/2026-11-18T103536-tabs.png",
+    "settings": "docs/ui-quality/history/artifacts/2026-11-18T103536-settings.png"
+  },
+  "scores": {
+    "window_material": 7,
+    "top_brand": 3,
+    "library_destinations": 8,
+    "search": 5,
+    "sidebar_library": 8,
+    "favorites_tags": 7,
+    "platform_targets": 2,
+    "transfers": 1,
+    "middle_cards": 8,
+    "inspector": 6,
+    "runtime_copy": 8,
+    "interaction_idiom": 7
+  }
+}

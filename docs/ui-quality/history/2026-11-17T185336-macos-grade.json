@@ -1,0 +1,40 @@
+{
+  "stamp": "2026-11-17T185336",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --rebuild",
+  "artifacts": "docs/ui-quality/history/artifacts/2026-11-17T185336-*.png",
+  "baseline": 38,
+  "aggregate": 81,
+  "release_gate": 90,
+  "gate_met": false,
+  "scores": {
+    "native_fidelity": 78,
+    "visual_hierarchy": 82,
+    "navigation": 80,
+    "layout": 84,
+    "functional": 88,
+    "accessibility": 55,
+    "adaptive": 72,
+    "state": 90,
+    "consistency": 80,
+    "polish": 70
+  },
+  "evidence": [
+    "Machine browser full-bleed list 588pt rows",
+    "Start Unavailable for planned in inspector + NSToolbar exact.command.*",
+    "Execution vs Readiness rows",
+    "Sessions destination + sidebar Library",
+    "Meta+, Settings cover + App menu",
+    "Inspector header-first → NSToolbar Start/Settings when detail selected",
+    "Sidebar titles Planned (no Runtime planned truncation)",
+    "Wasm sparkles icon; Tags filter label",
+    "Dark/contrast media prefs accepted (no dark PNG claimed)"
+  ],
+  "open": [
+    "Catalog placeholder NSToolbar (Exact SplitHost beside nil)",
+    "VoiceOver rotor UNVERIFIED",
+    "Dedicated Settings window deferred by product rule",
+    "Liquid Glass SDK APIs UNVERIFIED"
+  ],
+  "hard_gates_failed": []
+}

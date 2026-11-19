@@ -1,0 +1,26 @@
+{
+  "stamp": "2026-11-17T202601",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 91,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Danger Zone Delete Machine on-screen in planned inspector",
+    "Dependencies folded into Status for planned guests",
+    "Pin/Tags tap affordance copy",
+    "Chunked grade + HID wake; full artifact set",
+    "gate_met false: catalog NSToolbar + VoiceOver rotor"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T202601",
+    "danger_zone": "docs/ui-quality/history/artifacts/2026-11-17T202601-inspector-planned.png",
+    "liquid_glass": "NSButton glass catalog+inspector",
+    "ns_toolbar": "inspector NSToolbarItem; catalog placeholder blocked"
+  },
+  "hard_gates_failed": [
+    "catalog NSToolbar",
+    "VoiceOver rotor"
+  ]
+}

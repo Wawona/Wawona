@@ -1,0 +1,20 @@
+{
+  "stamp": "2026-11-17T194146",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 89,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Sidebar TabFace: name title + Ready/Planned badge (no aria-label smash)",
+    "Sessions badge count; Settings Go PrefSelect + flex title spacing",
+    "Grade: wake asleep display (osascript HID + caffeinate -u) then -dims hold",
+    "Catalog NSToolbar Exact-host blocked; VoiceOver rotor UNVERIFIED; Liquid Glass UNVERIFIED; dedicated Settings deferred"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T194146",
+    "sidebar_state": "title Native Shell + badge Ready; Sessions badge 1"
+  },
+  "hard_gates_failed": []
+}

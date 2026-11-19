@@ -61,14 +61,16 @@ Docker / non-interactive Nix: keep LF line endings on `*.nix` (see
 
 ## Guest Machines (planned)
 
-In-app `virtual_machine` / `container` profiles (coming soon):
+In-app `virtual_machine` / `container` profiles (Relay):
 
-| Platform | Planned engine |
+| Platform | Engine |
 |----------|----------------|
-| macOS | `Virtualization.framework` + Containerization |
+| macOS | `Virtualization.framework` + Apple Containerization (**available**) |
+| Linux | KVM via Relay (**available** when `/dev/kvm` exists) |
 | iOS / iPadOS | Relay. Planned. Fail closed. No QEMU / UTM |
-| Android | `wwn-vms` / `wwn-containers` |
-| Linux | `wwn-vms` / `wwn-containers` |
+| Android | Relay. Planned |
+
+See [`relay-runtime-map.md`](./relay-runtime-map.md).
 
 ## Dev / CI hosts (not the Machines VM kind)
 

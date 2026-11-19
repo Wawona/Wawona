@@ -1,0 +1,30 @@
+{
+  "iteration": 8,
+  "extracted_at": "2026-11-17T17:03:50-08:00",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --chrome platform",
+  "build": ".build/exact/macos/Wawona.app",
+  "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T170350-",
+  "screens": [
+    { "screen": "machines-catalog", "score": 95, "result": "pass" },
+    { "screen": "settings-catalog", "score": 96, "result": "pass" },
+    { "screen": "settings-display", "score": 97, "note": "Single RouteChrome Back; 560pt; footer cleaned.", "result": "pass" },
+    { "screen": "add-machine", "score": 95, "result": "pass" },
+    { "screen": "tab-overview", "score": 92, "result": "pass" },
+    { "screen": "machine-inspector", "score": 95, "note": "Runtime zsh · Terminal · local (no Wayland leak).", "result": "pass" }
+  ],
+  "aggregate_score": 96,
+  "release_gate": true,
+  "evidence": [
+    "settings/display/add width 560",
+    "single Back on Display sheet",
+    "subtitle Terminal not Wayland",
+    "exact_host tip mirror prefers target/clients"
+  ],
+  "open_issues_ranked": [
+    "Fit-sheet 1px width peg workaround",
+    "Drop duplicate Display section header (in flight)",
+    "Tab Overview polish"
+  ],
+  "summary": "Round 8 gate 96. Human stop when looks OK."
+}

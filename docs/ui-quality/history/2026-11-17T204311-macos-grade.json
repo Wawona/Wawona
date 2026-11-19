@@ -1,0 +1,21 @@
+{
+  "stamp": "2026-11-17T204311",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 93,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Compact catalog NSToolbar proven",
+    "Wide placeholder painted glass; list-column attempt reverted",
+    "gate_met false: wide NSToolbar + VO"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T204311"
+  },
+  "hard_gates_failed": [
+    "wide catalog NSToolbar",
+    "VoiceOver rotor"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "iteration": "audit-p1-polish",
+  "extracted_at": "2026-11-17T18:33:58-08:00",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --rebuild --chrome platform",
+  "audit_baseline": 38,
+  "re_score_estimate": 77,
+  "release_gate": false,
+  "rubric_scores": {
+    "native_fidelity": 74,
+    "visual_hierarchy": 76,
+    "navigation": 80,
+    "layout": 82,
+    "functional": 84,
+    "accessibility": 58,
+    "adaptive": 72,
+    "state": 86,
+    "consistency": 76,
+    "polish": 70
+  },
+  "p0_closed": true,
+  "p1_closed": [
+    "browser-full-bleed",
+    "sessions-nav",
+    "cmd-comma-menu",
+    "inspector-guide",
+    "sidebar-captions",
+    "keyboard-search-contextmenu",
+    "add-readiness-copy"
+  ],
+  "p1_open": [
+    "authored-nstoolbar",
+    "voiceover",
+    "dedicated-settings-window-deferred"
+  ],
+  "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T183358-",
+  "summary": "Heuristic ~77 vs audit baseline 38. Gate 90 not claimed."
+}

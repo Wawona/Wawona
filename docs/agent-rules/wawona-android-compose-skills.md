@@ -24,7 +24,7 @@ Refresh: re-run the `npx skills add …` lines in skill `wawona-android-compose`
 
 Any edit or review under:
 
-- `Wawona/android/`, `android/app/src/main/java/**/*.kt`
+- Exact Android host UI; quarantined Compose leftovers (root `android/app` deleted)
 - Compose Machines / Settings / Present hosts
 - Kotlin call sites into JNI / UniFFI domain APIs
 

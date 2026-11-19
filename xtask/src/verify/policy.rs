@@ -26,13 +26,38 @@ pub fn profile_schema_lift(c: &mut Check, _: &Opts) -> Result<String> {
     );
     c.need(
         "Sources/WawonaModel/MachineProfile.swift",
-        &["MachineProfileDomain.rustAvailable", "MachineProfileDomain.put"],
-        "Apple store fails closed when rust is linked",
+        &["SCHEMA_ADAPTER_ONLY", "MachineProfileUniFFI"],
+        "Apple Codable MachineProfile is adapter only; UniFFI owns in-memory type when linked",
+    );
+    c.need(
+        "Sources/WawonaModel/MachineProfileUniFFI.swift",
+        &[
+            "canImport(wawona)",
+            "fromUniFFI",
+            "toUniFFI",
+            "machineProfilesDecodeV1",
+            "MachineProfileStoreApi",
+        ],
+        "UniFFI MachineProfile bridge (Exact / backend link)",
     );
     c.need(
         "Sources/WawonaModel/MachineProfileDomain.swift",
-        &["wawona_profiles_v1_decode", "wawona_profiles_v1_put"],
-        "Apple domain bridge",
+        &[
+            "MachineProfileUniFFI",
+            "wawona_profiles_v1_decode",
+            "wawona_profiles_v1_put",
+        ],
+        "Apple domain prefers UniFFI then C trampolines",
+    );
+    c.need(
+        "Sources/WawonaModel/PlatformCapabilities.swift",
+        &["wawona_capability_gate", "rustGate(\"swinging_bridge\")"],
+        "Capability matrix prefers rust trampoline including swinging_bridge",
+    );
+    c.need(
+        "Sources/WawonaUIContracts/SettingsContracts.swift",
+        &["FROZEN quarantine", "wawona-exact-forced"],
+        "GlobalSettingsCatalog frozen; Exact owns product Settings chrome",
     );
     // Product Compose host under android/app is deleted (Exact Android host).
     // Legacy Kotlin mirrors may still exist under quarantine; require JNI C.

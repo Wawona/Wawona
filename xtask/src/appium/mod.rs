@@ -146,12 +146,32 @@ fn verify() -> Result<()> {
     let mut failed = false;
     let required = selector_ids()?;
     let quoted = Regex::new(r#""(wwn\.[^"]+)""#)?;
-    for (name, path) in [
-        ("swift", "Sources/WawonaUI/Machines/Catalog/WWNAccessibilityIdentifiers.swift"),
-        ("kotlin", "android/app/src/main/java/com/aspauldingcode/wawona/WawonaTestTags.kt"),
-        ("linux", "src/linux/ui/a11y.rs"),
+    // Exact Android host paints Contract testIds; root android/app Compose is gone.
+    // Kotlin mirror stays optional until dual-run M8 deletes the Swift quarantine too.
+    for (name, path, required_file) in [
+        (
+            "swift",
+            "Sources/WawonaUI/Machines/Catalog/WWNAccessibilityIdentifiers.swift",
+            true,
+        ),
+        (
+            "kotlin",
+            "android/app/src/main/java/com/aspauldingcode/wawona/WawonaTestTags.kt",
+            false,
+        ),
+        ("linux", "src/linux/ui/a11y.rs", true),
     ] {
-        let text = read(root().join(path))?;
+        let full = root().join(path);
+        if !full.is_file() {
+            if required_file {
+                failed = true;
+                println!("FAIL {name}: missing {path}");
+            } else {
+                println!("SKIP {name}: {path} absent (Exact Android host)");
+            }
+            continue;
+        }
+        let text = read(full)?;
         let found: BTreeSet<&str> = quoted.captures_iter(&text).map(|c| c.get(1).unwrap().as_str()).collect();
         let missing: Vec<_> = required.iter().filter(|id| !found.contains(id.as_str())).collect();
         if missing.is_empty() {

@@ -52,17 +52,30 @@ pub fn target(name: &str) -> Result<ExactTarget> {
 
 /// Stage deps + backend and return WAWONA_LINK_ARGS for Exact swiftc.
 pub fn prepare_link(sdk: &str) -> Result<String> {
-    deps::get(deps::GetArgs {
-        sdks: vec![sdk.into()],
-        nix: false,
-        nix_args: vec![],
-    })?;
-    backend::main(backend::Args {
-        slice: sdk.into(),
-        profile: None,
-        out: None,
-    })?;
+    prepare_link_inner(sdk, false)
+}
+
+/// Link args only. Skips deps/backend rebuild when `libwawona` already exists
+/// (Exact Contract UI iteration: `cargo xtask agent grade --rebuild`).
+pub fn prepare_link_quick(sdk: &str) -> Result<String> {
+    prepare_link_inner(sdk, true)
+}
+
+fn prepare_link_inner(sdk: &str, quick: bool) -> Result<String> {
     let lib = root().join(".build/backend").join(sdk).join("lib");
+    let wawona_a = lib.join("libwawona.a");
+    if !(quick && wawona_a.is_file()) {
+        deps::get(deps::GetArgs {
+            sdks: vec![sdk.into()],
+            nix: false,
+            nix_args: vec![],
+        })?;
+        backend::main(backend::Args {
+            slice: sdk.into(),
+            profile: None,
+            out: None,
+        })?;
+    }
     let deps_lib = root().join(".deps").join(sdk).join("lib");
     let mut args = vec![
         format!("-L{}", lib.display()),
@@ -84,8 +97,21 @@ pub fn bun() -> &'static str {
 
 /// Build Exact apps/wawona for one target. Returns the .app path when known.
 pub fn build_apple(t: &ExactTarget) -> Result<PathBuf> {
+    build_apple_inner(t, false)
+}
+
+/// Exact Contract rebuild without refreshing Nix deps / backend archives.
+pub fn build_apple_quick(t: &ExactTarget) -> Result<PathBuf> {
+    build_apple_inner(t, true)
+}
+
+fn build_apple_inner(t: &ExactTarget, quick: bool) -> Result<PathBuf> {
     let exact = exact_root()?;
-    let link = prepare_link(t.sdk)?;
+    let link = if quick {
+        prepare_link_quick(t.sdk)?
+    } else {
+        prepare_link(t.sdk)?
+    };
     let build_mjs = exact.join("host/apple/build.mjs");
     let mut c = cmd(bun());
     c.current_dir(&exact)
@@ -114,17 +140,10 @@ fn find_wawona_app(exact: &Path, name: &str) -> Result<PathBuf> {
             return Ok(p);
         }
     }
-    for cand in [
-        exact.join("apps/wawona/.exact/Wawona.app"),
-        exact.join("target/host-dev/Wawona.app"),
-        root().join(".build/exact").join(name).join("Wawona.app"),
-    ] {
-        if cand.is_dir() {
-            return Ok(cand);
-        }
-    }
     // Exact host-dev: target/clients/<hash>/<bundleId>/<platform>/…/Wawona.app
-    // Prefer store id com.aspauldingcode.Wawona over legacy .exact chrome id.
+    // Prefer the newest store id over the Wawona tip mirror. Returning the tip
+    // first made `build_apple_quick` ditto a no-op and grades kept a stale
+    // contract (sheet width pegs never landed).
     let clients = exact.join("target/clients");
     if clients.is_dir() {
         let mut store: Option<(std::time::SystemTime, PathBuf)> = None;
@@ -136,7 +155,9 @@ fn find_wawona_app(exact: &Path, name: &str) -> Result<PathBuf> {
             let path = e.path().to_path_buf();
             let m = e.metadata().ok().and_then(|m| m.modified().ok());
             let Some(m) = m else { continue };
-            let is_store = path.components().any(|c| c.as_os_str() == "com.aspauldingcode.Wawona");
+            let is_store = path
+                .components()
+                .any(|c| c.as_os_str() == "com.aspauldingcode.Wawona");
             if is_store && store.as_ref().map(|(t, _)| m > *t).unwrap_or(true) {
                 store = Some((m, path.clone()));
             }
@@ -146,6 +167,15 @@ fn find_wawona_app(exact: &Path, name: &str) -> Result<PathBuf> {
         }
         if let Some((_, p)) = store.or(any) {
             return Ok(p);
+        }
+    }
+    for cand in [
+        exact.join("apps/wawona/.exact/Wawona.app"),
+        exact.join("target/host-dev/Wawona.app"),
+        root().join(".build/exact").join(name).join("Wawona.app"),
+    ] {
+        if cand.is_dir() {
+            return Ok(cand);
         }
     }
     walkdir::WalkDir::new(exact.join("apps/wawona"))
@@ -180,8 +210,68 @@ pub fn archive_ios(out: &Path) -> Result<PathBuf> {
     Ok(out.to_path_buf())
 }
 
-/// Exact Android APK or AAB.
-pub fn build_android(aab: bool) -> Result<PathBuf> {
+/// Exact host that is not an Apple `.app`: web, windows, linux, asteroidos.
+pub fn build_host(name: &str) -> Result<PathBuf> {
+    let exact = exact_root()?;
+    let app = app_dir(&exact);
+    match name {
+        "web" => {
+            run(cmd(bun())
+                .current_dir(&exact)
+                .args(["host/web/build.mjs", "wawona-web"])
+                .env("EXACT_APP_DIR", &app))?;
+            let dist = exact.join("target/web-dist");
+            if dist.is_dir() {
+                return Ok(dist);
+            }
+            bail!("web build finished without {}", dist.display());
+        }
+        "linux" => {
+            run(cmd(bun())
+                .current_dir(&exact)
+                .args(["scripts/build-linux.mjs", "wawona"])
+                .env("EXACT_APP_DIR", &app))?;
+            let bin = exact.join("target/host-dev/wawona-linux");
+            if bin.is_file() {
+                return Ok(bin);
+            }
+            bail!("linux build finished without {}", bin.display());
+        }
+        "asteroidos" => {
+            run(cmd(bun())
+                .current_dir(&exact)
+                .args(["scripts/build-asteroid.mjs", "wawona"])
+                .env("EXACT_APP_DIR", &app))?;
+            let bin = exact.join("target/host-dev/wawona-asteroid");
+            if bin.is_file() {
+                return Ok(bin);
+            }
+            bail!("asteroid build finished without {}", bin.display());
+        }
+        "windows" => {
+            if cfg!(windows) {
+                run(cmd(bun())
+                    .current_dir(&exact)
+                    .args(["host/windows/build.mjs", "wawona"])
+                    .env("EXACT_APP_DIR", &app))?;
+                let exe = exact.join("target/release/wawona-windows.exe");
+                if exe.is_file() {
+                    return Ok(exe);
+                }
+                bail!("windows build finished without {}", exe.display());
+            }
+            // MSVC package is the Windows machine's. Darwin still compiles the crate.
+            run(cmd("cargo")
+                .current_dir(&exact)
+                .args(["check", "-p", "wawona-windows"]))?;
+            Ok(app.join("windows"))
+        }
+        other => bail!("unknown Exact host {other}"),
+    }
+}
+
+/// Exact Android APK or AAB. `wear` sets the watch feature and standalone meta-data.
+pub fn build_android(aab: bool, wear: bool) -> Result<PathBuf> {
     deps::get(deps::GetArgs {
         sdks: vec!["android".into()],
         nix: false,
@@ -193,10 +283,18 @@ pub fn build_android(aab: bool) -> Result<PathBuf> {
         out: None,
     })?;
     let exact = exact_root()?;
-    let flag = if aab { "--aab" } else { "--apk" };
+    let mut args = vec!["scripts/agent-android.mjs", "build", "wawona"];
+    if aab {
+        args.push("--aab");
+    } else {
+        args.push("--apk");
+    }
+    if wear {
+        args.push("--wear");
+    }
     run(cmd(bun())
-        .current_dir(app_dir(&exact))
-        .args(["exact.mjs", "android", flag])
+        .current_dir(&exact)
+        .args(&args)
         .env("EXACT_APP_DIR", app_dir(&exact)))?;
     let base = exact.join("host/android/app/build/wawona/outputs");
     let (dir, ext) = if aab {

@@ -1,0 +1,19 @@
+{
+  "stamp": "2026-11-17T190830",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 84,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Filter radiogroup \u2192 NSSegmentedControl (5 segments) after dropping Tag aria-label mismatch",
+    "Dependencies + inline tags + phaseBusy hold",
+    "Catalog NSToolbar Exact-host blocked; VoiceOver/Liquid Glass UNVERIFIED"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T190830",
+    "seg_logs": "/tmp/exact-seg.log"
+  },
+  "hard_gates_failed": []
+}

@@ -15,6 +15,15 @@ explicit statement of what remains unproved.
 Do not introduce Bend-2-generated C product logic. It violates Rust-first and
 creates a second semantics that Kani, Verus, and Miri do not jointly cover.
 
+Stage 2 UI laws use one bridge: Contract action, `wawona-laws` transition,
+Bend model of that transition. Exact `back` / `open` / `select` stay the
+live navigator. Do not add a second Bend navigation stack. Agents may edit
+helpers and proofs. Agents may not drop, rename, or rewrite a law in
+`LAWS.bend` unless `verification/bend/laws.lock` changes in the same edit.
+`wawona-laws` `coverage` must name every `app.contract` action, every catalog
+interface, and every erroneous-check helper. `ErroneousChecks::None` is
+no-client-error. Negative-integer checks stay `kani`.
+
 Org verification contract: `docs/verification-matrix.md`. The CI check name is
 **Verification report** (`verify-all.yml`). Pinned tools fail closed (`severity:
 error`). Unpinned research provers and Ubuntu-missing analyzers warn until a

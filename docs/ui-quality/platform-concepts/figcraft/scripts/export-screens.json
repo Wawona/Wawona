@@ -1,0 +1,120 @@
+[
+  { "command": "page.select", "params": { "index": 2 } },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [37],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/macos-machines.png",
+      "scale": 1
+    }
+  },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [108],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/ios-machines.png",
+      "scale": 1
+    }
+  },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [149],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/ipados-machines.png",
+      "scale": 1
+    }
+  },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [220],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/android-machines.png",
+      "scale": 1
+    }
+  },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [291],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/linux-machines.png",
+      "scale": 1
+    }
+  },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [362],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/web-machines.png",
+      "scale": 1
+    }
+  },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [433],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/windows-machines.png",
+      "scale": 1
+    }
+  },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [504],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/visionos-machines.png",
+      "scale": 1
+    }
+  },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [575],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/tvos-machines.png",
+      "scale": 1
+    }
+  },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [598],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/watchos-machines.png",
+      "scale": 1
+    }
+  },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [612],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/wearos-machines.png",
+      "scale": 1
+    }
+  },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [626],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/asteroidos-machines.png",
+      "scale": 1
+    }
+  },
+  {
+    "command": "file.export",
+    "params": {
+      "ids": [640],
+      "format": "png",
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/android-xr-machines.png",
+      "scale": 1
+    }
+  }
+]

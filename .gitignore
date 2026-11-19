@@ -52,11 +52,14 @@ test_xdg-shell-client-protocol.c
 
 # IDE
 .vscode/
-# Studio's Gradle JVM and run configuration are shared; the rest is per machine.
-.idea/*
-!.idea/gradle.xml
-!.idea/misc.xml
-!.idea/runConfigurations/
+# Exact owns Android Studio / Xcode product hosts. No root .idea / Gradle tip.
+.idea/
+gradle.properties
+Wawona-gradle-project/
+Wawona.xcodeproj/
+android/
+dependencies/generators/xcodegen/
+dependencies/generators/gradlegen/
 *.swp
 *.swo
 *~
@@ -195,13 +198,17 @@ inspirational_projects/
 .angle-test3/
 .antigravity/
 scripts/__pycache__/
+Tests/appium/.venv/
+Tests/appium/**/__pycache__/
+Tests/appium/**/*.pyc
 .agent-device/test-artifacts/
 
 # Local Xcode DerivedData / caches (never commit)
 .derivedData*/
 .ccache/
-# nix run .#deps -- <platform>
+# nix run .#deps -- <platform> / cargo xtask deps get
 .deps/
+.nix-deps/
 fastlane/report.xml
 .agents/
 

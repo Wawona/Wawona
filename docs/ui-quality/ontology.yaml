@@ -1,0 +1,32 @@
+# UI quality knowledge graph ontology (pilot). Property-graph shaped JSON
+# history files are the store; this schema constrains extraction.
+
+version: 1
+representation: property-graph-json
+
+entity_types:
+  - Screen
+  - Issue
+  - Criterion
+  - Build
+  - Target
+  - HardGate
+
+relation_types:
+  - GRADED_ON: { domain: Screen, range: Target }
+  - SCORED_BY: { domain: Screen, range: Criterion }
+  - HAS_ISSUE: { domain: Screen, range: Issue }
+  - FAILS: { domain: Screen, range: HardGate }
+  - BUILT_FROM: { domain: Screen, range: Build }
+  - FIXED_BY: { domain: Issue, range: Build }
+  - REGRESSED_IN: { domain: Issue, range: Build }
+
+attributes:
+  Screen: [name, state, score, result, extracted_at, source]
+  Issue: [text, severity, status, extracted_at, source]
+  Criterion: [id, score, note]
+  Build: [path, pid, commit]
+  Target: [id]
+  HardGate: [id]
+
+provenance: [source, extracted_at, confidence]

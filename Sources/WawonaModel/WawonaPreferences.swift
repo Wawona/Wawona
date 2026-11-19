@@ -1,6 +1,10 @@
 import Combine
 import Foundation
 
+// Quarantine prefs bag. Product Settings chrome is Exact (`wawona-exact-forced`).
+// Rust `settings_catalog` / UniFFI owns visible sections and policy. Do not grow
+// product chrome keys here.
+
 public extension Notification.Name {
     /// Posted after `WawonaPreferences.save()` writes to `UserDefaults`.
     static let wawonaPreferencesDidSave = Notification.Name("WawonaPreferencesDidSave")

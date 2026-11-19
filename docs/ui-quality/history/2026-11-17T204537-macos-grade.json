@@ -1,0 +1,20 @@
+{
+  "stamp": "2026-11-17T204537",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 94,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Wide+compact NSToolbar green",
+    "AX help probe attempted",
+    "VO rotor still UNVERIFIED"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T204537"
+  },
+  "hard_gates_failed": [
+    "VoiceOver rotor"
+  ]
+}

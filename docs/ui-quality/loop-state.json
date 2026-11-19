@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "target": "macos",
+  "round": 72,
+  "max_rounds": 40,
+  "release_gate_score": 90,
+  "audit_baseline": 38,
+  "last_score": 90,
+  "last_grade": "docs/ui-quality/history/artifacts/2026-11-18T000431-catalog.png",
+  "progress_log": "docs/ui-quality/UI_AUDIT_PROGRESS.md",
+  "open_issues": [
+    "P1 VoiceOver rotor UNVERIFIED (macOS)",
+    "P1 dedicated Settings window deferred by product rule",
+    "ALL_TARGETS: ios/ipados/android/web/windows/visionos/tvos/watchos/wearos/asteroidos/linux ungraded"
+  ],
+  "stop_reason": null,
+  "plan": "ALL_TARGETS concepts imported; continue Exact grade per host vs concept+contract. VO still open on macOS.",
+  "updated_at": "2026-11-18T08:10:00Z",
+  "last_stamp": "2026-11-18T000431",
+  "last_aggregate": 90,
+  "gate_met": false,
+  "last_notes": "concepts imported; macOS grade still green with NSToolbar",
+  "concepts_dir": "docs/ui-quality/platform-concepts"
+}

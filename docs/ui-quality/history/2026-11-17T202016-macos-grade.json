@@ -1,0 +1,24 @@
+{
+  "stamp": "2026-11-17T202016",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 90,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "DisplayWakeGuard mid-pass HID poke; grade green after CGWindow flake",
+    "Inspector Start Unavailable: drawn=glass + windowToolbar NSToolbarItem",
+    "Catalog chrome glass painted; placeholder cannot project NSToolbar (Exact host)",
+    "VoiceOver rotor still UNVERIFIED"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T202016",
+    "liquid_glass": "NSButton glass catalog+inspector",
+    "ns_toolbar": "inspector detail projects NSToolbarItem; catalog placeholder blocked"
+  },
+  "hard_gates_failed": [
+    "catalog NSToolbar",
+    "VoiceOver rotor"
+  ]
+}

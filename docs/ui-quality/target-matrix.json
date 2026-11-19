@@ -1,0 +1,88 @@
+{
+  "version": 2,
+  "source": "platforms.json",
+  "concepts_dir": "platform-concepts",
+  "concepts_readme": "platform-concepts/README.md",
+  "targets": {
+    "macos": {
+      "product": "available",
+      "exact_ui": "available",
+      "graded": true,
+      "concept": "platform-concepts/macOS.png",
+      "last_eval": "history/2026-11-17T235721-macos-grade.json"
+    },
+    "ios": {
+      "product": "available",
+      "exact_ui": "available",
+      "graded": false,
+      "concept": "platform-concepts/iOS.png"
+    },
+    "ipados": {
+      "product": "available",
+      "exact_ui": "available",
+      "graded": false,
+      "concept": "platform-concepts/iPadOS.png"
+    },
+    "android": {
+      "product": "available",
+      "exact_ui": "available",
+      "graded": false,
+      "concept": "platform-concepts/Android_Tablet.png"
+    },
+    "web": {
+      "product": "planned",
+      "exact_ui": "available",
+      "graded": false,
+      "concept": "platform-concepts/Web_DOM.png"
+    },
+    "windows": {
+      "product": "planned",
+      "exact_ui": "available",
+      "graded": false,
+      "concept": "platform-concepts/Windows.png"
+    },
+    "visionos": {
+      "product": "available",
+      "exact_ui": "planned",
+      "graded": false,
+      "concept": "platform-concepts/visionOS.png"
+    },
+    "tvos": {
+      "product": "available",
+      "exact_ui": "planned",
+      "graded": false,
+      "concept": "platform-concepts/tvOS_Apple_TV.png"
+    },
+    "watchos": {
+      "product": "available",
+      "exact_ui": "planned",
+      "graded": false,
+      "concept": "platform-concepts/Apple_Watch.png"
+    },
+    "wearos": {
+      "product": "planned",
+      "exact_ui": "available",
+      "graded": false,
+      "concept": "platform-concepts/Wear_OS.png"
+    },
+    "asteroidos": {
+      "product": "planned",
+      "exact_ui": "available",
+      "graded": false,
+      "concept": "platform-concepts/AsteroidOS_Oppo_Watch.png"
+    },
+    "linux": {
+      "product": "planned",
+      "exact_ui": "available",
+      "graded": false,
+      "concept": "platform-concepts/Linux.png"
+    }
+  },
+  "extra_concepts": {
+    "android_xr": {
+      "file": "platform-concepts/Android_XR.png",
+      "note": "Visual reference only. Not an ALL_TARGETS id until platforms.json gains it."
+    }
+  },
+  "notes": "graded flips to true only after a recorded computer-use / Exact agent evaluation for that target. Concept PNGs never alone mark graded true."
+}

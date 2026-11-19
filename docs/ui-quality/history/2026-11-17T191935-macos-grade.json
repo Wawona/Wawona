@@ -1,0 +1,19 @@
+{
+  "stamp": "2026-11-17T191935",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 86,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Status Execution/Readiness use semantic system colors (Running green, Planned orange, Failed red)",
+    "Sort PrefSelect; Settings\u2192Display; NSSegmented filter; Dependencies",
+    "Catalog NSToolbar Exact-host blocked; VoiceOver/Liquid Glass UNVERIFIED",
+    "Rebuild-first window screenshot still flakes when display asleep; no-rebuild grade green"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T191935"
+  },
+  "hard_gates_failed": []
+}

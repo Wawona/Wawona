@@ -1,0 +1,2304 @@
+[
+  {
+    "command": "file.rename",
+    "params": {
+      "name": "Wawona macOS Machines v2"
+    }
+  },
+  {
+    "command": "page.rename",
+    "params": {
+      "name": "Comp + Editable"
+    }
+  },
+  {
+    "command": "page.setBackground",
+    "params": {
+      "color": "#0A0814"
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/macOS.png",
+      "x": 0,
+      "y": 40,
+      "width": 1512,
+      "name": "COMP macOS.png (authority)"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "x": 0,
+      "y": 8,
+      "text": "COMP (do not edit) · editable reconstruction →",
+      "name": "comp label",
+      "props": {
+        "fontSize": 13,
+        "fill": "#8E8E93"
+      }
+    }
+  },
+  {
+    "command": "frame.create",
+    "params": {
+      "preset": "MacBook Pro 14\"",
+      "x": 1600,
+      "y": 40,
+      "name": "macOS · Machines (editable)",
+      "props": {
+        "fill": "#1B1430",
+        "layout": "vertical",
+        "clip": true,
+        "cornerRadius": 12
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 5
+      },
+      "name": "landscape wash",
+      "x": 0,
+      "y": 0,
+      "width": 1512,
+      "height": 982,
+      "props": {
+        "absolute": true,
+        "fill": "#3A2850"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 5
+      },
+      "name": "Title bar",
+      "props": {
+        "fill": "#0E0C18CC",
+        "layout": "horizontal",
+        "crossAlign": "center",
+        "gap": 12,
+        "padding": [
+          10,
+          14,
+          10,
+          14
+        ],
+        "sizingH": "fill",
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 7
+      },
+      "name": "Traffic",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 8
+      },
+      "width": 12,
+      "height": 12,
+      "props": {
+        "fill": "#FF5F57"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 8
+      },
+      "width": 12,
+      "height": 12,
+      "props": {
+        "fill": "#FEBC2E"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 8
+      },
+      "width": 12,
+      "height": 12,
+      "props": {
+        "fill": "#28C840"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 7
+      },
+      "text": "Wawona Compositor",
+      "name": "Wawona Compositor",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "SemiBold",
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 7
+      },
+      "text": "Universal Wayland Compositor",
+      "name": "Universal Wayland Compositor",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 7
+      },
+      "name": "Spacer",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "sizingV": "fixed",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 7
+      },
+      "name": "Search",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "padding": [
+          6,
+          12,
+          6,
+          12
+        ],
+        "cornerRadius": 8,
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1,
+        "width": 200
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 15
+      },
+      "text": "Search  ⌘F",
+      "name": "Search  ⌘F",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 7
+      },
+      "name": "Settings",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 32,
+        "height": 28,
+        "cornerRadius": 8,
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 17
+      },
+      "text": "⚙︎",
+      "name": "⚙︎",
+      "props": {
+        "fontSize": 14,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 5
+      },
+      "name": "Body",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 0,
+        "sizingH": "fill",
+        "sizingV": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 19
+      },
+      "name": "Sidebar",
+      "props": {
+        "fill": "#1A1628D9",
+        "layout": "vertical",
+        "gap": 14,
+        "padding": 14,
+        "width": 228,
+        "sizingV": "fill",
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 20
+      },
+      "text": "Library",
+      "name": "Library",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 20
+      },
+      "name": "Machines",
+      "props": {
+        "fill": "#3D9CFF33",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          8,
+          10,
+          8,
+          10
+        ],
+        "cornerRadius": 10,
+        "stroke": "#3D9CFF",
+        "strokeWeight": 1,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 22
+      },
+      "text": "Machines",
+      "name": "Machines",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "SemiBold",
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 22
+      },
+      "text": "5",
+      "name": "5",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 20
+      },
+      "name": "Sessions",
+      "props": {
+        "fill": "none",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          8,
+          10,
+          8,
+          10
+        ],
+        "cornerRadius": 10,
+        "stroke": "none",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 25
+      },
+      "text": "Sessions",
+      "name": "Sessions",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "SemiBold",
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 25
+      },
+      "text": "1",
+      "name": "1",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 20
+      },
+      "text": "Favorites",
+      "name": "Favorites",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 20
+      },
+      "name": "Pinned",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "padding": [
+          6,
+          10,
+          6,
+          10
+        ],
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 29
+      },
+      "text": "Pinned",
+      "name": "Pinned",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 29
+      },
+      "text": "2",
+      "name": "2",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 20
+      },
+      "name": "Recent",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "padding": [
+          6,
+          10,
+          6,
+          10
+        ],
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 32
+      },
+      "text": "Recent",
+      "name": "Recent",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 20
+      },
+      "text": "Tags",
+      "name": "Tags",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 20
+      },
+      "name": "tag-Work",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          4,
+          8,
+          4,
+          8
+        ],
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 35
+      },
+      "width": 8,
+      "height": 8,
+      "props": {
+        "fill": "#5AC8FA"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 35
+      },
+      "text": "Work",
+      "name": "Work",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 35
+      },
+      "text": "2",
+      "name": "2",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 20
+      },
+      "name": "tag-Dev",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          4,
+          8,
+          4,
+          8
+        ],
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 39
+      },
+      "width": 8,
+      "height": 8,
+      "props": {
+        "fill": "#BF5AF2"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 39
+      },
+      "text": "Dev",
+      "name": "Dev",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 39
+      },
+      "text": "3",
+      "name": "3",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 20
+      },
+      "name": "tag-Test",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          4,
+          8,
+          4,
+          8
+        ],
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 43
+      },
+      "width": 8,
+      "height": 8,
+      "props": {
+        "fill": "#34C759"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 43
+      },
+      "text": "Test",
+      "name": "Test",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 43
+      },
+      "text": "1",
+      "name": "1",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 20
+      },
+      "name": "Transfers",
+      "props": {
+        "fill": "#2A2440E6",
+        "layout": "vertical",
+        "gap": 6,
+        "padding": 10,
+        "cornerRadius": 12,
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 47
+      },
+      "text": "Transfers",
+      "name": "Transfers",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 47
+      },
+      "text": "NixOS vm.qcow2",
+      "name": "NixOS vm.qcow2",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "SemiBold",
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 47
+      },
+      "name": "progress track",
+      "width": 180,
+      "height": 6,
+      "props": {
+        "fill": "#FFFFFF22",
+        "cornerRadius": 3
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 47
+      },
+      "text": "3.2 / 5.6 GB · 12.4 MB/s",
+      "name": "3.2 / 5.6 GB · 12.4 MB/s",
+      "props": {
+        "fontSize": 10,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 19
+      },
+      "name": "Catalog",
+      "props": {
+        "fill": "#120F1CCC",
+        "layout": "vertical",
+        "gap": 12,
+        "padding": 18,
+        "sizingH": "fill",
+        "sizingV": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 52
+      },
+      "name": "Catalog header",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 53
+      },
+      "name": "Titles",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 4,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 54
+      },
+      "text": "Machines",
+      "name": "Machines",
+      "props": {
+        "fontSize": 28,
+        "fontStyle": "Bold",
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 54
+      },
+      "text": "5 machines · 2 pinned · 1 running",
+      "name": "5 machines · 2 pinned · 1 ru",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 53
+      },
+      "name": "Header actions",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 57
+      },
+      "name": "New",
+      "props": {
+        "fill": "#3D9CFF",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "padding": [
+          8,
+          14,
+          8,
+          14
+        ],
+        "cornerRadius": 10
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 58
+      },
+      "text": "+ New",
+      "name": "+ New",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "SemiBold",
+        "fill": "#FFFFFF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 52
+      },
+      "name": "Sample Linux VM",
+      "props": {
+        "fill": "#3D9CFF33",
+        "layout": "horizontal",
+        "gap": 12,
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "crossAlign": "center",
+        "sizingH": "fill",
+        "stroke": "#3D9CFF",
+        "strokeWeight": 1.5,
+        "cornerRadius": 14
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 60
+      },
+      "name": "thumb",
+      "width": 48,
+      "height": 48,
+      "props": {
+        "fill": "#4A3860",
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 60
+      },
+      "name": "meta",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 3,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 62
+      },
+      "text": "Sample Linux VM",
+      "name": "Sample Linux VM",
+      "props": {
+        "fontSize": 14,
+        "fontStyle": "SemiBold",
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 62
+      },
+      "text": "Virtual Machine · NixOS",
+      "name": "Virtual Machine · NixOS",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 60
+      },
+      "name": "status",
+      "props": {
+        "fill": "#00000066",
+        "layout": "horizontal",
+        "gap": 6,
+        "padding": [
+          5,
+          10,
+          5,
+          10
+        ],
+        "crossAlign": "center",
+        "cornerRadius": 999
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 65
+      },
+      "width": 8,
+      "height": 8,
+      "props": {
+        "fill": "#34C759"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 65
+      },
+      "text": "Running · 12m",
+      "name": "Running · 12m",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 52
+      },
+      "name": "Dev Container",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 12,
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "crossAlign": "center",
+        "sizingH": "fill",
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1,
+        "cornerRadius": 14
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 68
+      },
+      "name": "thumb",
+      "width": 48,
+      "height": 48,
+      "props": {
+        "fill": "#4A3860",
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 68
+      },
+      "name": "meta",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 3,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 70
+      },
+      "text": "Dev Container",
+      "name": "Dev Container",
+      "props": {
+        "fontSize": 14,
+        "fontStyle": "SemiBold",
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 70
+      },
+      "text": "Container · OCI",
+      "name": "Container · OCI",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 68
+      },
+      "name": "status",
+      "props": {
+        "fill": "#00000066",
+        "layout": "horizontal",
+        "gap": 6,
+        "padding": [
+          5,
+          10,
+          5,
+          10
+        ],
+        "crossAlign": "center",
+        "cornerRadius": 999
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 73
+      },
+      "width": 8,
+      "height": 8,
+      "props": {
+        "fill": "#8E8E93"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 73
+      },
+      "text": "Stopped",
+      "name": "Stopped",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 52
+      },
+      "name": "Native Shell",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 12,
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "crossAlign": "center",
+        "sizingH": "fill",
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1,
+        "cornerRadius": 14
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 76
+      },
+      "name": "thumb",
+      "width": 48,
+      "height": 48,
+      "props": {
+        "fill": "#4A3860",
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 76
+      },
+      "name": "meta",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 3,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 78
+      },
+      "text": "Native Shell",
+      "name": "Native Shell",
+      "props": {
+        "fontSize": 14,
+        "fontStyle": "SemiBold",
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 78
+      },
+      "text": "Native Shell · Local",
+      "name": "Native Shell · Local",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 76
+      },
+      "name": "status",
+      "props": {
+        "fill": "#00000066",
+        "layout": "horizontal",
+        "gap": 6,
+        "padding": [
+          5,
+          10,
+          5,
+          10
+        ],
+        "crossAlign": "center",
+        "cornerRadius": 999
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 81
+      },
+      "width": 8,
+      "height": 8,
+      "props": {
+        "fill": "#34C759"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 81
+      },
+      "text": "Running · 3m",
+      "name": "Running · 3m",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 52
+      },
+      "name": "Relay Wasm",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 12,
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "crossAlign": "center",
+        "sizingH": "fill",
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1,
+        "cornerRadius": 14
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 84
+      },
+      "name": "thumb",
+      "width": 48,
+      "height": 48,
+      "props": {
+        "fill": "#4A3860",
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 84
+      },
+      "name": "meta",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 3,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 86
+      },
+      "text": "Relay Wasm",
+      "name": "Relay Wasm",
+      "props": {
+        "fontSize": 14,
+        "fontStyle": "SemiBold",
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 86
+      },
+      "text": "Native Shell · WASI",
+      "name": "Native Shell · WASI",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 84
+      },
+      "name": "status",
+      "props": {
+        "fill": "#00000066",
+        "layout": "horizontal",
+        "gap": 6,
+        "padding": [
+          5,
+          10,
+          5,
+          10
+        ],
+        "crossAlign": "center",
+        "cornerRadius": 999
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 89
+      },
+      "width": 8,
+      "height": 8,
+      "props": {
+        "fill": "#5AC8FA"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 89
+      },
+      "text": "Ready",
+      "name": "Ready",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 19
+      },
+      "name": "Inspector",
+      "props": {
+        "fill": "#1A1628D9",
+        "layout": "vertical",
+        "gap": 12,
+        "padding": 16,
+        "width": 300,
+        "sizingV": "fill",
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 92
+      },
+      "name": "hero thumb",
+      "width": 268,
+      "height": 140,
+      "props": {
+        "fill": "#5A3A58",
+        "cornerRadius": 12,
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 92
+      },
+      "text": "Sample Linux VM",
+      "name": "Sample Linux VM",
+      "props": {
+        "fontSize": 18,
+        "fontStyle": "Bold",
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 92
+      },
+      "text": "Virtual Machine · NixOS · Running 12m",
+      "name": "Virtual Machine · NixOS · Ru",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 92
+      },
+      "name": "Primary actions",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 8,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 96
+      },
+      "name": "Open Session",
+      "props": {
+        "fill": "#3D9CFF",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "padding": [
+          10,
+          14,
+          10,
+          14
+        ],
+        "cornerRadius": 10,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 97
+      },
+      "text": "Open Session",
+      "name": "Open Session",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "SemiBold",
+        "fill": "#FFFFFF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 96
+      },
+      "name": "Pause",
+      "props": {
+        "fill": "#2A2440E6",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 99
+      },
+      "text": "Pause",
+      "name": "Pause",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 96
+      },
+      "name": "Stop",
+      "props": {
+        "fill": "#2A2440E6",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 101
+      },
+      "text": "Stop",
+      "name": "Stop",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 92
+      },
+      "name": "Tabs",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 4,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 103
+      },
+      "name": "Overview",
+      "props": {
+        "fill": "#3D9CFF33",
+        "layout": "horizontal",
+        "padding": [
+          6,
+          10,
+          6,
+          10
+        ],
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 104
+      },
+      "text": "Overview",
+      "name": "Overview",
+      "props": {
+        "fontSize": 11,
+        "fontStyle": "SemiBold",
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 103
+      },
+      "name": "Config",
+      "props": {
+        "fill": "none",
+        "layout": "horizontal",
+        "padding": [
+          6,
+          10,
+          6,
+          10
+        ],
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 106
+      },
+      "text": "Config",
+      "name": "Config",
+      "props": {
+        "fontSize": 11,
+        "fontStyle": "Regular",
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 103
+      },
+      "name": "Resources",
+      "props": {
+        "fill": "none",
+        "layout": "horizontal",
+        "padding": [
+          6,
+          10,
+          6,
+          10
+        ],
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 108
+      },
+      "text": "Resources",
+      "name": "Resources",
+      "props": {
+        "fontSize": 11,
+        "fontStyle": "Regular",
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 103
+      },
+      "name": "Logs",
+      "props": {
+        "fill": "none",
+        "layout": "horizontal",
+        "padding": [
+          6,
+          10,
+          6,
+          10
+        ],
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 110
+      },
+      "text": "Logs",
+      "name": "Logs",
+      "props": {
+        "fontSize": 11,
+        "fontStyle": "Regular",
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 92
+      },
+      "name": "Runtime",
+      "props": {
+        "fill": "#2A2440E6",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          8,
+          10,
+          8,
+          10
+        ],
+        "cornerRadius": 10,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 112
+      },
+      "text": "Runtime",
+      "name": "Runtime",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 112
+      },
+      "text": "NixOS (planned)",
+      "name": "NixOS (planned)",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 92
+      },
+      "name": "Connection",
+      "props": {
+        "fill": "#2A2440E6",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          8,
+          10,
+          8,
+          10
+        ],
+        "cornerRadius": 10,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 115
+      },
+      "text": "Connection",
+      "name": "Connection",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 115
+      },
+      "text": "Local",
+      "name": "Local",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 92
+      },
+      "name": "Display",
+      "props": {
+        "fill": "#2A2440E6",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          8,
+          10,
+          8,
+          10
+        ],
+        "cornerRadius": 10,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 118
+      },
+      "text": "Display",
+      "name": "Display",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 118
+      },
+      "text": "Wayland (Wawona) ✓",
+      "name": "Wayland (Wawona) ✓",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 92
+      },
+      "name": "Graphics",
+      "props": {
+        "fill": "#2A2440E6",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          8,
+          10,
+          8,
+          10
+        ],
+        "cornerRadius": 10,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 121
+      },
+      "text": "Graphics",
+      "name": "Graphics",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 121
+      },
+      "text": "Metal (MoltenVK) ✓",
+      "name": "Metal (MoltenVK) ✓",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 92
+      },
+      "name": "Storage",
+      "props": {
+        "fill": "#2A2440E6",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          8,
+          10,
+          8,
+          10
+        ],
+        "cornerRadius": 10,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 124
+      },
+      "text": "Storage",
+      "name": "Storage",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 124
+      },
+      "text": "6.4 / 20 GB",
+      "name": "6.4 / 20 GB",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 92
+      },
+      "name": "Tags",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 6,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 127
+      },
+      "name": "Work",
+      "props": {
+        "fill": "#5AC8FA44",
+        "layout": "horizontal",
+        "padding": [
+          4,
+          10,
+          4,
+          10
+        ],
+        "cornerRadius": 999,
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 128
+      },
+      "text": "Work",
+      "name": "Work",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 127
+      },
+      "name": "Dev",
+      "props": {
+        "fill": "#BF5AF244",
+        "layout": "horizontal",
+        "padding": [
+          4,
+          10,
+          4,
+          10
+        ],
+        "cornerRadius": 999,
+        "stroke": "#FFFFFF2E",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 130
+      },
+      "text": "Dev",
+      "name": "Dev",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F5F7FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "x": 1600,
+      "y": 8,
+      "text": "EDITABLE · glass Operate deck · Settings = title-bar control",
+      "name": "edit label",
+      "props": {
+        "fontSize": 13,
+        "fill": "#8E8E93"
+      }
+    }
+  }
+]

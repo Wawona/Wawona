@@ -1,0 +1,22 @@
+{
+  "stamp": "2026-11-17T203154",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 92,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Latest chunked grade green",
+    "Prior stamp 202946 has dark/compact/large + PrefSwitch pin",
+    "gate_met false: catalog NSToolbar + VO"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T203154",
+    "matrix_stamp": "2026-11-17T202946"
+  },
+  "hard_gates_failed": [
+    "catalog NSToolbar",
+    "VoiceOver rotor"
+  ]
+}

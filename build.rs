@@ -7,11 +7,17 @@ fn main() {
     // produces two mismatched uniffi_bindgen rlibs and fails with E0460
     // ("found possibly newer version of crate uniffi_bindgen").
 
+    // Soft-heal path crates when `.deps/src` already exists (same links as
+    // `cargo xtask deps get src`). Does not download slices.
+    soft_link_path_crates();
+
     // Rerun if wlroots protocols change
     println!("cargo:rerun-if-changed=protocols/wlroots/");
     println!("cargo:rerun-if-env-changed=WAWONA_BUILD_NUMBER");
     println!("cargo:rerun-if-changed=src/core/wayland/catalog.rs");
     println!("cargo:rerun-if-changed=src/core/wayland/protocol_proofs.rs");
+    println!("cargo:rerun-if-changed=.deps/src/coreutils/Cargo.toml");
+    println!("cargo:rerun-if-changed=.deps/src/waypipe/Cargo.toml");
 
     // Fail closed at compile time when Functional catalog rows and
     // PROTOCOL_PROOF_OBLIGATIONS drift (mathematical-proof inventory).
@@ -27,6 +33,48 @@ fn main() {
             }
         }
         println!("cargo:rustc-link-lib=xkbcommon");
+    }
+}
+
+/// Link `./coreutils` and `./waypipe` at `.deps/src/…` when the slice is
+/// present but the workspace links are missing or stale.
+fn soft_link_path_crates() {
+    use std::path::{Path, PathBuf};
+
+    let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let src = manifest.join(".deps/src");
+    if !src.is_dir() {
+        return;
+    }
+    for name in ["coreutils", "waypipe"] {
+        let want = src.join(name);
+        if !want.join("Cargo.toml").is_file() {
+            continue;
+        }
+        let link = manifest.join(name);
+        let need = match std::fs::read_link(&link) {
+            Ok(cur) => cur != want && Path::new(&cur) != want.as_path(),
+            Err(_) => !link.join("Cargo.toml").is_file(),
+        };
+        if !need {
+            continue;
+        }
+        let _ = std::fs::remove_file(&link);
+        let _ = std::fs::remove_dir_all(&link);
+        #[cfg(unix)]
+        {
+            if let Err(e) = std::os::unix::fs::symlink(&want, &link) {
+                println!(
+                    "cargo:warning=could not link {} → {}: {e}; run `cargo xtask deps get src`",
+                    link.display(),
+                    want.display()
+                );
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (want, link);
+        }
     }
 }
 

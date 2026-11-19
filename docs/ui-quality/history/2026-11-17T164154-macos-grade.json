@@ -1,0 +1,55 @@
+{
+  "iteration": 4,
+  "extracted_at": "2026-11-17T16:41:54-08:00",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --chrome platform; screenshot … window",
+  "build": ".build/exact/macos/Wawona.app",
+  "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T164154-",
+  "screens": [
+    {
+      "screen": "machines-catalog",
+      "score": 94,
+      "note": "Add-first empty detail; sidebar 280; full titles; no black pill.",
+      "result": "pass"
+    },
+    {
+      "screen": "settings-catalog",
+      "score": 94,
+      "note": "Modal sheet; Desktop row present after type select-hostPlatform macos.",
+      "result": "pass"
+    },
+    {
+      "screen": "settings-display",
+      "score": 92,
+      "result": "pass"
+    },
+    {
+      "screen": "add-machine",
+      "score": 92,
+      "result": "pass"
+    },
+    {
+      "screen": "tab-overview",
+      "score": 90,
+      "result": "pass"
+    },
+    {
+      "screen": "machine-inspector",
+      "score": 93,
+      "note": "Selection highlight correct; no Wayland surface.",
+      "result": "pass"
+    }
+  ],
+  "aggregate_score": 93,
+  "release_gate": true,
+  "evidence": [
+    "typed select-hostPlatform value=macos",
+    "tree Pressable settings-section-desktop",
+    "sidebar width=280 selected null then 0 on inspector"
+  ],
+  "open_issues_ranked": [
+    "Auto-set hostPlatform on Exact Mac launch (About picker + grade seed work)",
+    "Settings sheet still narrow portrait card; Mac prefs often wider"
+  ],
+  "summary": "Desktop Settings proven. Gate held at 93. Loop continues on sheet width + host auto-seed."
+}

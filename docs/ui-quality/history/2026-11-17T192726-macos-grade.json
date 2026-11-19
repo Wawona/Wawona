@@ -1,0 +1,17 @@
+{
+  "stamp": "2026-11-17T192726",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 87,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Settings Section jump label; Display stacked; full-bleed; NSSegmented; Sort PrefSelect; Dependencies",
+    "Catalog NSToolbar Exact-host blocked; VoiceOver/Liquid Glass UNVERIFIED"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T192726"
+  },
+  "hard_gates_failed": []
+}

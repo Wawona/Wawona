@@ -5,6 +5,7 @@ mod artifact;
 mod backend;
 mod ci;
 mod deps;
+mod exact_agent;
 mod exact_host;
 mod gen;
 mod install;
@@ -49,6 +50,11 @@ enum Cmd {
     },
     /// Build an app via Exact bun host (simulator unless --device).
     Build(product::Args),
+    /// Build Exact tip then launch. macOS opens the .app; ios family installs on a simulator. `--no-rebuild` skips the build.
+    Run(product::RunArgs),
+    /// Exact agent driver (bun under cargo). Drive or grade Exact Contract UI. Never computer-use.
+    #[command(subcommand)]
+    Agent(exact_agent::Cmd),
     /// Run tests: rust, ios (Exact host) or android.
     Test(product::Args),
     /// Archive via Exact IPA/AAB (Fastlane consumes the IPA).
@@ -113,6 +119,8 @@ fn main() -> Result<()> {
         Cmd::Backend(a) => backend::main(a),
         Cmd::Deps { cmd, get } => deps::main(cmd.unwrap_or(deps::Cmd::Get(get))),
         Cmd::Build(a) => product::build(a),
+        Cmd::Run(a) => product::run_app(a),
+        Cmd::Agent(c) => exact_agent::main(c),
         Cmd::Test(a) => product::test(a),
         Cmd::Archive(a) => product::archive(a),
         Cmd::Package(c) => package::main(c),

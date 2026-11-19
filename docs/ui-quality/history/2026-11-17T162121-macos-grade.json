@@ -1,0 +1,111 @@
+{
+  "iteration": 1,
+  "extracted_at": "2026-11-17T16:21:21-08:00",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --chrome platform",
+  "build": ".build/exact/macos/Wawona.app",
+  "artifacts": [
+    "docs/ui-quality/history/artifacts/2026-11-17T162121-catalog.png",
+    "docs/ui-quality/history/artifacts/2026-11-17T162121-inspector.png",
+    "docs/ui-quality/history/artifacts/2026-11-17T162121-settings.png",
+    "docs/ui-quality/history/artifacts/2026-11-17T162121-settings-display.png"
+  ],
+  "screens": [
+    {
+      "screen": "machines-catalog",
+      "state": "empty-detail",
+      "score": 78,
+      "criteria": {
+        "native_fidelity": { "score": 12, "note": "sourceList installed; sidebar width 144 vs authored 240; labels truncate." },
+        "visual_hierarchy": { "score": 10, "note": "Black bar atop sidebar; filter/header chrome still in list column." },
+        "navigation": { "score": 8, "note": "Empty detail copy names gear; gear not on empty detail yet." },
+        "layout": { "score": 7, "note": "Narrow sidebar truncates Dev Container / Sample Linux." },
+        "functional": { "score": 13, "note": "sidebar.installed + split.installed; row tap delivers sidebar-row." },
+        "accessibility": { "score": 8, "note": "Rows labeled; truncated names hurt." },
+        "adaptive": { "score": 8, "note": "Wide split on." },
+        "state": { "score": 4, "note": "Select a Machine empty state." },
+        "consistency": { "score": 4, "note": "One machines catalog." },
+        "polish": { "score": 4, "note": "Black bar + truncation." }
+      },
+      "hard_gate_failures": [],
+      "issues": [
+        "sidebar truncates machine names",
+        "list-column header/chips paint into sourceList band",
+        "black rectangle at top of sidebar"
+      ],
+      "result": "needs_improvement"
+    },
+    {
+      "screen": "machine-inspector",
+      "state": "selected-stopped",
+      "score": 91,
+      "criteria": {
+        "native_fidelity": { "score": 14, "note": "Inset groups Status/Machine/Session/Advanced/Actions." },
+        "visual_hierarchy": { "score": 14, "note": "Native Shell title + gear + Start primary." },
+        "navigation": { "score": 9, "note": "List stays; gear on detail." },
+        "layout": { "score": 9, "note": "Clean form." },
+        "functional": { "score": 14, "note": "No Wayland surface in inspector." },
+        "accessibility": { "score": 9, "note": "Start/Unpin labeled." },
+        "adaptive": { "score": 8, "note": "Split detail." },
+        "state": { "score": 5, "note": "Stopped / Local / runtime." },
+        "consistency": { "score": 5, "note": "Matches contract." },
+        "polish": { "score": 4, "note": "OK." }
+      },
+      "hard_gate_failures": [],
+      "issues": [],
+      "result": "pass"
+    },
+    {
+      "screen": "settings-catalog",
+      "state": "cover-beside-sidebar",
+      "score": 80,
+      "criteria": {
+        "native_fidelity": { "score": 11, "note": "Done + Settings. Machines sourceList still visible beside cover." },
+        "visual_hierarchy": { "score": 13, "note": "Section links clear." },
+        "navigation": { "score": 8, "note": "Gear opens Settings; not a full-window cover yet." },
+        "layout": { "score": 7, "note": "Split leaves catalog beside Settings." },
+        "functional": { "score": 14, "note": "Display opens." },
+        "accessibility": { "score": 9, "note": "Links labeled." },
+        "adaptive": { "score": 6, "note": "Desktop row absent: hostPlatform still ios on fresh storage." },
+        "state": { "score": 4, "note": "OK." },
+        "consistency": { "score": 4, "note": "One Global Settings host." },
+        "polish": { "score": 4, "note": "OK." }
+      },
+      "hard_gate_failures": [],
+      "issues": [
+        "Settings not full-window modal cover",
+        "hostPlatform defaults ios hides Desktop on Mac Exact"
+      ],
+      "result": "needs_improvement"
+    },
+    {
+      "screen": "settings-section",
+      "state": "display",
+      "score": 86,
+      "criteria": {
+        "native_fidelity": { "score": 13, "note": "Grouped Display prefs + back." },
+        "visual_hierarchy": { "score": 13, "note": "Clear rows." },
+        "navigation": { "score": 9, "note": "Back works under agent." },
+        "layout": { "score": 8, "note": "Catalog sidebar still beside section." },
+        "functional": { "score": 14, "note": "Toggles + Display Backend Auto." },
+        "accessibility": { "score": 9, "note": "Controls labeled." },
+        "adaptive": { "score": 7, "note": "OK." },
+        "state": { "score": 4, "note": "OK." },
+        "consistency": { "score": 5, "note": "OK." },
+        "polish": { "score": 4, "note": "OK." }
+      },
+      "hard_gate_failures": [],
+      "issues": ["sidebar remains during Settings section"],
+      "result": "needs_improvement"
+    }
+  ],
+  "aggregate_score": 84,
+  "grade_aborted": "third back after settings: nothing to go back from; Add/Tabs not captured this pass",
+  "open_issues_ranked": [
+    "widen navigationSplit + move chrome out of list column",
+    "Settings navigationPresentation=modal full cover",
+    "hostPlatform macos on Exact Mac host / grade seed",
+    "fix grade ops order (Add before inspector; drop extra back)"
+  ],
+  "summary": "Sidebar+split proven with --chrome platform. Inspector passes. Catalog truncation and Settings-beside-sidebar block gate 90."
+}

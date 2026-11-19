@@ -24,7 +24,7 @@ Authority: Exact `docs/wawona-exact-chrome.md` (sibling Exact checkout) and
 | M5 | tvOS / watchOS Exact chrome | planned |
 | M6 | Android Exact Canvas package wire | Exact AAB via `cargo xtask archive android` |
 | M7 | AsteroidOS / WearOS hosts | Asteroid available; Wear blocked |
-| M8 | Delete product SwiftUI / Compose chrome; no Xcode/Gradle product | **complete** for product ship surface: `Wawona.xcodeproj` + root Gradle gone; Exact IPA/AAB is the ship path. Quarantine leftover SwiftUI/Compose chrome per host after matrix green |
+| M8 | Delete product SwiftUI / Compose chrome; no Xcode/Gradle product | **complete** for product ship surface: `Wawona.xcodeproj` + root Gradle gone; Exact IPA/AAB is the ship path. Quarantine leftover SwiftUI/Compose chrome per host after matrix green. Exact is **forced**, not an optional forever dual. End state: Exact-only chrome (`wawona-exact-forced`) |
 
 ## Hard rules
 
@@ -32,6 +32,8 @@ Authority: Exact `docs/wawona-exact-chrome.md` (sibling Exact checkout) and
 - Portable `symbol:` roles only across `ALL_TARGETS`.
 - Product forbidden rows still from `wawona-platform-targets`.
 - Do not revive `Wawona.xcodeproj` or root Gradle as the product authoring surface.
+- Do not replace Exact with iced/egui/gpui or a second hand SwiftUI/Compose
+  Machines UI. Pure Rust policy + forced Exact paint (`wawona-exact-forced`).
 
 ## Verify
 

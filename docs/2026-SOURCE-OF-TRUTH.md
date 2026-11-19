@@ -67,18 +67,22 @@ satellite). Protocols: `xwayland_shell_v1` +
 
 ## Cross-platform UI contracts (#67)
 
-One presentation source + one domain source. Do not revive YAML UI codegen.
+**Pure Rust + forced Exact.** Domain is Rust. Chrome is Exact (Expo Exact
+fork). Do not revive YAML UI codegen. Do not ship iced/egui Machines chrome.
+Rule: [`agent-rules/wawona-exact-forced.md`](./agent-rules/wawona-exact-forced.md).
 
 | Layer | Owner |
 |---|---|
 | Machines / Settings chrome (labels, sections, tabs, a11y) | Exact Contract: sibling `exact/apps/wawona/app.contract` → Exact hosts |
+| Exact Machines catalog rows | Rust `exact/apps/wawona/data` (`machineProfiles*`); not Contract seed; not Codable |
 | Schema, store, SSH sanitize, editor validate | Rust `src/domain` + UniFFI / C trampolines (`wawona-uniffi-domain`) |
 | CloudKit / Present / rootfs | Native seams |
 
 Platform list: root [`platforms.json`](../platforms.json) (`ALL_TARGETS`).
 Close map: `exact/apps/wawona/docs/issue-67-exact-path.md`. Dual-run until
-M8: [`agent-rules/wawona-exact-dual-run.md`](./agent-rules/wawona-exact-dual-run.md)
-(Exact chrome forward path; product SwiftUI / Compose oracle). Live Android
+M8 Exact-only:
+[`agent-rules/wawona-exact-dual-run.md`](./agent-rules/wawona-exact-dual-run.md)
+(quarantine SwiftUI / Compose; not a permanent parallel UI). Live Android
 SSH sanitize goes through JNI → `wawona_editor_*` when `libwawona.so` is
 loaded; Apple uses `MachineProfileDomain` → the same rust. Frozen
 Kotlin/Swift mirrors stay analyzer / tip-ahead only.

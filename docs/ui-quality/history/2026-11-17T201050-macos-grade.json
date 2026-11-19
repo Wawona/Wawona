@@ -1,0 +1,24 @@
+{
+  "stamp": "2026-11-17T201050",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 89,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Stable rebuild grade after dropping danger-dialog dismiss from grade ops",
+    "Danger Zone + About evidence: artifacts/2026-11-17T200838-inspector-danger.png",
+    "Search flex-wrap header; sidebar badges; Term compose; microcopy",
+    "Open: NSToolbar Exact-host; VoiceOver rotor; Liquid Glass; Settings window deferred"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T201050",
+    "danger_zone": "docs/ui-quality/history/artifacts/2026-11-17T200838-inspector-danger.png",
+    "dark": [
+      "docs/ui-quality/history/artifacts/dark-catalog.png",
+      "docs/ui-quality/history/artifacts/dark-inspector-planned.png"
+    ]
+  },
+  "hard_gates_failed": []
+}

@@ -1,0 +1,22 @@
+{
+  "stamp": "2026-11-17T190434",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 82,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Inline tag filter radios on-canvas (agent mode paints role=menu at 0,0)",
+    "Removed tag-filter popover; filter-tag-* chips in radiogroup",
+    "Inspector NSToolbar exact.command.* Start/Settings still hold",
+    "Catalog NSToolbar still Exact SplitHost placeholder-blocked",
+    "VoiceOver UNVERIFIED; Liquid Glass UNVERIFIED"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T190434",
+    "grade_log": "/tmp/exact-grade-audit30.log",
+    "tag_filter_drive": "/tmp/exact-tag-inline.log"
+  },
+  "hard_gates_failed": []
+}

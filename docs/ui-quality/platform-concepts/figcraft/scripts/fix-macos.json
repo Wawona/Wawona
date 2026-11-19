@@ -1,0 +1,4 @@
+[
+  {"command":"page.select","params":{"index":2}},
+  {"command":"file.export","params":{"ids":[37],"format":"png","path":"/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/exports/screens/macos-machines.png","scale":1}}
+]

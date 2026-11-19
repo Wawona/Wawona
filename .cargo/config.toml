@@ -1,2 +1,7 @@
 [alias]
+# Product dogfood aliases → Exact tip macOS (`cargo xtask run macos`).
+# Cargo shadows a user alias named `run`; use `cargo run` via default-run
+# bin `wawona` (src/bin/wawona.rs) or these aliases:
+dev = "run --quiet --manifest-path xtask/Cargo.toml -- run macos"
+app = "run --quiet --manifest-path xtask/Cargo.toml -- run macos"
 xtask = "run --quiet --manifest-path xtask/Cargo.toml --"

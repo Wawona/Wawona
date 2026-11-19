@@ -37,7 +37,6 @@ on:
       - "xtask/src/appium/**"
       - ".github/workflows/ui-appium.yml"
       - "Sources/WawonaUI/Machines/Catalog/WWNAccessibilityIdentifiers.swift"
-      - "android/app/src/main/java/com/aspauldingcode/wawona/WawonaTestTags.kt"
       - "src/linux/ui/a11y.rs"
       - "Sources/WawonaModel/PlatformCapabilities.swift"
 

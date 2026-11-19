@@ -1,0 +1,28 @@
+{
+  "iteration": 5,
+  "extracted_at": "2026-11-17T16:47:48-08:00",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --chrome platform",
+  "build": ".build/exact/macos/Wawona.app",
+  "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T164748-",
+  "screens": [
+    { "screen": "machines-catalog", "score": 94, "result": "pass" },
+    { "screen": "settings-catalog", "score": 95, "note": "Desktop auto via hostPlatformProbe; modal sheet.", "result": "pass" },
+    { "screen": "settings-display", "score": 92, "result": "pass" },
+    { "screen": "add-machine", "score": 92, "result": "pass" },
+    { "screen": "tab-overview", "score": 90, "result": "pass" },
+    { "screen": "machine-inspector", "score": 93, "result": "pass" }
+  ],
+  "aggregate_score": 94,
+  "release_gate": true,
+  "evidence": [
+    "state showDesktopSettings true, resolvedHost macos without About seed",
+    "tree settings-section-desktop",
+    "sidebar width 280"
+  ],
+  "open_issues_ranked": [
+    "Settings sheet still phone-narrow on Mac (min-width on list weak against sheet host)",
+    "Window title shows Settings while sheet is up over Machines"
+  ],
+  "summary": "Auto macOS hostPlatform landed. Desktop in Settings without manual seed. Gate 94."
+}

@@ -342,13 +342,14 @@ impl CompositorState {
                 self.ext.fullscreen_shell.presented_surface = None;
             }
 
+            let eligible: Vec<u32> = self.windows.keys().copied().collect();
             if self.focus.has_keyboard_focus(window_id) {
-                let next = self
-                    .focus
-                    .focus_history
-                    .iter()
-                    .copied()
-                    .find(|&wid| wid != window_id && self.windows.contains_key(&wid));
+                let next = wawona_laws::focus_after_close(
+                    self.focus.keyboard_focus,
+                    &self.focus.focus_history,
+                    &eligible,
+                    window_id,
+                );
                 if self.headless_host {
                     self.set_focused_window(next);
                 } else {
@@ -356,7 +357,10 @@ impl CompositorState {
                 }
             }
             if self.focus.pointer_focus == Some(window_id) {
-                self.focus.set_pointer_focus(None);
+                self.focus.set_pointer_focus(wawona_laws::clear_closed_focus(
+                    self.focus.pointer_focus,
+                    window_id,
+                ));
             }
             self.sync_pointer_constraints();
 

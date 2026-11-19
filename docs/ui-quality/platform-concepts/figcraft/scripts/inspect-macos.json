@@ -1,0 +1,6 @@
+[
+  {"command":"page.select","params":{"index":2}},
+  {"command":"node.find","params":{"root":37,"name":"Catalog","limit":5}},
+  {"command":"node.find","params":{"root":37,"name":"Sidebar","limit":5}},
+  {"command":"inspect.properties","params":{"id":37}}
+]

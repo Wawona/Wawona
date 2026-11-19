@@ -45,9 +45,14 @@ When a prompt says **`ALL_TARGETS`** (or `APPLE_TARGETS` / `MOBILE_TARGETS` /
    `blocked` / `forbidden` / `n/a`). Never silent omit.
 4. Host-machine availability is not the product scope.
 
-Exact Machines/Settings: sibling Exact `apps/wawona/app.contract`. Load
-`wawona-exact-contract` + Exact `llp-orient`. Keep `no-tells` clean. Portable
-`symbol:` roles only across ALL_TARGETS.
+Exact Machines/Settings: sibling Exact `apps/wawona/app.contract`. Load Exact
+checkout `AGENTS.md` + `wawona-exact-contract` + `wawona-exact-ui-design` +
+Exact `llp-orient`. Exact has **no** dedicated Expo MCP; use
+`bun scripts/exact.mjs` / `scripts/agent.mjs` (and `cargo xtask agent`). UI
+craft skills (`frontend-design`, `impeccable`, `better-*`, …) apply hierarchy
+and a11y only; never React/Tailwind/hex into Contract. Do **not** install
+Expo RN / EAS skill plugins for Contract work. Keep `no-tells` clean.
+Portable `symbol:` roles only across ALL_TARGETS.
 
 ## Agent learn loop (skills + RAG)
 
@@ -114,7 +119,12 @@ not MCP. Skill `wawona-gh`. Rule `wawona-gh`.
   code. Risk decides the tier. VM memory, MMU, CPU, virtio, privilege, watchdog,
   and display ownership changes require named laws tied to production Rust,
   bounded proof, an unbounded model when tractable, negative tests, and an
-  explicit unproved list. Do not add Bend-2-generated C product logic. Org
+  explicit unproved list. Do not add Bend-2-generated C product logic. Bend 2
+  laws for session, nav, clamp, SSH port, and protocol predicates live in
+  `verification/bend/` and run as `cargo xtask prove bend` (checker plus
+  `--verdict`). Stage 2 UI laws use that bridge: Contract action, `wawona-laws`,
+  Bend model. Do not add a second navigator. `laws.lock` must change in the
+  same edit as any law drop, rename, or rewrite. Org
   tool map and navigation: `docs/verification-matrix.md`. CI check
   **Verification report** (`verify-all.yml`). Skill `wawona-formal-verification`
   plus `wawona-mission-critical`. Factor clamp/sanitize/SHM bounds into named

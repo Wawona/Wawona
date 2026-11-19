@@ -1,0 +1,28 @@
+{
+  "iteration": 7,
+  "extracted_at": "2026-11-17T17:00:49-08:00",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --chrome platform",
+  "build": ".build/exact/macos/Wawona.app",
+  "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T170049-",
+  "screens": [
+    { "screen": "machines-catalog", "score": 95, "result": "pass" },
+    { "screen": "settings-catalog", "score": 96, "result": "pass" },
+    { "screen": "settings-display", "score": 96, "note": "Section peg → 560pt.", "result": "pass" },
+    { "screen": "add-machine", "score": 95, "result": "pass" },
+    { "screen": "tab-overview", "score": 92, "result": "pass" },
+    { "screen": "machine-inspector", "score": 93, "result": "pass" }
+  ],
+  "aggregate_score": 95,
+  "release_gate": true,
+  "evidence": [
+    "settings / settings-display / add all logical width 560",
+    "Desktop row present",
+    "tip mirror fix in exact_host find_wawona_app"
+  ],
+  "open_issues_ranked": [
+    "1px Fit-sheet width peg is a workaround",
+    "Inspector / Tab Overview polish room"
+  ],
+  "summary": "Settings + section sheets 560. Gate 95. Loop continues."
+}

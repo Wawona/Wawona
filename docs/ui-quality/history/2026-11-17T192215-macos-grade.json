@@ -1,0 +1,19 @@
+{
+  "stamp": "2026-11-17T192215",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 87,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Display prefs stacked again (Category jump moved to header; nested section caused sideways flow)",
+    "Sort PrefSelect; Settings Display land; NSSegmented filter; Dependencies; semantic status colors",
+    "Catalog NSToolbar Exact-host blocked; VoiceOver/Liquid Glass UNVERIFIED"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T192215",
+    "layout": "pref rows y=155,192,229,266,305"
+  },
+  "hard_gates_failed": []
+}

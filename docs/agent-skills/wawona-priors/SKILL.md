@@ -42,7 +42,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-store-archive-preflight` | Apple beta release archive/export all targets and IPA checks before the first ASC upload; simulator-only gates miss embedded Watch device compile failures. |
 | `wawona-swiftui-backports` | iOS 15 `WawonaBackport` shims. Wins over upstream SwiftUI skill modernization. |
 | `wawona-icon-composer` | Layered icon drafts, native rendering, shared IDE tooling. |
-| `wawona-exact-contract` | Exact Machines/Settings Contract UI. Load with Exact `llp-orient`. `no-tells` + ALL_TARGETS. Dual-run M1-M8: `wawona-exact-dual-run`. |
+| `wawona-exact-contract` | Exact Machines/Settings Contract UI. Load with Exact `llp-orient`. `no-tells` + ALL_TARGETS. Dual-run M1-M8: `wawona-exact-dual-run`. Forced Exact: `wawona-exact-forced`. No Expo RN MCP; Exact CLI + AGENTS.md. |
+| `wawona-exact-ui-design` | Exact chrome: load `frontend-design` / `impeccable` / `better-*` / `web-design-guidelines`; Contract-safe only (no React/hex tells). |
 | Exact `llp-orient` / `llp-create` / `exact-panel` / `exact-orchestrate` | Exact checkout skills (symlinked into `~/.agents/skills`). |
 
 ## Rules (hard gates)
@@ -55,7 +56,8 @@ skill, add one row. Capture flow: `wawona-learn`.
 | `wawona-agent-learn` | This learn loop |
 | `wawona-caveman-full` | AlwaysApply: caveman full, not lite |
 | `wawona-mission-critical-assurance` | Risk-tiered evidence for critical and AI-authored changes |
-| `wawona-rust-first` | New Wawona-owned logic |
+| `wawona-rust-first` | New Wawona-owned logic; Exact chrome forced (`wawona-exact-forced`) |
+| `wawona-exact-forced` | Pure Rust policy + forced Exact Machines/Settings chrome. Hard reject iced/egui. |
 | `wawona-uniffi-domain` | Product domain vs `WWNCore*`; no JFFI fork |
 | `wawona-nix-generated` | Generated files are Nix outputs; never git-track UniFFI |
 | `wawona-repo-dag` | Flake input / registry key; rename cascade → skill `wawona-flake-consumer-rename` |

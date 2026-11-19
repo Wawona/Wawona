@@ -1,0 +1,27 @@
+{
+  "stamp": "2026-11-17T195033",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 89,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Rebuild grade after unlock; display wake required for CGWindow",
+    "Sidebar badges + name titles; Term symbol:compose; microcopy planned Start/Deps",
+    "machineDisplayIcon prefers m.icon",
+    "Still open: catalog NSToolbar Exact-host; VoiceOver rotor; Liquid Glass; dedicated Settings deferred",
+    "Dark prefer prefers-color-scheme dark PNGs refreshed",
+    "A11y tree dump: labels+roles for sidebar/browser/toolbar (rotor still UNVERIFIED)"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T195033",
+    "inspector_microcopy": "This guest is not ready yet\u2026 / Needs Relay to boot\u2026",
+    "dark": [
+      "docs/ui-quality/history/artifacts/dark-catalog.png",
+      "docs/ui-quality/history/artifacts/dark-inspector-planned.png"
+    ],
+    "a11y_tree": "docs/ui-quality/history/artifacts/2026-11-17T195033-a11y-tree.txt"
+  },
+  "hard_gates_failed": []
+}

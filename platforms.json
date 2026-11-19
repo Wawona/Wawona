@@ -13,15 +13,16 @@
       "tvos",
       "watchos",
       "wearos",
-      "asteroidos"
+      "asteroidos",
+      "linux"
     ],
     "APPLE_TARGETS": ["ios", "ipados", "macos", "visionos", "tvos", "watchos"],
     "MOBILE_TARGETS": ["ios", "ipados", "android"],
-    "DESKTOP_TARGETS": ["macos", "windows"],
+    "DESKTOP_TARGETS": ["macos", "windows", "linux"],
     "WEARABLE_TARGETS": ["watchos", "wearos", "asteroidos"],
     "TV_TARGETS": ["tvos"],
     "WEB_TARGETS": ["web"],
-    "EXACT_HOSTS": ["ios", "ipados", "macos", "android", "web", "windows", "asteroidos", "tvos", "watchos"],
+    "EXACT_HOSTS": ["ios", "ipados", "macos", "android", "web", "windows", "asteroidos", "tvos", "watchos", "linux", "wearos"],
     "SHARED_CORE": ["exact-contract", "rust-domain"]
   },
   "targets": [
@@ -31,7 +32,7 @@
       "exact_host": "apple/ios",
       "product": "available",
       "exact_ui": "available",
-      "notes": "Phone. Compact UITabBar + inset-grouped."
+      "notes": "Phone. Machine catalog as inset-grouped root. Settings is a cover (gear). No Machines|Settings tab bar."
     },
     {
       "id": "ipados",
@@ -39,7 +40,7 @@
       "exact_host": "apple/ios",
       "product": "available",
       "exact_ui": "available",
-      "notes": "Same Exact iOS host; wide = navigationSplit when viewport >= 700."
+      "notes": "Machine catalog as adaptive split. Settings is a cover (gear). Session window supported."
     },
     {
       "id": "macos",
@@ -47,7 +48,7 @@
       "exact_host": "apple/macos",
       "product": "available",
       "exact_ui": "available",
-      "notes": "Navigator strip + sourceList promote (appearance=none)."
+      "notes": "Machine catalog is the source list. Settings is a cover (gear). Session may open in its own window. CSD or SSD."
     },
     {
       "id": "android",
@@ -100,10 +101,10 @@
     {
       "id": "wearos",
       "label": "Wear OS",
-      "exact_host": null,
+      "exact_host": "android",
       "product": "planned",
-      "exact_ui": "blocked",
-      "notes": "No Exact Wear OS host yet. Keep contract portable; do not use symbol:sf."
+      "exact_ui": "available",
+      "notes": "Same wawona-android crate. cargo xtask build wearos passes --wear so the APK requires android.hardware.type.watch and sets the standalone meta-data. Phone APK does not."
     },
     {
       "id": "asteroidos",
@@ -111,7 +112,15 @@
       "exact_host": "asteroid",
       "product": "planned",
       "exact_ui": "available",
-      "notes": "Exact asteroid host. Wearable-class layout; leave chrome unsaid."
+      "notes": "Exact asteroid host. cargo xtask build asteroidos. Host-machine binary is headless. Cross armv7 needs ASTEROIDOS_SDK."
+    },
+    {
+      "id": "linux",
+      "label": "Linux",
+      "exact_host": "linux",
+      "product": "planned",
+      "exact_ui": "available",
+      "notes": "Exact Linux host. cargo xtask build linux. Headless on macOS. Not nix build .#wawona-linux."
     }
   ],
   "rules": [

@@ -599,10 +599,11 @@ mod capability_tests {
     }
 
     #[test]
-    fn macos_container_available_vm_planned() {
+    fn macos_vm_and_container_available() {
         assert_eq!(gate("macos", "container"), "available");
-        assert_eq!(gate("macos", "vm"), "planned");
+        assert_eq!(gate("macos", "vm"), "available");
         assert_eq!(gate("ios", "container"), "planned");
+        assert_eq!(gate("ios", "vm"), "planned");
     }
 
     #[test]
@@ -870,7 +871,8 @@ pub mod capabilities {
             ("visionos" | "tvos" | "watchos", "vm" | "virtual_machine" | "container") => {
                 "forbidden"
             }
-            ("macos", "container") => "available",
+            // macOS Relay engines: Virtualization.framework + Apple Containerization.
+            ("macos", "vm" | "virtual_machine" | "container") => "available",
             (_, "vm" | "virtual_machine" | "container") => "planned",
             (_, "desktop") if matches!(p.as_str(), "macos" | "android") => "planned",
             // Mode B iOS Desktop is a separate compile profile; store iOS stays forbidden.

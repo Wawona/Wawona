@@ -1,0 +1,21 @@
+{
+  "stamp": "2026-11-17T203457",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 92,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Settings catalog icons restrained (blue/indigo/orange/gray/teal)",
+    "red Delete; PrefSwitch pin",
+    "gate_met false: catalog NSToolbar + VO"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T203457"
+  },
+  "hard_gates_failed": [
+    "catalog NSToolbar",
+    "VoiceOver rotor"
+  ]
+}

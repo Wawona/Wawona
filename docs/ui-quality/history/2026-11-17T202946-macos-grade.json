@@ -1,0 +1,26 @@
+{
+  "stamp": "2026-11-17T202946",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 92,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "PrefSwitch Pin; Danger Zone on-screen",
+    "Dark + compact + large catalog evidence",
+    "Chunked grade F5-only wake green",
+    "gate_met false: catalog NSToolbar + VoiceOver rotor",
+    "Starting/Failed NOT TESTED (no fabricated Relay phase)"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T202946",
+    "dark_catalog": "docs/ui-quality/history/artifacts/2026-11-17T202946-catalog-dark.png",
+    "compact": "docs/ui-quality/history/artifacts/2026-11-17T202946-catalog-compact.png",
+    "large": "docs/ui-quality/history/artifacts/2026-11-17T202946-catalog-large.png"
+  },
+  "hard_gates_failed": [
+    "catalog NSToolbar",
+    "VoiceOver rotor"
+  ]
+}

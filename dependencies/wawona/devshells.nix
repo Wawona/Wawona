@@ -132,7 +132,7 @@ builtins.listToAttrs (map (system: let
 
       ${darwinXcodeShellHook}
 
-      echo "Xcode: nix run .#deps -- <sdk>, then open Wawona.xcodeproj"
+      echo "Apple/Android product: cargo xtask deps get <sdk> && cargo xtask run macos|ios|android"
       ${releaseShellHook}
     '';
   };

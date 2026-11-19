@@ -1,0 +1,36 @@
+{
+  "stamp": "2026-11-17T185822",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --rebuild",
+  "artifacts": "docs/ui-quality/history/artifacts/2026-11-17T185822-*.png",
+  "baseline": 38,
+  "aggregate": 81,
+  "release_gate": 90,
+  "gate_met": false,
+  "scores": {
+    "native_fidelity": 78,
+    "visual_hierarchy": 82,
+    "navigation": 81,
+    "layout": 84,
+    "functional": 88,
+    "accessibility": 56,
+    "adaptive": 72,
+    "state": 90,
+    "consistency": 81,
+    "polish": 72
+  },
+  "evidence": [
+    "Inspector NSToolbar exact.command.* Start/Settings",
+    "Planned Start Unavailable gated in toolbar",
+    "Sidebar titles Planned (no truncation)",
+    "Filter All unchecked when tag filter active (contract)",
+    "Declared catalog toolbarPlacement=window reverted (off-viewport)"
+  ],
+  "open": [
+    "Catalog placeholder NSToolbar needs Exact host",
+    "VoiceOver rotor UNVERIFIED",
+    "Dedicated Settings window deferred",
+    "Liquid Glass SDK APIs UNVERIFIED"
+  ],
+  "hard_gates_failed": []
+}

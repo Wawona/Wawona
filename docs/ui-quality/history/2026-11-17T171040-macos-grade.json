@@ -1,0 +1,29 @@
+{
+  "iteration": 9,
+  "extracted_at": "2026-11-17T17:10:40-08:00",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --chrome platform",
+  "build": ".build/exact/macos/Wawona.app",
+  "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T171040-",
+  "screens": [
+    { "screen": "machines-catalog", "score": 95, "result": "pass" },
+    { "screen": "settings-catalog", "score": 96, "result": "pass" },
+    { "screen": "settings-display", "score": 97, "result": "pass" },
+    { "screen": "add-machine", "score": 95, "result": "pass" },
+    { "screen": "tab-overview", "score": 94, "note": "Done-only chrome; Safari-ish cards.", "result": "pass" },
+    { "screen": "machine-inspector", "score": 95, "result": "pass" }
+  ],
+  "aggregate_score": 96,
+  "release_gate": true,
+  "evidence": [
+    "Settings/Display 560 + single Back",
+    "Runtime zsh · Terminal · local",
+    "tip mirror fix; width pegs",
+    "Tab Overview cards + Done"
+  ],
+  "open_issues_ranked": [
+    "Fit-sheet 1px width peg workaround",
+    "Tab cards still placeholder preview (no live thumb)"
+  ],
+  "summary": "Round 9 gate 96. Loop continues until user stop."
+}

@@ -44,7 +44,8 @@ public enum CapabilityGate: Sendable, Equatable {
     }
 }
 
-/// Single source of truth for per-platform product gates.
+/// Platform product gates. Rust `src/domain` capabilities + `wawona_capability_gate`
+/// own the matrix when linked; Swift `#if os` is SPM / tip-ahead fallback only.
 /// Aligns with `.cursor/rules/wawona-platform-targets.mdc`.
 public enum PlatformCapabilities: Sendable {
     private static func isFlagEnabled(_ name: String) -> Bool {
@@ -54,12 +55,17 @@ public enum PlatformCapabilities: Sendable {
 
     /// Policy: VM machine kinds are offered on macOS, iOS, iPadOS, visionOS,
     /// and Android; only tvOS and watchOS are forbidden.
+    ///
+    /// macOS product engine is Virtualization.framework via Relay (available).
+    /// iOS / Android / Linux stay planned until Relay guest boot is green.
     public static var virtualMachineGate: CapabilityGate {
         if let rust = rustGate("vm") {
             return rust
         }
         #if os(tvOS) || os(watchOS)
         return .forbidden(reason: "VM machine kinds are not offered on tvOS/watchOS")
+        #elseif os(macOS)
+        return .available
         #else
         return .planned(flag: "WWN_VMS")
         #endif
@@ -327,6 +333,9 @@ public enum PlatformCapabilities: Sendable {
     /// macOS + Android: Mode A+B planned. iOS/iPadOS: Mode B only (forbidden
     /// in store IPA). See docs/swinging-bridge.md.
     public static var swingingBridgeGate: CapabilityGate {
+        if let rust = rustGate("swinging_bridge") {
+            return rust
+        }
         #if os(macOS)
         return .planned(flag: "WWN_SWINGING_BRIDGE")
         #elseif os(iOS)

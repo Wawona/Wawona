@@ -168,9 +168,9 @@ fill-host for flower). Use **Container command** only.
 | Kind | macOS | iOS Mode A (store) |
 |---|---|---|
 | Native weston/niri/clients | available | available (in-process) |
-| Container | Apple Containerization + prebaked OCI | container-in-VM on Relay. Planned. Fail closed |
-| VM | Virtualization.framework via Relay | Relay. Planned. Fail closed. No QEMU |
-| Wasm Runtime | available | available (interpreter; no JIT) |
+| Container | **available** (Apple Containerization / `wwn-containerd`) | container-in-VM on Relay. Planned. Fail closed |
+| VM | **available** (Virtualization.framework via Relay) | Relay. Planned. Fail closed. No QEMU |
+| Wasm Runtime | available (Wasmtime) | available (Pulley; iOS 27+ Wasmer when linked) |
 | Hyprland / Ghostty | container-only | container-in-VM only (same guests) |
 
 iOS Simulator: set `WAWONA_MOBILE_GUEST_DIR` + `WAWONA_MOBILE_VM_ENGINE_DIR` for

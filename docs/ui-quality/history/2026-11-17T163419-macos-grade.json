@@ -1,0 +1,104 @@
+{
+  "iteration": 2,
+  "extracted_at": "2026-11-17T16:34:19-08:00",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --chrome platform",
+  "build": ".build/exact/macos/Wawona.app",
+  "artifacts": [
+    "docs/ui-quality/history/artifacts/2026-11-17T163419-catalog.png",
+    "docs/ui-quality/history/artifacts/2026-11-17T163419-add.png",
+    "docs/ui-quality/history/artifacts/2026-11-17T163419-tabs.png",
+    "docs/ui-quality/history/artifacts/2026-11-17T163419-inspector.png",
+    "docs/ui-quality/history/artifacts/2026-11-17T163419-settings.png",
+    "docs/ui-quality/history/artifacts/2026-11-17T163419-settings-display.png",
+    "docs/ui-quality/history/artifacts/2026-11-17T163419-catalog-return.png"
+  ],
+  "screens": [
+    {
+      "screen": "machines-catalog",
+      "score": 82,
+      "criteria": {
+        "native_fidelity": { "score": 12, "note": "sourceList + empty detail chrome. Sidebar width still 144." },
+        "visual_hierarchy": { "score": 12, "note": "Select a Machine + Settings/Tabs/Sort/Add in detail. Black selected Native Shell pill remains." },
+        "navigation": { "score": 9, "note": "Add and Tabs reachable from empty detail." },
+        "layout": { "score": 7, "note": "Titles truncate at 144pt sidebar." },
+        "functional": { "score": 14, "note": "Full grade pass completed." },
+        "accessibility": { "score": 8, "note": "Controls labeled; truncated names." },
+        "adaptive": { "score": 8, "note": "Wide path." },
+        "state": { "score": 4, "note": "OK." },
+        "consistency": { "score": 4, "note": "OK." },
+        "polish": { "score": 4, "note": "Black pill + truncation." }
+      },
+      "issues": ["sidebar width 144 vs authored 280", "black selected Native Shell cell"],
+      "result": "needs_improvement"
+    },
+    {
+      "screen": "add-machine",
+      "score": 70,
+      "criteria": {
+        "native_fidelity": { "score": 8, "note": "Sheet opened (back=sheet) but screenshot missed SheetWindow." },
+        "visual_hierarchy": { "score": 10, "note": "Evidence incomplete." },
+        "navigation": { "score": 9, "note": "machine-add works; dismisses via back sheet." },
+        "layout": { "score": 7, "note": "Need window screenshot." },
+        "functional": { "score": 13, "note": "Modal presentation proven." },
+        "accessibility": { "score": 7, "note": "Provisional." },
+        "adaptive": { "score": 7, "note": "OK." },
+        "state": { "score": 3, "note": "OK." },
+        "consistency": { "score": 3, "note": "OK." },
+        "polish": { "score": 3, "note": "OK." }
+      },
+      "issues": ["grade must screenshot … window for SheetWindow"],
+      "result": "needs_improvement"
+    },
+    {
+      "screen": "tab-overview",
+      "score": 88,
+      "criteria": {
+        "native_fidelity": { "score": 13, "note": "Tab Overview in detail with Close All / Done." },
+        "visual_hierarchy": { "score": 13, "note": "Clear." },
+        "navigation": { "score": 9, "note": "Tabs button works." },
+        "layout": { "score": 9, "note": "OK." },
+        "functional": { "score": 14, "note": "Shows Term running tab." },
+        "accessibility": { "score": 9, "note": "OK." },
+        "adaptive": { "score": 8, "note": "OK." },
+        "state": { "score": 4, "note": "OK." },
+        "consistency": { "score": 5, "note": "OK." },
+        "polish": { "score": 4, "note": "OK." }
+      },
+      "issues": [],
+      "result": "pass"
+    },
+    {
+      "screen": "machine-inspector",
+      "score": 92,
+      "result": "pass",
+      "issues": []
+    },
+    {
+      "screen": "settings-catalog",
+      "score": 84,
+      "criteria": {
+        "native_fidelity": { "score": 13, "note": "Settings is modal sheet (back=sheet). Main-window screenshot missed sheet pixels." },
+        "visual_hierarchy": { "score": 12, "note": "Tree proves Done + section links." },
+        "navigation": { "score": 9, "note": "Cover dismisses whole sheet." },
+        "layout": { "score": 8, "note": "No longer beside sidebar in sheet chrome." },
+        "functional": { "score": 14, "note": "Display opens inside sheet." },
+        "accessibility": { "score": 8, "note": "OK." },
+        "adaptive": { "score": 6, "note": "Desktop still hidden (hostPlatform ios)." },
+        "state": { "score": 4, "note": "OK." },
+        "consistency": { "score": 5, "note": "Gear cover." },
+        "polish": { "score": 5, "note": "OK." }
+      },
+      "issues": ["screenshot window for sheet", "hostPlatform ios"],
+      "result": "needs_improvement"
+    }
+  ],
+  "aggregate_score": 83,
+  "open_issues_ranked": [
+    "Exact host: size promoted sidebar to authored navigationSplit width",
+    "Exact host: no sidebar selection without detail; fix selected cell contrast",
+    "grade: screenshot PATH window for modal sheets",
+    "hostPlatform macos seed on Exact Mac"
+  ],
+  "summary": "Empty-detail chrome + Settings modal sheet landed. Sidebar still 144pt. Sheet screenshots need window capture."
+}

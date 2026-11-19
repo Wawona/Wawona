@@ -85,6 +85,7 @@ public final class WWNMachineSessionBridge: NSObject {
         if runner.isRunning { runner.stopWaypipe() }
         #if os(macOS)
         WWNVirtualMachineRunner.sharedRunner.stopAll()
+        WWNContainerRunner.sharedRunner.stopAll()
         #endif
         // Never WWNRelay.stopAll() here. connect() / scene churn used to kill a
         // live StaticCpu mid-boot (pending stop + hasOwnedSession stuck → frozen
@@ -101,9 +102,22 @@ public final class WWNMachineSessionBridge: NSObject {
         // handle and returned without restart. Guest console froze (no AUTH /
         // No wl_shm) with host RSS collapsed and no StaticCpu thread.
         if profileUsesVirtualMachineBackend(profile) || profileUsesContainerBackend(profile) {
-            if let mid = profile.machineId as String?, !mid.isEmpty,
-               WWNRelay.sharedRelay.hasOwnedSession(forMachineId: mid) {
-                return
+            if let mid = profile.machineId as String?, !mid.isEmpty {
+                #if os(macOS)
+                if profileUsesContainerBackend(profile),
+                   WWNContainerRunner.sharedRunner.hasOwnedSession(forMachineId: mid) {
+                    return
+                }
+                if profileUsesVirtualMachineBackend(profile),
+                   WWNVirtualMachineRunner.sharedRunner.hasOwnedSession(forMachineId: mid)
+                    || WWNRelay.sharedRelay.hasOwnedSession(forMachineId: mid) {
+                    return
+                }
+                #else
+                if WWNRelay.sharedRelay.hasOwnedSession(forMachineId: mid) {
+                    return
+                }
+                #endif
             }
         }
 
@@ -158,16 +172,29 @@ public final class WWNMachineSessionBridge: NSObject {
         }
         if profileUsesVirtualMachineBackend(profile) {
             #if os(macOS)
-            // macOS dogfood: supervised microvm.nix + waypipe session (vfkit).
-            // Product Relay VZ/StaticCpu remains the mobile / long-term engine.
-            try connectMicrovmSession(profile: profile)
+            // Relay macOS VM = Virtualization.framework (wawona-vz / WWNRelay).
+            // MicroVM session remains the dogfood fallback when guest embeds
+            // are missing.
+            if WWNRelaySpec.hasGuestManifest() {
+                try connectRelayBacked(
+                    profile: profile,
+                    forbidden: "Virtual machines are not available on this platform.",
+                    code: 4
+                )
+            } else {
+                try connectMicrovmSession(profile: profile)
+            }
             #else
             try connectRelayBacked(profile: profile, forbidden: "Virtual machines are not available on this platform.", code: 4)
             #endif
             return
         }
         if profileUsesContainerBackend(profile) {
+            #if os(macOS)
+            try connectAppleContainer(profile: profile)
+            #else
             try connectRelayBacked(profile: profile, forbidden: "Containers are not available on this platform.", code: 5)
+            #endif
             return
         }
         throw NSError(
@@ -201,10 +228,14 @@ public final class WWNMachineSessionBridge: NSObject {
             }
             #endif
         } else if profileUsesContainerBackend(profile) {
+            #if os(macOS)
+            WWNContainerRunner.sharedRunner.stopProfile(withMachineId: profile.machineId ?? "")
+            #else
             WWNRelay.sharedRelay.stopProfile(withMachineId: profile.machineId ?? "")
             if WWNRelay.sharedRelay.hasOwnedSession(forMachineId: profile.machineId ?? "") {
                 return
             }
+            #endif
         }
 
         if WWNMachineProfileStore.activeMachineId() == profile.machineId {
@@ -305,6 +336,27 @@ public final class WWNMachineSessionBridge: NSObject {
     }
 
     #if os(macOS)
+    private static func connectAppleContainer(profile: WWNMachineProfile) throws {
+        guard WWNPlatformAllowsContainer() else {
+            throw NSError(
+                domain: "WWNMachineSessionBridge", code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "Containers are not available on this platform."]
+            )
+        }
+        if let mid = profile.machineId as String?, !mid.isEmpty,
+           WWNContainerRunner.sharedRunner.hasOwnedSession(forMachineId: mid) {
+            return
+        }
+        var err: NSError?
+        let ok = WWNContainerRunner.sharedRunner.launchProfile(profile, error: &err)
+        if !ok {
+            throw err ?? NSError(
+                domain: "WWNMachineSessionBridge", code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "Apple Containerization session failed to start."]
+            )
+        }
+    }
+
     private static func connectMicrovmSession(profile: WWNMachineProfile) throws {
         guard WWNPlatformAllowsVirtualMachine() else {
             throw NSError(

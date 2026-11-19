@@ -1,12 +1,14 @@
 # Virtual machines and containers
 
-> **Public subset** for wawona.io. Status: **planned / coming soon**.
+> **Public subset** for wawona.io. macOS: **available**. Other hosts: see matrix.
 > Full Mode A/B: [`mode-a-b.md`](./mode-a-b.md), [`vms-mode-a-b.md`](./vms-mode-a-b.md),
 > [`containers-mode-a-b.md`](./containers-mode-a-b.md).
+> Runtime map: [`relay-runtime-map.md`](./relay-runtime-map.md).
 
-Wawona will let users add **VM** and **container** machine profiles in the
-Machines GUI. This is **not** the on-device [bundled shell](ios-local-shell/README.md),
-**not** [Wawona Runtime / Wasm packages](wasm-wasi.md), and **not**
+Wawona lets users add **VM** and **container** machine profiles in the
+Machines GUI. Relay owns those runtimes. This is **not** the on-device
+[bundled shell](ios-local-shell/README.md), **not**
+[Wawona Runtime / Wasm packages](wasm-wasi.md), and **not**
 Desktop/LockScreen or Wawona Swinging Bridge.
 
 ## Mode A vs Mode B (iOS / iPadOS)
@@ -28,13 +30,13 @@ across those hosts.
 
 ## Platforms
 
-| Platform | Gate | Planned engine |
+| Platform | Gate | Engine |
 |---|---|---|
-| macOS | planned | `Virtualization.framework` + Apple Containerization (not MAS for run) |
-| iOS / iPadOS / visionOS | planned | Relay. Mode B may use Hypervisor.framework inside the UTM-era window where permitted |
+| macOS | **available** | `Virtualization.framework` + Apple Containerization (`wwn-containerd`) |
+| Linux | **available** (KVM required) | KVM via cloud-hypervisor or crosvm |
+| iOS / iPadOS / visionOS | planned | Relay StaticCpu / AOT; Mode B may use Hypervisor.framework in the UTM-era window |
 | Android | planned | Relay. Play = Mode A. Root = Mode B |
-| Linux | planned | KVM via cloud-hypervisor or crosvm |
-| tvOS / watchOS | **forbidden** | Native + remote only (no VM/container kinds) |
+| tvOS / watchOS / wearables | **forbidden** | Native + remote + Wasm only (no VM/container kinds) |
 
 App Store / TestFlight copy must **never** pitch jailbreak, TrollStore, or JIT.
 Website and `repo.wawona.io` may.

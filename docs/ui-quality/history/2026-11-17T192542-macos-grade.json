@@ -1,0 +1,19 @@
+{
+  "stamp": "2026-11-17T192542",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 87,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Full-bleed browser rows restored (width=100%)",
+    "Display prefs stacked; Settings Display land; NSSegmented filter; Sort PrefSelect; Dependencies",
+    "Grade rebuild hardened with clock +1500 real before first window shot",
+    "Catalog NSToolbar Exact-host blocked; VoiceOver/Liquid Glass UNVERIFIED"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T192542"
+  },
+  "hard_gates_failed": []
+}

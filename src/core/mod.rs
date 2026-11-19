@@ -1,6 +1,8 @@
 pub mod errors;
 mod generation_counter;
 pub mod invariants;
+pub use wawona_laws::machine_phase;
+pub use wawona_laws::nav_place;
 pub mod state;
 pub mod traits;
 

@@ -71,6 +71,7 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 
 
 [dependencies]
+wawona-laws = { path = "crates/wawona-laws" }
 thiserror = "2.0.17"
 anyhow = "1.0.100"
 tracing = "0.1.44"

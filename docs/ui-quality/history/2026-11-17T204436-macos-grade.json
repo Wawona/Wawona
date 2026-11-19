@@ -1,0 +1,23 @@
+{
+  "stamp": "2026-11-17T204436",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 94,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Exact HeaderMac: placeholder pane projects NSToolbar beside list",
+    "Wide 900x700 catalog toolbar: exact.command New/Settings/Sessions",
+    "Compact path still projects",
+    "gate_met false: VoiceOver rotor UNVERIFIED"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T204436",
+    "wide_nstoolbar": "exact.command.260/263/265 + exact.split.separator",
+    "exact_patch": "exact/host/apple/Sources/ExactKit/Mac/HeaderMac.swift splitHeaderRoutes placeholder beside"
+  },
+  "hard_gates_failed": [
+    "VoiceOver rotor"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "stamp": "2026-11-17T193010",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 88,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Grade rebuild: 2.5s wall sleep + 1.5s real before first window shot",
+    "UI: Display stacked, Settings Display land, NSSegmented filter, Sort PrefSelect, Dependencies, semantic status colors",
+    "Catalog NSToolbar Exact-host blocked; VoiceOver/Liquid Glass UNVERIFIED",
+    "Dark mode catalog+inspector PNGs captured"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T193010",
+    "dark": [
+      "docs/ui-quality/history/artifacts/dark-catalog.png",
+      "docs/ui-quality/history/artifacts/dark-inspector-planned.png"
+    ]
+  },
+  "hard_gates_failed": []
+}

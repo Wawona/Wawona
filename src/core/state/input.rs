@@ -721,6 +721,16 @@ impl CompositorState {
 
     /// Set focused window
     pub fn set_focused_window(&mut self, window_id: Option<u32>) {
+        let window_id = match window_id {
+            None => None,
+            Some(id) => {
+                let eligible: Vec<u32> = self.windows.keys().copied().collect();
+                match wawona_laws::select_window(&eligible, id) {
+                    Some(id) => Some(id),
+                    None => return,
+                }
+            }
+        };
         if self.focus_change_ends_popup_grab(window_id) {
             self.dismiss_popup_grab_without_refocus();
         }

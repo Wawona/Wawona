@@ -11,10 +11,20 @@ description: >
 
 ## Load first
 
-1. Exact skill `llp-orient` (Exact checkout) when touching Contract structure.
-2. This skill + `docs/start-here.md` + `apps/shelf/app.contract` as the chrome oracle.
-3. `platforms.json` / `ALL_TARGETS` when the task spans hosts.
-4. Query `wwn-mcp` for Wawona product gates (`wawona-platform-targets`).
+1. Exact checkout **`AGENTS.md`** + `docs/start-here.md` (official Exact agent
+   loop: CLI + compiler JSON, not Expo RN MCP).
+2. Exact skill `llp-orient` when touching Contract structure.
+3. **`wawona-exact-ui-design`** then global `frontend-design` /
+   `impeccable` / `better-*` / `web-design-guidelines` (visual craft only;
+   Contract syntax + no-tells still win).
+4. This skill + `apps/shelf/app.contract` as the chrome oracle.
+5. `platforms.json` / `ALL_TARGETS` when the task spans hosts.
+6. Query `wwn-mcp` for Wawona product gates (`wawona-platform-targets`).
+
+**Do not** install Expo Router / EAS / Expo MCP skills for this work. They
+target React Native, not Contract. Fix with
+`bun scripts/exact.mjs contract build … --json --errors-only` and
+`scripts/agent.mjs` (or `cargo xtask agent`).
 
 ## Where
 
@@ -29,15 +39,26 @@ description: >
 
 ## Hard rules
 
+- **Forced Exact.** Product Machines/Settings chrome is Exact only (pure Rust
+  policy + Exact paint). Hard reject iced/egui/gpui or a second hand
+  SwiftUI/Compose Machines tree. Rule: `wawona-exact-forced`.
 - **Author writes structure** (header, list, tablist, routes, grouped-form).
 - **Leave look unsaid:** no hex chrome, no `font-size` / `font-weight` (use
   `-exact-*` roles / text styles). Gate: `bun scripts/no-tells.mjs apps/wawona`.
 - **Portable symbols:** `symbol:package`, `symbol:layers`, … Never `symbol:sf/`
   for ALL_TARGETS chrome (blank on non-Apple).
-- **Compact vs wide:** `isWide = viewport.width >= 700`. Compact =
-  `appearance="auto"` inset-grouped + UITabBar. Wide = `appearance="none"` +
-  `navigationSplit` for Mac sourceList promote. Literal `appearance` only
-  (`lower-grouped-list` forbids ternary).
+- **Five layers.** Contract = what. Adapter = how. Guidelines = feel.
+  Bend = never break. Computer-use critic = verify. Platforms may look
+  different. Shared semantics stay.
+- **One catalog: machines.** Settings is a cover (`openSettings` / gear).
+  No Machines|Settings tab pair. Keep one hidden root tablist
+  (`display="none"`) so Mac can promote the wide list into `.sourceList`;
+  without it `appearance="none"` smashes rows. Wide: `appearance="none"` +
+  `navigationSplit`. Compact: inset-grouped. Literal `appearance` only.
+- **Titles.** Each route has one `head title` (never a raw id). Only the
+  top header is visible.
+- **Wayland surface.** Session route only. Open in Tab or Window
+  (`sessionChrome`). xdg-decoration CSD/SSD. One emphasized header action.
 - **Settings switches:** shelf/grouped-form `text` + `input type="checkbox" switch`.
   No PrefSwitch accent strip / scale. Per-section control tint via
   `accent-color=sectionAccent` (`-exact-system-*` roles; matches
@@ -52,16 +73,28 @@ description: >
 cd <exact>
 bun scripts/exact.mjs contract build apps/wawona/app.contract --json --errors-only
 bun scripts/no-tells.mjs apps/wawona
-# Per host under ALL_TARGETS / EXACT_HOSTS: build + screenshot / agent drive
 ```
 
+**macOS Exact UI (hard, Rust-driven):**
+
+```bash
+cargo app                 # from Wawona/; alias → xtask run macos
+cargo xtask run macos
+cargo xtask run ios
+cargo xtask agent grade macos --rebuild
+cargo xtask agent drive macos -- tree state check "tap toolbar-settings"
+```
+
+Never computer-use for Exact chrome. Rule: `wawona-exact-macos-run`.
 Report a host matrix. `implemented` ≠ `verified`.
 
 ## Related
 
-- Exact skills: `llp-orient`, `llp-create`, `exact-panel`, `exact-orchestrate`
-- Rules: `wawona-all-targets`, `wawona-platform-targets`,
-  `wawona-global-settings-exclusive`, `wawona-exact-dual-run`
+- Exact skills: `llp-orient`, Exact `AGENTS.md`, `docs/start-here.md`
+- Design gate: `wawona-exact-ui-design` (+ `frontend-design`, `impeccable`, …)
+- Rules: `wawona-exact-forced`, `wawona-exact-macos-run`, `wawona-all-targets`,
+  `wawona-platform-targets`, `wawona-global-settings-exclusive`,
+  `wawona-exact-dual-run`, `wawona-rust-first`
 - Recipe: Exact `docs/recipes/grouped-form.md`, `tabs.md`, `symbols.md`
 
 ## ALL_TARGETS matrix (Exact UI)

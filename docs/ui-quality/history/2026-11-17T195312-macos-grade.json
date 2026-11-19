@@ -1,0 +1,25 @@
+{
+  "stamp": "2026-11-17T195312",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 89,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Rebuild green; Term sidebar symbol square.and.pencil (compose) vs Native Shell doc.text",
+    "Sidebar badges Ready/Planned; Sessions badge 1",
+    "Microcopy planned Start/Deps; dark prefer PNGs; a11y tree dump",
+    "Open: NSToolbar Exact-host; VoiceOver rotor; Liquid Glass; Settings window deferred"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T195312",
+    "dark": [
+      "docs/ui-quality/history/artifacts/dark-catalog.png",
+      "docs/ui-quality/history/artifacts/dark-inspector-planned.png"
+    ],
+    "a11y_tree": "docs/ui-quality/history/artifacts/2026-11-17T195033-a11y-tree.txt",
+    "term_symbol": "square.and.pencil"
+  },
+  "hard_gates_failed": []
+}

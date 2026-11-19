@@ -1,0 +1,12 @@
+[package]
+name = "wawona-laws"
+version = "26.11.17"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "Named session and route laws. Bend checks the model. This crate is the implementation."
+
+[dependencies]
+
+[lints]
+workspace = true

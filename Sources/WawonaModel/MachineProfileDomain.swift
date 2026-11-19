@@ -6,9 +6,8 @@ import WawonaUIContracts
 
 /// Thin Apple wrap around the rust product domain (`src/domain`).
 ///
-/// Prefer Nix UniFFI (`import wawona`, `SWIFT_INCLUDE_PATHS` →
-/// `.deps/<sdk>/uniffi`). When that module is absent,
-/// look up C trampolines (`wawona_profiles_v1_*`) via `WawonaDomainBridge`.
+/// Prefer generated UniFFI (`import wawona` / ``MachineProfileUniFFI``) when
+/// linked. Else C trampolines (`wawona_profiles_v1_*`) via `WawonaDomainBridge`.
 /// SPM tests without rust fall back to the frozen Swift Codable path.
 ///
 /// Do not add schema fields here. Do not hand-edit generated UniFFI files.
@@ -17,10 +16,15 @@ public enum MachineProfileDomain {
     public static let activeMachineIdKey = "wawona.activeMachineId.v1"
 
     public static var rustAvailable: Bool {
-        domainSymbol("wawona_profiles_v1_decode") != nil
+        MachineProfileUniFFI.isLinked || domainSymbol("wawona_profiles_v1_decode") != nil
     }
 
     public static func decodeProfilesV1(_ json: String) -> [MachineProfile]? {
+        #if canImport(wawona)
+        if let viaUniFFI = MachineProfileUniFFI.decodeProfilesV1(json) {
+            return viaUniFFI
+        }
+        #endif
         if let out = callString1("wawona_profiles_v1_decode", json),
            let data = out.data(using: .utf8),
            let decoded = try? JSONDecoder().decode([MachineProfile].self, from: data)
@@ -31,6 +35,11 @@ public enum MachineProfileDomain {
     }
 
     public static func encodeProfilesV1(_ profiles: [MachineProfile]) -> Data? {
+        #if canImport(wawona)
+        if let json = MachineProfileUniFFI.encodeProfilesV1(profiles) {
+            return json.data(using: .utf8)
+        }
+        #endif
         guard let data = try? JSONEncoder().encode(profiles),
               let json = String(data: data, encoding: .utf8)
         else {
@@ -43,6 +52,11 @@ public enum MachineProfileDomain {
     }
 
     public static func put(_ profile: MachineProfile, into profiles: [MachineProfile]) -> [MachineProfile]? {
+        #if canImport(wawona)
+        if let viaUniFFI = MachineProfileUniFFI.put(profile, into: profiles) {
+            return viaUniFFI
+        }
+        #endif
         guard let listData = try? JSONEncoder().encode(profiles),
               let profileData = try? JSONEncoder().encode(profile),
               let listJSON = String(data: listData, encoding: .utf8),

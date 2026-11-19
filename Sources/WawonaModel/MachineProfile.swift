@@ -1,8 +1,10 @@
 import Combine
 import Foundation
 
-// Schema owner is rust `src/domain` (`wawona.machineProfiles.v1`). These
-// Codable types are the Apple DTO + JSON keys. Do not add fields here.
+// SCHEMA_ADAPTER_ONLY. Owner is rust `src/domain` + UniFFI `MachineProfile`
+// (`wawona.machineProfiles.v1`). These Codable types are the Apple DTO /
+// quarantine adapter. Prefer ``MachineProfileUniFFI`` / `import wawona` when
+// linked. Do not add schema fields here.
 
 public enum MachineType: String, Codable, CaseIterable, Sendable {
     case native

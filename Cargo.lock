@@ -4462,6 +4462,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uniffi",
+ "wawona-laws",
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
@@ -4475,6 +4476,10 @@ dependencies = [
  "waypipe",
  "xkbcommon",
 ]
+
+[[package]]
+name = "wawona-laws"
+version = "26.11.17"
 
 [[package]]
 name = "wayland-backend"

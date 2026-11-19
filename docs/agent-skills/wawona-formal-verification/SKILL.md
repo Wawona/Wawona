@@ -26,6 +26,7 @@ Findings                          → NDJSON via cargo xtask report
 | C bounds / atomics | `src/platform/cproof/wawona_cproof.h` | `cargo xtask prove c` |
 | Relay VM / MMU | production helpers + Verus models | `Relay/scripts/verify-formal.sh` |
 | Flake parse | all `*.nix` | `cargo xtask prove nix` |
+| Session, nav, clamp, port, protocol laws | `machine_phase.rs`, `nav_place.rs`, `verification/bend/` | `cargo xtask prove bend` |
 
 ## Fragility and optimization
 
@@ -78,6 +79,9 @@ cargo xtask secrets ruleset Wawona/Wawona
 - Soft-skip of a pinned required tool
 - Second sanitize/clamp/keycode implementation
 - Bend-2-generated C product logic
+- A second Bend navigation stack beside Exact `back` / `open` / `select`
+- Dropping, renaming, or rewriting a `LAWS.bend` law without updating `verification/bend/laws.lock` in the same edit
 - Dafny, F*, KeY, JML, Lean, CompCert, seL4 rewrite as product code
 - ACSL that certifies a stub as the compositor
 - Calling research-prover warnings a completed proof
+- A new `app.contract` action, catalog interface, or protocol helper with no row in `wawona-laws` `coverage`

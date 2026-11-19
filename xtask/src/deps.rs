@@ -130,6 +130,12 @@ fn expand(sdks: &[String]) -> Vec<String> {
     v
 }
 
+/// Nix `narHash` values are `sha256-<base64>`. A `sha256-local-` prefix is a
+/// proof written by `deps push` into `WAWONA_DEPS_MIRROR`, not a GHCR tag.
+pub fn on_ghcr(nar: &str) -> bool {
+    !nar.starts_with("sha256-local")
+}
+
 pub fn get(a: GetArgs) -> Result<()> {
     if a.sdks.is_empty() {
         bail!("usage: cargo xtask deps get <sdk>... (macosx iphonesimulator iphoneos appletvsimulator xrsimulator android ...)");
@@ -166,6 +172,25 @@ pub fn get(a: GetArgs) -> Result<()> {
         };
         if read(dst.join(".sha256")).ok().as_deref() == Some(e.sha256.as_str()) {
             eprintln!("{sdk}: up to date");
+            continue;
+        }
+        // `sha256-local-*` is a laptop proof. The blob is not on GHCR.
+        // Anonymous token then returns HTTP 403 for every target.
+        if !on_ghcr(&e.nar) {
+            if oci::mirrored(&e.sha256) {
+                fetch(&sdk, e, &dst)?;
+            } else if have("nix") {
+                eprintln!("{sdk}: local deps.lock; building .#deps-{sdk}");
+                nix_build()?;
+            } else if dst.exists() {
+                eprintln!("{sdk}: local deps.lock; using {}", dst.display());
+            } else {
+                bail!(
+                    "{sdk}: deps.lock nar {} is a local proof, not a GHCR blob. \
+                     Set WAWONA_DEPS_MIRROR or install Nix.",
+                    e.nar
+                );
+            }
             continue;
         }
         fetch(&sdk, e, &dst)?;
@@ -278,6 +303,18 @@ pub fn sha256_file(p: &Path) -> Result<String> {
     let mut h = Sha256::new();
     std::io::copy(&mut f, &mut h)?;
     Ok(hex(&h.finalize()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::on_ghcr;
+
+    #[test]
+    fn local_proof_nars_stay_off_ghcr() {
+        assert!(!on_ghcr("sha256-local-b36ec1858de0669a"));
+        assert!(!on_ghcr("sha256-local-android"));
+        assert!(on_ghcr("sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
+    }
 }
 
 fn push(sdk: &str, archive: &Path, nar: &str) -> Result<()> {

@@ -1,0 +1,19 @@
+{
+  "stamp": "2026-11-17T191353",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 85,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Settings gear lands on Display controls (modal section) with Category Go to + All Settings",
+    "NSSegmentedControl filter (5); Dependencies on planned; phaseBusy",
+    "Catalog NSToolbar Exact-host blocked; VoiceOver/Liquid Glass UNVERIFIED",
+    "Dedicated Settings window still deferred (product rule)"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T191353"
+  },
+  "hard_gates_failed": []
+}

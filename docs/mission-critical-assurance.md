@@ -62,6 +62,40 @@ Miri's shared Rust semantics. Miri cannot execute linked C, and Kani does not
 prove generated C by calling it through a Rust declaration. C, Objective-C,
 JNI, and UniFFI remain thin native UI or ABI glue.
 
+Bend 2.0.40 is installed as a specification tool. Laws and proofs live in
+`verification/bend/`. `cargo xtask prove bend` runs `bend PROOF.bend` and
+`bend PROOF.bend --verdict` with `BEND_NO_TELEMETRY=1`. The laws cover
+`start_machine` / `stop_machine` (`crates/wawona-laws`), the one-level
+Machines and Settings route table (`nav_place` in that crate), the non-negative
+axis of `clamp_rect`, `normalize_ssh_port`, and the protocol predicates named
+in `verification/bend/README.md`. Exact Contract `machinePhase` calls those Rust functions
+through `wawona-data` on native hosts. The web executor answers the same
+step from `app.ts` because the page does not link the crate. UniFFI
+`machine_phase_apply` and `nav_place_apply` are the same functions. The Bend files are
+the model of those functions. They are not compiled into any host.
+
+Stage 2 checks critical universal-UI actions through that same bridge.
+Contract declares the action and sends a named query. `wawona-laws` is the
+Rust transition. `job.bend` is the same transition. `LAWS.bend` states the
+requirement and `PROOF.bend` proves the model. Exact `back`, `open`, and
+`select` stay the live navigator. `nav_place` answers the route root. Do not
+add a second navigation stack in Bend. Native paint, focus delivery, and
+pixels stay runtime tests.
+
+Growth order: session phase and route root, then window membership and
+focus, dialogs, settings commits, and the compositor calls those helpers
+make. A green Bend file proves the named transition. It proves the handler
+where the handler's decision is that helper and Kani or Verus covers the
+helper.
+
+`verification/bend/laws.lock` is the approval record. An agent may change a
+Rust helper and its proof. An agent may not drop, rename, or rewrite a law
+unless that lock changes in the same edit. `cargo xtask prove bend` fails
+when the lock and `LAWS.bend` disagree. The lane stays explicit until the
+runner image has Bend 2.0.40 and Lean. A missing binary is an error on that
+lane. It is not a green proof, and it is not yet a Verification report
+failure.
+
 Relay is the first Tier 3 implementation. Its page geometry, virtio block span,
 and split MMIO address laws are checked by production-code Kani harnesses and
 paired Verus models. See `Relay/verification/README.md`.

@@ -1,0 +1,23 @@
+{
+  "stamp": "2026-11-17T201640",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 90,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "buttonStyle=glass chrome; layout drawn=glass",
+    "aria-description hints on New/Settings/Sessions",
+    "gate_met false: NSToolbar Exact-host; VoiceOver rotor"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T201640",
+    "liquid_glass": "layout machine-add style=glass drawn=glass",
+    "danger_zone": "docs/ui-quality/history/artifacts/2026-11-17T200838-inspector-danger.png"
+  },
+  "hard_gates_failed": [
+    "catalog NSToolbar",
+    "VoiceOver rotor"
+  ]
+}

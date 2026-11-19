@@ -1,5 +1,5 @@
 {
-  "comment": "Canonical wwn.* accessibility ids. Keep in sync with WWNA11y (Swift), WawonaTestTags (Kotlin), and src/linux/ui/a11y.rs. Verified by `cargo xtask appium verify`.",
+  "comment": "Canonical wwn.* accessibility ids. Sync with WWNA11y (Swift quarantine dual-run) and src/linux/ui/a11y.rs. Exact Android paints Contract testIds; root Kotlin WawonaTestTags is deleted. Verified by `cargo xtask appium verify`.",
   "ids": [
     "wwn.welcome.root",
     "wwn.welcome.continue",

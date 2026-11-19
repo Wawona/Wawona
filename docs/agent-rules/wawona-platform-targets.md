@@ -22,7 +22,7 @@ fallback) instead of removing it from the product surface.
 |---|---|---|---|---|---|---|---|
 | Native machines | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Remote (SSH/waypipe) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| VM / containers | ⏳ planned | ⏳ planned | ⏳ planned | ⏳ planned | ⏳ planned | ❌ | ❌ |
+| VM / containers | ✅ available | ⏳ planned | ⏳ planned | ⏳ planned | ⏳ planned | ❌ | ❌ |
 | Multi-window (1 window per Wayland client) | ✅ | ✅ (if OS allows) | ✅ **required** | ✅ **required** | ⚠️ single primary | ❌ | ❌ |
 | Nested compositors + bundled clients | ✅ | ✅ | ✅ | ✅ **macOS parity** | ✅ | ✅ | ⚠️ limited |
 | Vulkan / OpenGL / ANGLE bundle | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⛔ blocked |
@@ -156,9 +156,10 @@ forbidden while iPhone is planned for those features.
    (`repo.wawona.io` / jailbreak). **forbidden** in the App Store IPA.
    **Not** Desktop/LockScreen. **Not** MediaProjection-as-desktop.
    Full rule: `wawona-swinging-bridge`.
-9. **VM / containers**. ⏳ planned for macOS, iOS, iPadOS, visionOS, Android, Linux via
-   Machines profiles. ❌ on tvOS, watchOS. Do not document as shipping
-   until gates flip. Local shell is not a substitute for a VM.
+9. **VM / containers**. ✅ available on macOS (Virtualization.framework +
+   Apple Containerization) and Linux (KVM). ⏳ planned for iOS, iPadOS,
+   visionOS, Android. ❌ on tvOS, watchOS, wearables. See
+   `docs/relay-runtime-map.md`. Local shell is not a substitute for a VM.
 10. **Host window manager**. MacOS = AppKit zoom/fullscreen/miniaturize.
     iOS/iPadOS/tvOS/visionOS/Android = **fill-primary**: maximize and
     fullscreen both configure to the host surface bounds and sync xdg

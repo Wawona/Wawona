@@ -10,7 +10,10 @@ Native UI kits are not written in Rust. Thin interop is expected:
 
 - **FFI / UniFFI / JNI** bindings that call into Rust (`WWNCore*`, `android_jni.c`,
   generated UniFFI C). Keep the C file a trampoline; put behavior in Rust.
-- **Swift / SwiftUI / Kotlin / Jetpack** UI and Apple/Android framework entry points.
+- **Exact hosts** paint Machines / Settings from `apps/wawona/app.contract`
+  (forced Exact; see `wawona-exact-forced`). Swift/Kotlin under Exact is paint
+  only. Quarantine hand SwiftUI/Compose chrome until dual-run M8 delete.
+- **Present / WWNCore** Apple/Android framework glue (not a second Machines UI).
   Apple framework glue lives in `Sources/WawonaApple`. No new Objective-C classes.
 - **macOS `.dylib` constructors** and other ABI that must be C (iland Mode B
   insert, `DYLD_INSERT_LIBRARIES`). Logic behind the export still prefers Rust.
@@ -34,5 +37,7 @@ second copy of the product.
 - Putting product policy or draw/session loops in Swift or leftover ObjC when
   Rust can own them.
 - New Apple product `.m` / `.mm` files.
+- Product Machines/Settings chrome outside Exact (iced/egui/gpui or a second
+  hand SwiftUI/Compose tree). Rule: `wawona-exact-forced`.
 
 Cursor rule: `wawona-rust-first`.

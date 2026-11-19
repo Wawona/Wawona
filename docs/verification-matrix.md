@@ -108,6 +108,7 @@ Push and PR on `development` / `master`. Final job name **Verification report**
 | `cargo xtask prove swift` | SSH vector (Swift Testing), strict concurrency, ASan/UBSan/TSan |
 | `cargo xtask prove kotlin` | Kotest, detekt, lint; SpotBugs/JBMC/JPF warn if unwired/missing |
 | `cargo xtask prove nix` | parse all `.nix`, alejandra on `flake.nix`, flake metadata; full-tree format and `nix flake check` stay in Gate: packages |
+| `cargo xtask prove bend` | Bend 2.0.40 on `verification/bend` (`bend PROOF.bend` and `--verdict`). Session, nav, keyboard eligibility, clamp axis, SSH port, and protocol predicates. Error if a `.c`/`.h`/`.js` output sits in that directory. Error if `LAWS.bend` disagrees with `laws.lock` |
 
 Helpers: `src/core/invariants.rs`, `src/core/generation_counter.rs`,
 `src/core/wayland/protocol_proofs.rs`, `src/platform/cproof/wawona_cproof.h`,
@@ -165,6 +166,9 @@ extend `Relay/verification/PROOF_OBLIGATIONS.md`.
 Swift and Kotlin copies stay frozen. Differential tests only.
 
 No Dafny, F*, KeY, JML, or Lean product code. No CompCert. No seL4 rewrite.
+Bend 2 laws live in `verification/bend/`. The checker and `--verdict` are the
+gate. Bend's C backend is not linked into the compositor, Exact, or a store
+binary.
 No Astrée, Polyspace, Coverity, SonarQube, Helix QAC, VCC.
 
 ## Nix
@@ -197,4 +201,5 @@ Aggregator: `cargo xtask report`. NDJSON fields:
 - Growing `input_android.c` into a keymap product
 - `continue-on-error` on OSV
 - Second copy of clamp / sanitize / keycode policy outside the named helper
+- Bend-generated C, JS, or a native binary linked as compositor or Exact logic
 - Claiming research provers (Rudra, MIRAI, …) are green gates while they only warn

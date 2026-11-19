@@ -1,0 +1,5948 @@
+[
+  {
+    "command": "file.rename",
+    "params": {
+      "name": "Wawona ALL_TARGETS UI v3"
+    }
+  },
+  {
+    "command": "page.rename",
+    "params": {
+      "name": "00 Concept plates"
+    }
+  },
+  {
+    "command": "page.setBackground",
+    "params": {
+      "color": "#0A0812"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "x": 0,
+      "y": -36,
+      "text": "Approved comps (pixel truth). Product filter: Settings = gear cover. Editable macOS on page 02.",
+      "name": "plates intro",
+      "props": {
+        "fontSize": 14,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 0,
+      "y": 0,
+      "width": 1512,
+      "height": 1044,
+      "name": "macOS · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 4
+      },
+      "text": "macos  ·  macOS  ·  concept plate",
+      "name": "macos  ·  macOS  ·  concept ",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/macOS.png",
+      "parent": {
+        "$step": 4
+      },
+      "width": 1496,
+      "name": "plate/macos",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 1592,
+      "y": 0,
+      "width": 1600,
+      "height": 936,
+      "name": "iOS · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 7
+      },
+      "text": "ios  ·  iOS  ·  concept plate",
+      "name": "ios  ·  iOS  ·  concept plat",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/iOS.png",
+      "parent": {
+        "$step": 7
+      },
+      "width": 1584,
+      "name": "plate/ios",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 0,
+      "y": 1016,
+      "width": 1400,
+      "height": 1086,
+      "name": "iPadOS · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 10
+      },
+      "text": "ipados  ·  iPadOS  ·  concept plate",
+      "name": "ipados  ·  iPadOS  ·  concep",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/iPadOS.png",
+      "parent": {
+        "$step": 10
+      },
+      "width": 1384,
+      "name": "plate/ipados",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 1480,
+      "y": 1016,
+      "width": 1400,
+      "height": 936,
+      "name": "Android · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 13
+      },
+      "text": "android  ·  Android  ·  concept plate",
+      "name": "android  ·  Android  ·  conc",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/Android_Tablet.png",
+      "parent": {
+        "$step": 13
+      },
+      "width": 1384,
+      "name": "plate/android",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 0,
+      "y": 2032,
+      "width": 1400,
+      "height": 936,
+      "name": "Linux · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 16
+      },
+      "text": "linux  ·  Linux  ·  concept plate",
+      "name": "linux  ·  Linux  ·  concept ",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/Linux.png",
+      "parent": {
+        "$step": 16
+      },
+      "width": 1384,
+      "name": "plate/linux",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 1480,
+      "y": 2032,
+      "width": 1400,
+      "height": 936,
+      "name": "Web · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 19
+      },
+      "text": "web  ·  Web  ·  concept plate",
+      "name": "web  ·  Web  ·  concept plat",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/Web_DOM.png",
+      "parent": {
+        "$step": 19
+      },
+      "width": 1384,
+      "name": "plate/web",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 0,
+      "y": 3048,
+      "width": 1400,
+      "height": 936,
+      "name": "Windows · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 22
+      },
+      "text": "windows  ·  Windows  ·  concept plate",
+      "name": "windows  ·  Windows  ·  conc",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/Windows.png",
+      "parent": {
+        "$step": 22
+      },
+      "width": 1384,
+      "name": "plate/windows",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 1480,
+      "y": 3048,
+      "width": 1400,
+      "height": 936,
+      "name": "visionOS · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 25
+      },
+      "text": "visionos  ·  visionOS  ·  concept plate",
+      "name": "visionos  ·  visionOS  ·  co",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/visionOS.png",
+      "parent": {
+        "$step": 25
+      },
+      "width": 1384,
+      "name": "plate/visionos",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 0,
+      "y": 4064,
+      "width": 1400,
+      "height": 936,
+      "name": "tvOS · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 28
+      },
+      "text": "tvos  ·  tvOS  ·  concept plate",
+      "name": "tvos  ·  tvOS  ·  concept pl",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/tvOS_Apple_TV.png",
+      "parent": {
+        "$step": 28
+      },
+      "width": 1384,
+      "name": "plate/tvos",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 1480,
+      "y": 4064,
+      "width": 1400,
+      "height": 936,
+      "name": "watchOS · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 31
+      },
+      "text": "watchos  ·  watchOS  ·  concept plate",
+      "name": "watchos  ·  watchOS  ·  conc",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/Apple_Watch.png",
+      "parent": {
+        "$step": 31
+      },
+      "width": 1384,
+      "name": "plate/watchos",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 0,
+      "y": 5080,
+      "width": 1400,
+      "height": 936,
+      "name": "Wear OS · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 34
+      },
+      "text": "wearos  ·  Wear OS  ·  concept plate",
+      "name": "wearos  ·  Wear OS  ·  conce",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/Wear_OS.png",
+      "parent": {
+        "$step": 34
+      },
+      "width": 1384,
+      "name": "plate/wearos",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 1480,
+      "y": 5080,
+      "width": 1400,
+      "height": 936,
+      "name": "AsteroidOS · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 37
+      },
+      "text": "asteroidos  ·  AsteroidOS  ·  concept plate",
+      "name": "asteroidos  ·  AsteroidOS  ·",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/AsteroidOS_Oppo_Watch.png",
+      "parent": {
+        "$step": 37
+      },
+      "width": 1384,
+      "name": "plate/asteroidos",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 0,
+      "y": 6096,
+      "width": 1400,
+      "height": 936,
+      "name": "Android XR (extra) · concept",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "cornerRadius": 16,
+        "stroke": "#FFFFFF22",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 40
+      },
+      "text": "android-xr  ·  Android XR (extra)  ·  concept plate",
+      "name": "android-xr  ·  Android XR (e",
+      "props": {
+        "fontSize": 12,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/refs/Android_XR.png",
+      "parent": {
+        "$step": 40
+      },
+      "width": 1384,
+      "name": "plate/android-xr",
+      "mode": "fit"
+    }
+  },
+  {
+    "command": "page.add",
+    "params": {
+      "name": "01 Foundations"
+    }
+  },
+  {
+    "command": "page.select",
+    "params": {
+      "index": 1
+    }
+  },
+  {
+    "command": "page.setBackground",
+    "params": {
+      "color": "#0A0812"
+    }
+  },
+  {
+    "command": "variable.createCollection",
+    "params": {
+      "name": "Wawona colours",
+      "modes": [
+        "Dark",
+        "Light"
+      ]
+    }
+  },
+  {
+    "command": "variable.create",
+    "params": {
+      "collection": {
+        "$step": 46
+      },
+      "name": "color/bg",
+      "type": "color",
+      "values": {
+        "Dark": "#12101C",
+        "Light": "#F4F6FB"
+      }
+    }
+  },
+  {
+    "command": "variable.create",
+    "params": {
+      "collection": {
+        "$step": 46
+      },
+      "name": "color/glass",
+      "type": "color",
+      "values": {
+        "Dark": "#1A1628D0",
+        "Light": "#FFFFFFE6"
+      }
+    }
+  },
+  {
+    "command": "variable.create",
+    "params": {
+      "collection": {
+        "$step": 46
+      },
+      "name": "color/fg",
+      "type": "color",
+      "values": {
+        "Dark": "#F2F4FF",
+        "Light": "#1A1A2E"
+      }
+    }
+  },
+  {
+    "command": "variable.create",
+    "params": {
+      "collection": {
+        "$step": 46
+      },
+      "name": "color/muted",
+      "type": "color",
+      "values": {
+        "Dark": "#B4B9D0",
+        "Light": "#5B6168"
+      }
+    }
+  },
+  {
+    "command": "variable.create",
+    "params": {
+      "collection": {
+        "$step": 46
+      },
+      "name": "color/primary",
+      "type": "color",
+      "values": {
+        "Dark": "#3D9CFF",
+        "Light": "#007AFF"
+      }
+    }
+  },
+  {
+    "command": "variable.create",
+    "params": {
+      "collection": {
+        "$step": 46
+      },
+      "name": "color/running",
+      "type": "color",
+      "values": {
+        "Dark": "#34C759",
+        "Light": "#34C759"
+      }
+    }
+  },
+  {
+    "command": "variable.create",
+    "params": {
+      "collection": {
+        "$step": 46
+      },
+      "name": "color/border",
+      "type": "color",
+      "values": {
+        "Dark": "#FFFFFF28",
+        "Light": "#D0D5E0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "x": 0,
+      "y": 0,
+      "width": 720,
+      "height": 400,
+      "name": "Token board",
+      "props": {
+        "fill": "#12101C",
+        "layout": "vertical",
+        "gap": 16,
+        "padding": 28,
+        "cornerRadius": 16
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 54
+      },
+      "text": "Valley-glass Operate tokens",
+      "name": "Valley-glass Operate tokens",
+      "props": {
+        "fontSize": 24,
+        "fontStyle": "Bold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 54
+      },
+      "text": "From concept comps. Glass over landscape. Neon status. Settings = gear.",
+      "name": "From concept comps. Glass ov",
+      "props": {
+        "fontSize": 13,
+        "fill": "#B4B9D0",
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 54
+      },
+      "name": "Swatches",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 12,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 57
+      },
+      "name": "glass",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": 8,
+        "cornerRadius": 12
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 58
+      },
+      "width": 72,
+      "height": 48,
+      "props": {
+        "fill": "#1A1628D0",
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 58
+      },
+      "text": "glass\n#1A1628D0",
+      "name": "glass\n#1A1628D0",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 57
+      },
+      "name": "primary",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": 8,
+        "cornerRadius": 12
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 61
+      },
+      "width": 72,
+      "height": 48,
+      "props": {
+        "fill": "#3D9CFF",
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 61
+      },
+      "text": "primary\n#3D9CFF",
+      "name": "primary\n#3D9CFF",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 57
+      },
+      "name": "running",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": 8,
+        "cornerRadius": 12
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 64
+      },
+      "width": 72,
+      "height": 48,
+      "props": {
+        "fill": "#34C759",
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 64
+      },
+      "text": "running\n#34C759",
+      "name": "running\n#34C759",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 57
+      },
+      "name": "fg",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": 8,
+        "cornerRadius": 12
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 67
+      },
+      "width": 72,
+      "height": 48,
+      "props": {
+        "fill": "#F2F4FF",
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 67
+      },
+      "text": "fg\n#F2F4FF",
+      "name": "fg\n#F2F4FF",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 57
+      },
+      "name": "muted",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": 8,
+        "cornerRadius": 12
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 70
+      },
+      "width": 72,
+      "height": 48,
+      "props": {
+        "fill": "#B4B9D0",
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 70
+      },
+      "text": "muted\n#B4B9D0",
+      "name": "muted\n#B4B9D0",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "page.add",
+    "params": {
+      "name": "02 macOS editable"
+    }
+  },
+  {
+    "command": "page.select",
+    "params": {
+      "index": 2
+    }
+  },
+  {
+    "command": "page.setBackground",
+    "params": {
+      "color": "#05040A"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "x": 0,
+      "y": -32,
+      "text": "Editable · valley-glass · match macOS.png (pill nav, targets, row actions, gear cover)",
+      "name": "edit intro",
+      "props": {
+        "fontSize": 13,
+        "fill": "#9AA0B8"
+      }
+    }
+  },
+  {
+    "command": "frame.create",
+    "params": {
+      "preset": "MacBook Pro 14\"",
+      "x": 0,
+      "y": 0,
+      "name": "macOS · Machines",
+      "props": {
+        "fill": "#0D0A14",
+        "layout": null,
+        "clip": true,
+        "cornerRadius": 18
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/assets/wawona-valley-wallpaper.png",
+      "parent": {
+        "$step": 77
+      },
+      "x": 0,
+      "y": 0,
+      "width": 1512,
+      "height": 982,
+      "name": "wallpaper",
+      "mode": "fill"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 77
+      },
+      "name": "veil",
+      "x": 0,
+      "y": 0,
+      "width": 1512,
+      "height": 982,
+      "props": {
+        "fill": "#0A061866",
+        "absolute": true
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 77
+      },
+      "name": "Title bar",
+      "x": 0,
+      "y": 0,
+      "width": 1512,
+      "height": 52,
+      "props": {
+        "absolute": true,
+        "fill": "#1A1628D0",
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "layout": null,
+        "clip": true
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 80
+      },
+      "name": "Brand",
+      "x": 16,
+      "y": 10,
+      "width": 280,
+      "height": 32,
+      "props": {
+        "absolute": true,
+        "layout": "horizontal",
+        "gap": 10,
+        "crossAlign": "center",
+        "fill": "#00000000"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 81
+      },
+      "name": "Traffic",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 7,
+        "crossAlign": "center"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 82
+      },
+      "width": 12,
+      "height": 12,
+      "props": {
+        "fill": "#FF5F57"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 82
+      },
+      "width": 12,
+      "height": 12,
+      "props": {
+        "fill": "#FEBC2E"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 82
+      },
+      "width": 12,
+      "height": 12,
+      "props": {
+        "fill": "#28C840"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 81
+      },
+      "width": 22,
+      "height": 22,
+      "name": "mark",
+      "props": {
+        "fill": "#3D9CFF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 81
+      },
+      "text": "Wawona Compositor",
+      "name": "Wawona Compositor",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 80
+      },
+      "name": "Pill nav",
+      "x": 556,
+      "y": 8,
+      "width": 400,
+      "height": 36,
+      "props": {
+        "absolute": true,
+        "layout": "horizontal",
+        "gap": 4,
+        "padding": [
+          4,
+          4,
+          4,
+          4
+        ],
+        "cornerRadius": 999,
+        "fill": "#FFFFFF22",
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "crossAlign": "center",
+        "mainAlign": "center"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 88
+      },
+      "name": "Machines",
+      "props": {
+        "fill": "#FFFFFF44",
+        "layout": "horizontal",
+        "padding": [
+          7,
+          14,
+          7,
+          14
+        ],
+        "cornerRadius": 999
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 89
+      },
+      "text": "Machines",
+      "name": "Machines",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 88
+      },
+      "name": "Sessions",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "padding": [
+          7,
+          14,
+          7,
+          14
+        ],
+        "cornerRadius": 999
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 91
+      },
+      "text": "Sessions",
+      "name": "Sessions",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 88
+      },
+      "name": "Images",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "padding": [
+          7,
+          14,
+          7,
+          14
+        ],
+        "cornerRadius": 999
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 93
+      },
+      "text": "Images",
+      "name": "Images",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 88
+      },
+      "name": "Runtimes",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "padding": [
+          7,
+          14,
+          7,
+          14
+        ],
+        "cornerRadius": 999
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 95
+      },
+      "text": "Runtimes",
+      "name": "Runtimes",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 80
+      },
+      "name": "Search",
+      "x": 1220,
+      "y": 10,
+      "width": 200,
+      "height": 32,
+      "props": {
+        "absolute": true,
+        "layout": "horizontal",
+        "padding": [
+          8,
+          14,
+          8,
+          14
+        ],
+        "cornerRadius": 10,
+        "fill": "#FFFFFF14",
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "crossAlign": "center"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 97
+      },
+      "text": "Search  ⌘F",
+      "name": "Search  ⌘F",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 80
+      },
+      "name": "Settings gear",
+      "x": 1434,
+      "y": 9,
+      "width": 34,
+      "height": 34,
+      "props": {
+        "absolute": true,
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "cornerRadius": 10,
+        "fill": "#FFFFFF14",
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 99
+      },
+      "text": "⚙︎",
+      "name": "⚙︎",
+      "props": {
+        "fontSize": 14,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 77
+      },
+      "name": "Sidebar",
+      "x": 0,
+      "y": 52,
+      "width": 248,
+      "height": 930,
+      "props": {
+        "absolute": true,
+        "fill": "#1A1628B8",
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "layout": "vertical",
+        "gap": 6,
+        "padding": [
+          12,
+          10,
+          12,
+          10
+        ]
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 101
+      },
+      "text": "Library",
+      "name": "Library",
+      "props": {
+        "fontSize": 10,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "Machines",
+      "props": {
+        "fill": "#3D9CFF38",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#3D9CFF",
+        "strokeWeight": 1.5,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 103
+      },
+      "width": 7,
+      "height": 7,
+      "props": {
+        "fill": "#3D9CFF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 103
+      },
+      "text": "Machines",
+      "name": "Machines",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 103
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 103
+      },
+      "text": "5",
+      "name": "5",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "Sessions",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 108
+      },
+      "width": 7,
+      "height": 7,
+      "props": {
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 108
+      },
+      "text": "Sessions",
+      "name": "Sessions",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 108
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 108
+      },
+      "text": "1",
+      "name": "1",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "Images",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 113
+      },
+      "width": 7,
+      "height": 7,
+      "props": {
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 113
+      },
+      "text": "Images",
+      "name": "Images",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 113
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "Runtimes",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 117
+      },
+      "width": 7,
+      "height": 7,
+      "props": {
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 117
+      },
+      "text": "Runtimes",
+      "name": "Runtimes",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 117
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 101
+      },
+      "text": "Favorites",
+      "name": "Favorites",
+      "props": {
+        "fontSize": 10,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "Pinned",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 122
+      },
+      "text": "Pinned",
+      "name": "Pinned",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 122
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 122
+      },
+      "text": "2",
+      "name": "2",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "Recent",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 126
+      },
+      "text": "Recent",
+      "name": "Recent",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 126
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 101
+      },
+      "text": "Tags",
+      "name": "Tags",
+      "props": {
+        "fontSize": 10,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "Work",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 130
+      },
+      "width": 7,
+      "height": 7,
+      "props": {
+        "fill": "#5AC8FA"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 130
+      },
+      "text": "Work",
+      "name": "Work",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 130
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 130
+      },
+      "text": "2",
+      "name": "2",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "Dev",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 135
+      },
+      "width": 7,
+      "height": 7,
+      "props": {
+        "fill": "#BF5AF2"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 135
+      },
+      "text": "Dev",
+      "name": "Dev",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 135
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 135
+      },
+      "text": "3",
+      "name": "3",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "Test",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 140
+      },
+      "width": 7,
+      "height": 7,
+      "props": {
+        "fill": "#34C759"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 140
+      },
+      "text": "Test",
+      "name": "Test",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 140
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 140
+      },
+      "text": "1",
+      "name": "1",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 101
+      },
+      "text": "Platform Targets",
+      "name": "Platform Targets",
+      "props": {
+        "fontSize": 10,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "macOS",
+      "props": {
+        "fill": "#3D9CFF38",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#3D9CFF",
+        "strokeWeight": 1.5,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 146
+      },
+      "width": 7,
+      "height": 7,
+      "props": {
+        "fill": "#3D9CFF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 146
+      },
+      "text": "macOS",
+      "name": "macOS",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 146
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "iOS / iPadOS",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 150
+      },
+      "width": 7,
+      "height": 7,
+      "props": {
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 150
+      },
+      "text": "iOS / iPadOS",
+      "name": "iOS / iPadOS",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 150
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "Android",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 154
+      },
+      "width": 7,
+      "height": 7,
+      "props": {
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 154
+      },
+      "text": "Android",
+      "name": "Android",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 154
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "WASM / Web",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center",
+        "padding": [
+          6,
+          8,
+          6,
+          8
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 158
+      },
+      "width": 7,
+      "height": 7,
+      "props": {
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 158
+      },
+      "text": "WASM / Web",
+      "name": "WASM / Web",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 158
+      },
+      "name": "grow",
+      "props": {
+        "fill": "#00000000",
+        "sizingH": "fill",
+        "height": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 101
+      },
+      "name": "Transfers",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "vertical",
+        "gap": 6,
+        "padding": 10,
+        "cornerRadius": 12,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 162
+      },
+      "name": "xfer head",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 163
+      },
+      "text": "Transfers",
+      "name": "Transfers",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 163
+      },
+      "text": "✕",
+      "name": "✕",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 162
+      },
+      "text": "NixOS vm.qcow2",
+      "name": "NixOS vm.qcow2",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 162
+      },
+      "name": "progress track",
+      "width": 210,
+      "height": 6,
+      "props": {
+        "fill": "#FFFFFF22",
+        "cornerRadius": 3
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 162
+      },
+      "name": "progress",
+      "width": 120,
+      "height": 6,
+      "props": {
+        "fill": "#3D9CFF",
+        "cornerRadius": 3
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 162
+      },
+      "text": "3.2 / 5.6 GB · 12.4 MB/s",
+      "name": "3.2 / 5.6 GB · 12.4 MB/s",
+      "props": {
+        "fontSize": 10,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 77
+      },
+      "name": "Catalog",
+      "x": 248,
+      "y": 52,
+      "width": 940,
+      "height": 930,
+      "props": {
+        "absolute": true,
+        "fill": "#100C1A88",
+        "layout": "vertical",
+        "gap": 8,
+        "padding": [
+          14,
+          16,
+          14,
+          16
+        ]
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 170
+      },
+      "name": "Catalog header",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 171
+      },
+      "name": "Titles",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 4,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 172
+      },
+      "text": "Machines",
+      "name": "Machines",
+      "props": {
+        "fontSize": 28,
+        "fontStyle": "Bold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 172
+      },
+      "text": "5 machines · 2 pinned · 1 running",
+      "name": "5 machines · 2 pinned · 1 ru",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 171
+      },
+      "name": "Header actions",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 8,
+        "crossAlign": "center"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 175
+      },
+      "name": "View toggle",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 2,
+        "padding": [
+          3,
+          3,
+          3,
+          3
+        ],
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 176
+      },
+      "name": "≡",
+      "props": {
+        "fill": "#FFFFFF44",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 30,
+        "height": 28,
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 177
+      },
+      "text": "≡",
+      "name": "≡",
+      "props": {
+        "fontSize": 13,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 176
+      },
+      "name": "▦",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 30,
+        "height": 28,
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 179
+      },
+      "text": "▦",
+      "name": "▦",
+      "props": {
+        "fontSize": 13,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 175
+      },
+      "name": "New",
+      "props": {
+        "fill": "#3D9CFF",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "padding": [
+          10,
+          14,
+          10,
+          14
+        ],
+        "cornerRadius": 10
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 181
+      },
+      "text": "+ New",
+      "name": "+ New",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "SemiBold",
+        "fill": "#FFFFFF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 170
+      },
+      "name": "Sample Linux VM",
+      "props": {
+        "fill": "#3D9CFF38",
+        "layout": "horizontal",
+        "gap": 12,
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "crossAlign": "center",
+        "sizingH": "fill",
+        "stroke": "#3D9CFF",
+        "strokeWeight": 2,
+        "cornerRadius": 14
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/assets/thumbs/vm.png",
+      "parent": {
+        "$step": 183
+      },
+      "width": 52,
+      "height": 52,
+      "name": "Sample Linux VM thumb",
+      "mode": "fill"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 183
+      },
+      "name": "meta",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 4,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 185
+      },
+      "text": "Sample Linux VM",
+      "name": "Sample Linux VM",
+      "props": {
+        "fontSize": 15,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 185
+      },
+      "text": "Virtual Machine · NixOS",
+      "name": "Virtual Machine · NixOS",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 183
+      },
+      "name": "status",
+      "props": {
+        "fill": "#00000066",
+        "layout": "horizontal",
+        "gap": 6,
+        "padding": [
+          6,
+          12,
+          6,
+          12
+        ],
+        "crossAlign": "center",
+        "cornerRadius": 999,
+        "stroke": "#34C75966",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 188
+      },
+      "width": 8,
+      "height": 8,
+      "props": {
+        "fill": "#34C759"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 188
+      },
+      "text": "Running · 12m",
+      "name": "Running · 12m",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 183
+      },
+      "name": "row actions",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 6,
+        "crossAlign": "center"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 191
+      },
+      "name": "play",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 32,
+        "height": 32,
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 192
+      },
+      "text": "⏹",
+      "name": "⏹",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 191
+      },
+      "name": "more",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 32,
+        "height": 32,
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 194
+      },
+      "text": "···",
+      "name": "···",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 170
+      },
+      "name": "Dev Container",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 12,
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "crossAlign": "center",
+        "sizingH": "fill",
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "cornerRadius": 14
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/assets/thumbs/container.png",
+      "parent": {
+        "$step": 196
+      },
+      "width": 52,
+      "height": 52,
+      "name": "Dev Container thumb",
+      "mode": "fill"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 196
+      },
+      "name": "meta",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 4,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 198
+      },
+      "text": "Dev Container",
+      "name": "Dev Container",
+      "props": {
+        "fontSize": 15,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 198
+      },
+      "text": "Container · OCI",
+      "name": "Container · OCI",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 196
+      },
+      "name": "status",
+      "props": {
+        "fill": "#00000066",
+        "layout": "horizontal",
+        "gap": 6,
+        "padding": [
+          6,
+          12,
+          6,
+          12
+        ],
+        "crossAlign": "center",
+        "cornerRadius": 999,
+        "stroke": "#8E8E9366",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 201
+      },
+      "width": 8,
+      "height": 8,
+      "props": {
+        "fill": "#8E8E93"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 201
+      },
+      "text": "Stopped",
+      "name": "Stopped",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 196
+      },
+      "name": "row actions",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 6,
+        "crossAlign": "center"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 204
+      },
+      "name": "play",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 32,
+        "height": 32,
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 205
+      },
+      "text": "▶",
+      "name": "▶",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 204
+      },
+      "name": "more",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 32,
+        "height": 32,
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 207
+      },
+      "text": "···",
+      "name": "···",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 170
+      },
+      "name": "Native Shell",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 12,
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "crossAlign": "center",
+        "sizingH": "fill",
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "cornerRadius": 14
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/assets/thumbs/shell.png",
+      "parent": {
+        "$step": 209
+      },
+      "width": 52,
+      "height": 52,
+      "name": "Native Shell thumb",
+      "mode": "fill"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 209
+      },
+      "name": "meta",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 4,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 211
+      },
+      "text": "Native Shell",
+      "name": "Native Shell",
+      "props": {
+        "fontSize": 15,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 211
+      },
+      "text": "Native Shell · Local",
+      "name": "Native Shell · Local",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 209
+      },
+      "name": "status",
+      "props": {
+        "fill": "#00000066",
+        "layout": "horizontal",
+        "gap": 6,
+        "padding": [
+          6,
+          12,
+          6,
+          12
+        ],
+        "crossAlign": "center",
+        "cornerRadius": 999,
+        "stroke": "#34C75966",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 214
+      },
+      "width": 8,
+      "height": 8,
+      "props": {
+        "fill": "#34C759"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 214
+      },
+      "text": "Running · 3m",
+      "name": "Running · 3m",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 209
+      },
+      "name": "row actions",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 6,
+        "crossAlign": "center"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 217
+      },
+      "name": "play",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 32,
+        "height": 32,
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 218
+      },
+      "text": "⏹",
+      "name": "⏹",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 217
+      },
+      "name": "more",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 32,
+        "height": 32,
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 220
+      },
+      "text": "···",
+      "name": "···",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 170
+      },
+      "name": "Relay Wasm",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 12,
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "crossAlign": "center",
+        "sizingH": "fill",
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "cornerRadius": 14
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/assets/thumbs/wasm.png",
+      "parent": {
+        "$step": 222
+      },
+      "width": 52,
+      "height": 52,
+      "name": "Relay Wasm thumb",
+      "mode": "fill"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 222
+      },
+      "name": "meta",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 4,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 224
+      },
+      "text": "Relay Wasm",
+      "name": "Relay Wasm",
+      "props": {
+        "fontSize": 15,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 224
+      },
+      "text": "Native Shell · WASI",
+      "name": "Native Shell · WASI",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 222
+      },
+      "name": "status",
+      "props": {
+        "fill": "#00000066",
+        "layout": "horizontal",
+        "gap": 6,
+        "padding": [
+          6,
+          12,
+          6,
+          12
+        ],
+        "crossAlign": "center",
+        "cornerRadius": 999,
+        "stroke": "#5AC8FA66",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 227
+      },
+      "width": 8,
+      "height": 8,
+      "props": {
+        "fill": "#5AC8FA"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 227
+      },
+      "text": "Ready",
+      "name": "Ready",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 222
+      },
+      "name": "row actions",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 6,
+        "crossAlign": "center"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 230
+      },
+      "name": "play",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 32,
+        "height": 32,
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 231
+      },
+      "text": "▶",
+      "name": "▶",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 230
+      },
+      "name": "more",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 32,
+        "height": 32,
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 233
+      },
+      "text": "···",
+      "name": "···",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 170
+      },
+      "name": "Term",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "gap": 12,
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "crossAlign": "center",
+        "sizingH": "fill",
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "cornerRadius": 14
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/assets/thumbs/shell.png",
+      "parent": {
+        "$step": 235
+      },
+      "width": 52,
+      "height": 52,
+      "name": "Term thumb",
+      "mode": "fill"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 235
+      },
+      "name": "meta",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 4,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 237
+      },
+      "text": "Term",
+      "name": "Term",
+      "props": {
+        "fontSize": 15,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 237
+      },
+      "text": "Native Shell · Local",
+      "name": "Native Shell · Local",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 235
+      },
+      "name": "status",
+      "props": {
+        "fill": "#00000066",
+        "layout": "horizontal",
+        "gap": 6,
+        "padding": [
+          6,
+          12,
+          6,
+          12
+        ],
+        "crossAlign": "center",
+        "cornerRadius": 999,
+        "stroke": "#8E8E9366",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 240
+      },
+      "width": 8,
+      "height": 8,
+      "props": {
+        "fill": "#8E8E93"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 240
+      },
+      "text": "Stopped",
+      "name": "Stopped",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 235
+      },
+      "name": "row actions",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 6,
+        "crossAlign": "center"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 243
+      },
+      "name": "play",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 32,
+        "height": 32,
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 244
+      },
+      "text": "▶",
+      "name": "▶",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 243
+      },
+      "name": "more",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 32,
+        "height": 32,
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 246
+      },
+      "text": "···",
+      "name": "···",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 77
+      },
+      "name": "Inspector",
+      "x": 1188,
+      "y": 52,
+      "width": 324,
+      "height": 930,
+      "props": {
+        "absolute": true,
+        "fill": "#1A1628B8",
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "layout": "vertical",
+        "gap": 8,
+        "padding": 12
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/assets/thumbs/inspector-hero.png",
+      "parent": {
+        "$step": 248
+      },
+      "width": 300,
+      "height": 120,
+      "name": "hero",
+      "mode": "fill"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 248
+      },
+      "name": "insp head",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 250
+      },
+      "name": "insp titles",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 3,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 251
+      },
+      "text": "Sample Linux VM",
+      "name": "Sample Linux VM",
+      "props": {
+        "fontSize": 17,
+        "fontStyle": "Bold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 251
+      },
+      "text": "Virtual Machine · NixOS",
+      "name": "Virtual Machine · NixOS",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 250
+      },
+      "name": "Running pill",
+      "props": {
+        "fill": "#34C75933",
+        "layout": "horizontal",
+        "gap": 6,
+        "padding": [
+          5,
+          10,
+          5,
+          10
+        ],
+        "cornerRadius": 999,
+        "crossAlign": "center"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 254
+      },
+      "width": 7,
+      "height": 7,
+      "props": {
+        "fill": "#34C759"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 254
+      },
+      "text": "Running",
+      "name": "Running",
+      "props": {
+        "fontSize": 11,
+        "fill": "#34C759"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 248
+      },
+      "name": "Primary actions",
+      "props": {
+        "fill": "#00000000",
+        "layout": "vertical",
+        "gap": 8,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 257
+      },
+      "name": "Open Session",
+      "props": {
+        "fill": "#3D9CFF",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "padding": [
+          12,
+          16,
+          12,
+          16
+        ],
+        "cornerRadius": 11,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 258
+      },
+      "text": "Open Session",
+      "name": "Open Session",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "SemiBold",
+        "fill": "#FFFFFF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 257
+      },
+      "name": "Secondary",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 8,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 260
+      },
+      "name": "Pause",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 261
+      },
+      "text": "Pause",
+      "name": "Pause",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 260
+      },
+      "name": "Stop",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "cornerRadius": 10,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 263
+      },
+      "text": "Stop",
+      "name": "Stop",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 248
+      },
+      "name": "Tabs",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 4,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 265
+      },
+      "name": "Overview",
+      "props": {
+        "fill": "#3D9CFF38",
+        "layout": "horizontal",
+        "padding": [
+          7,
+          10,
+          7,
+          10
+        ],
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 266
+      },
+      "text": "Overview",
+      "name": "Overview",
+      "props": {
+        "fontSize": 11,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 265
+      },
+      "name": "Config",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "padding": [
+          7,
+          10,
+          7,
+          10
+        ],
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 268
+      },
+      "text": "Config",
+      "name": "Config",
+      "props": {
+        "fontSize": 11,
+        "fontStyle": "Regular",
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 265
+      },
+      "name": "Resources",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "padding": [
+          7,
+          10,
+          7,
+          10
+        ],
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 270
+      },
+      "text": "Resources",
+      "name": "Resources",
+      "props": {
+        "fontSize": 11,
+        "fontStyle": "Regular",
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 265
+      },
+      "name": "Logs",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "padding": [
+          7,
+          10,
+          7,
+          10
+        ],
+        "cornerRadius": 8
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 272
+      },
+      "text": "Logs",
+      "name": "Logs",
+      "props": {
+        "fontSize": 11,
+        "fontStyle": "Regular",
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 248
+      },
+      "name": "Runtime",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          9,
+          10,
+          9,
+          10
+        ],
+        "cornerRadius": 10,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 274
+      },
+      "text": "Runtime",
+      "name": "Runtime",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 274
+      },
+      "text": "NixOS (planned)",
+      "name": "NixOS (planned)",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 248
+      },
+      "name": "Connection",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          9,
+          10,
+          9,
+          10
+        ],
+        "cornerRadius": 10,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 277
+      },
+      "text": "Connection",
+      "name": "Connection",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 277
+      },
+      "text": "Local",
+      "name": "Local",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 248
+      },
+      "name": "Display",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          9,
+          10,
+          9,
+          10
+        ],
+        "cornerRadius": 10,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 280
+      },
+      "text": "Display",
+      "name": "Display",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 280
+      },
+      "text": "Wayland (Wawona) ✓",
+      "name": "Wayland (Wawona) ✓",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 248
+      },
+      "name": "Graphics",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          9,
+          10,
+          9,
+          10
+        ],
+        "cornerRadius": 10,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 283
+      },
+      "text": "Graphics",
+      "name": "Graphics",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 283
+      },
+      "text": "Metal (MoltenVK) ✓",
+      "name": "Metal (MoltenVK) ✓",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 248
+      },
+      "name": "Storage",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "vertical",
+        "gap": 6,
+        "padding": [
+          9,
+          10,
+          9,
+          10
+        ],
+        "cornerRadius": 10,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 286
+      },
+      "name": "stor head",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 287
+      },
+      "text": "Storage",
+      "name": "Storage",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 287
+      },
+      "text": "6.4 / 20 GB",
+      "name": "6.4 / 20 GB",
+      "props": {
+        "fontSize": 12,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 286
+      },
+      "name": "stor track",
+      "width": 268,
+      "height": 6,
+      "props": {
+        "fill": "#FFFFFF22",
+        "cornerRadius": 3
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 286
+      },
+      "name": "stor fill",
+      "width": 86,
+      "height": 6,
+      "props": {
+        "fill": "#3D9CFF",
+        "cornerRadius": 3
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 248
+      },
+      "name": "Tags",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 6,
+        "crossAlign": "center",
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 292
+      },
+      "name": "Work",
+      "props": {
+        "fill": "#5AC8FA55",
+        "layout": "horizontal",
+        "padding": [
+          5,
+          12,
+          5,
+          12
+        ],
+        "cornerRadius": 999,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 293
+      },
+      "text": "Work",
+      "name": "Work",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 292
+      },
+      "name": "Dev",
+      "props": {
+        "fill": "#BF5AF255",
+        "layout": "horizontal",
+        "padding": [
+          5,
+          12,
+          5,
+          12
+        ],
+        "cornerRadius": 999,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 295
+      },
+      "text": "Dev",
+      "name": "Dev",
+      "props": {
+        "fontSize": 11,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 292
+      },
+      "name": "+",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "mainAlign": "center",
+        "crossAlign": "center",
+        "width": 28,
+        "height": 24,
+        "cornerRadius": 999,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 297
+      },
+      "text": "+",
+      "name": "+",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 248
+      },
+      "name": "Pinned",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          9,
+          10,
+          9,
+          10
+        ],
+        "cornerRadius": 10,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 299
+      },
+      "text": "Pinned",
+      "name": "Pinned",
+      "props": {
+        "fontSize": 12,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 299
+      },
+      "name": "toggle",
+      "props": {
+        "fill": "#3D9CFF",
+        "layout": "horizontal",
+        "mainAlign": "max",
+        "crossAlign": "center",
+        "width": 44,
+        "height": 24,
+        "cornerRadius": 999,
+        "padding": [
+          2,
+          2,
+          2,
+          2
+        ]
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "ellipse",
+      "parent": {
+        "$step": 301
+      },
+      "width": 20,
+      "height": 20,
+      "props": {
+        "fill": "#FFFFFF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 248
+      },
+      "name": "Relay info",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "vertical",
+        "gap": 6,
+        "padding": 12,
+        "cornerRadius": 12,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 303
+      },
+      "text": "Relay",
+      "name": "Relay",
+      "props": {
+        "fontSize": 12,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 303
+      },
+      "text": "NixOS prebuilt runtime for this Virtual Machine.",
+      "name": "NixOS prebuilt runtime for t",
+      "props": {
+        "fontSize": 11,
+        "fill": "#B4B9D0",
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 303
+      },
+      "text": "Learn more →",
+      "name": "Learn more →",
+      "props": {
+        "fontSize": 11,
+        "fill": "#3D9CFF"
+      }
+    }
+  },
+  {
+    "command": "frame.create",
+    "params": {
+      "preset": "MacBook Pro 14\"",
+      "x": 1600,
+      "y": 0,
+      "name": "macOS · Settings cover",
+      "props": {
+        "fill": "#0D0A14",
+        "layout": null,
+        "clip": true,
+        "cornerRadius": 18
+      }
+    }
+  },
+  {
+    "command": "file.placeImage",
+    "params": {
+      "path": "/Users/8amps/Wawona/Wawona/docs/ui-quality/platform-concepts/figcraft/assets/wawona-valley-wallpaper.png",
+      "parent": {
+        "$step": 307
+      },
+      "x": 0,
+      "y": 0,
+      "width": 1512,
+      "height": 982,
+      "name": "wallpaper",
+      "mode": "fill"
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "rectangle",
+      "parent": {
+        "$step": 307
+      },
+      "name": "dim",
+      "x": 0,
+      "y": 0,
+      "width": 1512,
+      "height": 982,
+      "props": {
+        "fill": "#05040ACC",
+        "absolute": true
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 307
+      },
+      "name": "Settings sheet",
+      "x": 256,
+      "y": 80,
+      "width": 1000,
+      "height": 820,
+      "props": {
+        "absolute": true,
+        "fill": "#1A1628D0",
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "cornerRadius": 20,
+        "layout": "vertical",
+        "gap": 0,
+        "clip": true
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 310
+      },
+      "name": "Settings chrome",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          16,
+          20,
+          16,
+          20
+        ],
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 311
+      },
+      "text": "Settings",
+      "name": "Settings",
+      "props": {
+        "fontSize": 20,
+        "fontStyle": "Bold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 311
+      },
+      "name": "Done",
+      "props": {
+        "fill": "#3D9CFF",
+        "layout": "horizontal",
+        "padding": [
+          8,
+          16,
+          8,
+          16
+        ],
+        "cornerRadius": 10
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 313
+      },
+      "text": "Done",
+      "name": "Done",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "SemiBold",
+        "fill": "#FFFFFF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 310
+      },
+      "name": "Settings body",
+      "props": {
+        "fill": "#00000000",
+        "layout": "horizontal",
+        "gap": 0,
+        "sizingH": "fill",
+        "sizingV": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 315
+      },
+      "name": "Settings nav",
+      "props": {
+        "fill": "#1A1628B8",
+        "layout": "vertical",
+        "gap": 6,
+        "padding": 14,
+        "width": 220,
+        "sizingV": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 316
+      },
+      "name": "General",
+      "props": {
+        "fill": "#3D9CFF38",
+        "layout": "horizontal",
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "cornerRadius": 10,
+        "stroke": "#3D9CFF",
+        "strokeWeight": 1.5,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 317
+      },
+      "text": "General",
+      "name": "General",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "SemiBold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 316
+      },
+      "name": "Display",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 319
+      },
+      "text": "Display",
+      "name": "Display",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 316
+      },
+      "name": "Input",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 321
+      },
+      "text": "Input",
+      "name": "Input",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 316
+      },
+      "name": "Graphics",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 323
+      },
+      "text": "Graphics",
+      "name": "Graphics",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 316
+      },
+      "name": "Network",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 325
+      },
+      "text": "Network",
+      "name": "Network",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 316
+      },
+      "name": "Permissions",
+      "props": {
+        "fill": "#FFFFFF14",
+        "layout": "horizontal",
+        "padding": [
+          10,
+          12,
+          10,
+          12
+        ],
+        "cornerRadius": 10,
+        "stroke": "#00000000",
+        "strokeWeight": 0,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 327
+      },
+      "text": "Permissions",
+      "name": "Permissions",
+      "props": {
+        "fontSize": 13,
+        "fontStyle": "Regular",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 315
+      },
+      "name": "Settings detail",
+      "props": {
+        "fill": "#100C1A66",
+        "layout": "vertical",
+        "gap": 12,
+        "padding": 24,
+        "sizingH": "fill",
+        "sizingV": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 329
+      },
+      "text": "General",
+      "name": "General",
+      "props": {
+        "fontSize": 22,
+        "fontStyle": "Bold",
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 329
+      },
+      "text": "Appearance, startup, and default machine behaviour.",
+      "name": "Appearance, startup, and def",
+      "props": {
+        "fontSize": 13,
+        "fill": "#B4B9D0",
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 329
+      },
+      "name": "Appearance",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          14,
+          16,
+          14,
+          16
+        ],
+        "cornerRadius": 12,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 332
+      },
+      "text": "Appearance",
+      "name": "Appearance",
+      "props": {
+        "fontSize": 14,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 332
+      },
+      "text": "Match System",
+      "name": "Match System",
+      "props": {
+        "fontSize": 13,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 329
+      },
+      "name": "Launch at login",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          14,
+          16,
+          14,
+          16
+        ],
+        "cornerRadius": 12,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 335
+      },
+      "text": "Launch at login",
+      "name": "Launch at login",
+      "props": {
+        "fontSize": 14,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 335
+      },
+      "text": "Off",
+      "name": "Off",
+      "props": {
+        "fontSize": 13,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 329
+      },
+      "name": "Default machine kind",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          14,
+          16,
+          14,
+          16
+        ],
+        "cornerRadius": 12,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 338
+      },
+      "text": "Default machine kind",
+      "name": "Default machine kind",
+      "props": {
+        "fontSize": 14,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 338
+      },
+      "text": "Native Shell",
+      "name": "Native Shell",
+      "props": {
+        "fontSize": 13,
+        "fill": "#B4B9D0"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "frame",
+      "parent": {
+        "$step": 329
+      },
+      "name": "Confirm before Stop",
+      "props": {
+        "fill": "#2A2440CC",
+        "layout": "horizontal",
+        "mainAlign": "spaceBetween",
+        "crossAlign": "center",
+        "padding": [
+          14,
+          16,
+          14,
+          16
+        ],
+        "cornerRadius": 12,
+        "stroke": "#FFFFFF28",
+        "strokeWeight": 1,
+        "sizingH": "fill"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 341
+      },
+      "text": "Confirm before Stop",
+      "name": "Confirm before Stop",
+      "props": {
+        "fontSize": 14,
+        "fill": "#F2F4FF"
+      }
+    }
+  },
+  {
+    "command": "node.create",
+    "params": {
+      "type": "text",
+      "parent": {
+        "$step": 341
+      },
+      "text": "On",
+      "name": "On",
+      "props": {
+        "fontSize": 13,
+        "fill": "#B4B9D0"
+      }
+    }
+  }
+]

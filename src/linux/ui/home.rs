@@ -1860,11 +1860,13 @@ fn machine_session_status(machine_id: &str, sessions: &MachineSessions) -> (bool
 
 fn stop_machine(machine_id: &str, sessions: &MachineSessions) {
     if let Some(mut child) = sessions.borrow_mut().remove(machine_id) {
+        let phase = wawona_laws::stop_machine(wawona_laws::MachinePhase::Running);
         wlog!(
             "UI",
-            "Stopping machine id={} pid={}",
+            "Stopping machine id={} pid={} phase={:?}",
             machine_id,
-            child.id()
+            child.id(),
+            phase
         );
         let _ = child.kill();
         let _ = child.wait();

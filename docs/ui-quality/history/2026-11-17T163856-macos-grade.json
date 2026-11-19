@@ -1,0 +1,83 @@
+{
+  "iteration": 3,
+  "extracted_at": "2026-11-17T16:38:56-08:00",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --chrome platform; screenshot … window",
+  "build": ".build/exact/macos/Wawona.app",
+  "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T163856-",
+  "screens": [
+    {
+      "screen": "machines-catalog",
+      "score": 93,
+      "criteria": {
+        "native_fidelity": { "score": 14, "note": "sourceList width 280; full titles; traffic lights; selected=null empty." },
+        "visual_hierarchy": { "score": 14, "note": "Select a Machine + Add/Settings/Tabs. No black pill." },
+        "navigation": { "score": 9, "note": "Empty-detail chrome." },
+        "layout": { "score": 9, "note": "Titles no longer truncate." },
+        "functional": { "score": 14, "note": "OK." },
+        "accessibility": { "score": 9, "note": "Full row titles." },
+        "adaptive": { "score": 9, "note": "Wide split." },
+        "state": { "score": 5, "note": "Empty selection correct." },
+        "consistency": { "score": 5, "note": "One machines catalog." },
+        "polish": { "score": 5, "note": "Clean." }
+      },
+      "hard_gate_failures": [],
+      "issues": ["empty-detail action row still a bit dense"],
+      "result": "pass"
+    },
+    {
+      "screen": "add-machine",
+      "score": 92,
+      "criteria": {
+        "native_fidelity": { "score": 14, "note": "Modal sheet Cancel/Save + form." },
+        "visual_hierarchy": { "score": 14, "note": "Name/Kind/Session/Advanced." },
+        "navigation": { "score": 9, "note": "Sheet dismiss." },
+        "layout": { "score": 9, "note": "OK." },
+        "functional": { "score": 14, "note": "Save disabled until name." },
+        "accessibility": { "score": 9, "note": "OK." },
+        "adaptive": { "score": 8, "note": "OK." },
+        "state": { "score": 5, "note": "OK." },
+        "consistency": { "score": 5, "note": "OK." },
+        "polish": { "score": 5, "note": "OK." }
+      },
+      "result": "pass"
+    },
+    {
+      "screen": "settings-catalog",
+      "score": 90,
+      "criteria": {
+        "native_fidelity": { "score": 14, "note": "Frosted modal sheet with Done." },
+        "visual_hierarchy": { "score": 14, "note": "Section icons clear." },
+        "navigation": { "score": 9, "note": "Gear cover." },
+        "layout": { "score": 9, "note": "Sheet centered over Machines." },
+        "functional": { "score": 14, "note": "Display opens in sheet." },
+        "accessibility": { "score": 9, "note": "OK." },
+        "adaptive": { "score": 7, "note": "Desktop still absent until hostPlatform=macos." },
+        "state": { "score": 4, "note": "OK." },
+        "consistency": { "score": 5, "note": "Not a root tab." },
+        "polish": { "score": 5, "note": "OK." }
+      },
+      "issues": ["hostPlatform defaults ios"],
+      "result": "pass"
+    },
+    {
+      "screen": "machine-inspector",
+      "score": 93,
+      "result": "pass",
+      "issues": []
+    },
+    {
+      "screen": "tab-overview",
+      "score": 90,
+      "result": "pass"
+    }
+  ],
+  "aggregate_score": 92,
+  "release_gate": true,
+  "open_issues_ranked": [
+    "Wire Exact Mac launch to setHostPlatform(macos) so Desktop appears without About picker",
+    "Empty-detail chrome density (Add primary first; applied in next rebuild)",
+    "GPU viewport screenshot flake: grade uses window capture"
+  ],
+  "summary": "Gate 90 cleared on Mac Exact chrome screens. Sidebar 280 + modal Settings/Add + no black pill."
+}

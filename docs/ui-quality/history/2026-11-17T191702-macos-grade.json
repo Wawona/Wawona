@@ -1,0 +1,19 @@
+{
+  "stamp": "2026-11-17T191702",
+  "platform": "macos",
+  "chrome": "platform",
+  "source": "owner-audit-F38-loop",
+  "aggregate": 86,
+  "release_gate": 90,
+  "gate_met": false,
+  "notes": [
+    "Sort is PrefSelect (native select), not role=menu popover",
+    "Settings gear \u2192 Display modal + Category jump + All Settings",
+    "NSSegmented filter; Dependencies; phaseBusy",
+    "Catalog NSToolbar Exact-host blocked; VoiceOver/Liquid Glass UNVERIFIED"
+  ],
+  "evidence": {
+    "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T191702"
+  },
+  "hard_gates_failed": []
+}

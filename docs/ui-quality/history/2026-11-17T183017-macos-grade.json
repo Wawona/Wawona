@@ -1,0 +1,83 @@
+{
+  "iteration": "audit-p1",
+  "extracted_at": "2026-11-17T18:30:17-08:00",
+  "target": "macos",
+  "method": "cargo xtask agent grade macos --rebuild --chrome platform",
+  "audit_baseline": 38,
+  "re_score_estimate": 76,
+  "release_gate": false,
+  "rubric_scores": {
+    "native_fidelity": 72,
+    "visual_hierarchy": 74,
+    "navigation": 78,
+    "layout": 80,
+    "functional": 82,
+    "accessibility": 55,
+    "adaptive": 70,
+    "state": 85,
+    "consistency": 75,
+    "polish": 68
+  },
+  "screens": [
+    {
+      "screen": "machines-browser",
+      "score": 82,
+      "note": "Full-bleed list (588pt in 620 detail). New/Settings/Sessions/search/filters persistent.",
+      "result": "pass",
+      "artifact": "artifacts/2026-11-17T183017-catalog.png"
+    },
+    {
+      "screen": "inspector-planned",
+      "score": 80,
+      "note": "Start Unavailable; Execution vs Readiness; leading max-width guide; restrained titlebar.",
+      "result": "pass",
+      "artifact": "artifacts/2026-11-17T183017-inspector-planned.png"
+    },
+    {
+      "screen": "sessions",
+      "score": 78,
+      "note": "Sidebar Sessions destination; wide list pane; rename from Tab Overview.",
+      "result": "pass",
+      "artifact": "artifacts/2026-11-17T183017-tabs.png"
+    },
+    {
+      "screen": "settings",
+      "score": 72,
+      "note": "In-app cover + Display detail. App menu Settings… ⌘, and File New Machine ⌘N proven. Dedicated Settings window deferred (product gear-cover rule).",
+      "result": "pass",
+      "artifact": "artifacts/2026-11-17T182555-settings.png"
+    }
+  ],
+  "p0_closed": [
+    "machine-browser",
+    "commands-out-of-empty-state",
+    "start-gated-for-planned",
+    "execution-vs-readiness",
+    "pin-tags-affordance"
+  ],
+  "p1_closed": [
+    "browser-full-bleed-list",
+    "sessions-destination",
+    "inspector-leading-guide",
+    "cmd-comma-app-menu",
+    "keyboard-search-escape",
+    "browser-contextmenu"
+  ],
+  "p1_open": [
+    "authored-nstoolbar-beyond-header-chrome",
+    "voiceover-pass",
+    "dedicated-settings-window-vs-in-app-cover"
+  ],
+  "p2_open": [
+    "liquid-glass-materials",
+    "contrast-polish"
+  ],
+  "evidence": {
+    "layout_browser_row_pt": 588,
+    "layout_detail_pt": 620,
+    "menus": ["Settings… ⌘,", "New Machine ⌘N"],
+    "meta_comma": "type toolbar-taboverview key Meta+, → wawona-settings-catalog"
+  },
+  "artifacts_prefix": "docs/ui-quality/history/artifacts/2026-11-17T183017-",
+  "summary": "Audit F P0 closed; P1 mostly closed with evidence. Heuristic ~76. Gate 90 not claimed. VoiceOver and full NSToolbar authorship remain open."
+}

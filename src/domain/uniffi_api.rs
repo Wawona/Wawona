@@ -286,3 +286,15 @@ pub fn welcome_message() -> String {
 pub fn welcome_continue_label() -> String {
     super::welcome_copy::CONTINUE.to_string()
 }
+
+/// Session phase step. `op` is `start` or `stop`. `phase` is `idle`, `running`, or `stopped`.
+#[uniffi::export]
+pub fn machine_phase_apply(op: String, phase: String) -> String {
+    wawona_laws::apply_phase(&op, &phase).unwrap_or("").to_string()
+}
+
+/// Route-root step. Exact's navigator still owns the live stack.
+#[uniffi::export]
+pub fn nav_place_apply(op: String, place: String) -> String {
+    wawona_laws::apply_nav(&op, &place).unwrap_or("").to_string()
+}
