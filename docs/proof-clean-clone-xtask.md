@@ -1,6 +1,6 @@
 # Clean-clone proof (cargo xtask, no Nix for apps)
 
-Recorded 2026-11-12 on `rust-xtask`. Goal: a fresh checkout builds Apple
+Recorded 2026-11-12 on a feature tip later merged to `development` (`rust-xtask`). Goal: a fresh checkout builds Apple
 simulator and Android apps with `cargo xtask deps get` + `cargo xtask build`,
 without invoking Nix for the app link.
 

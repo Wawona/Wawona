@@ -2,7 +2,7 @@ name: "Gate: Wayland conformance"
 
 on:
   pull_request:
-    branches: [development, master, main]
+    branches: [development, master]
     paths:
       - "src/core/**"
       - "src/ffi/**"
@@ -15,7 +15,7 @@ on:
       - "flake.lock"
       - ".github/workflows/wayland-conformance.yml"
   push:
-    branches: [development, master, main]
+    branches: [development, master]
     paths:
       - "src/core/**"
       - "src/ffi/**"

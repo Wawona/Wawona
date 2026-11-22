@@ -4,9 +4,9 @@ name: "Gate: packages"
 # What/why: docs/ci.md. Cache: FlakeHub (flakehub-cache-action@v3).
 on:
   push:
-    branches: [ development, master, main ]
+    branches: [ development, master ]
   pull_request:
-    branches: [ development, master, main ]
+    branches: [ development, master ]
   workflow_dispatch:
 
 permissions:

@@ -6,7 +6,7 @@ name: "Gate: wasm-wayland"
 
 on:
   push:
-    branches: [development, master, main]
+    branches: [development, master]
     paths:
       - "flake.nix"
       - "flake.lock"
@@ -19,7 +19,7 @@ on:
       - "xtask/src/ci.rs"
       - "Sources/WawonaApple/Watch/WatchCompositorBridge.swift"
   pull_request:
-    branches: [development, master, main]
+    branches: [development, master]
     paths:
       - "flake.nix"
       - "flake.lock"

@@ -96,7 +96,11 @@ OSV exceptions belong in the root `osv-scanner.toml`, with a specific affected p
 
 Workflow display names use a role prefix (`Gate` / `Build` / `Watch` / `Ship`). Filenames stay as before (`nix.yml`, `device-gate.yml`, â¦).
 
-## Branch Ã workflow
+## Long-lived branches
+
+Only **`development`** (WIP) and **`master`** (green / prod). Delete feature branches after merge. Do not keep parallel long-lived tips (`rust-xtask`, `xcode27-project`, cursor/*).
+
+## Branch x workflow
 
 | Workflow | `development` | `master` | Why |
 |----------|:-------------:|:--------:|-----|

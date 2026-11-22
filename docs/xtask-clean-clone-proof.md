@@ -1,6 +1,6 @@
 # Clean-clone proof (cargo xtask, no Nix on PATH)
 
-Recorded 2026-11-11 on the `rust-xtask` worktree. Prebuilt slices via
+Recorded 2026-11-11 on a feature worktree later merged to `development` (`rust-xtask`). Prebuilt slices via
 `WAWONA_DEPS_MIRROR` (stands in for GHCR until `deps.yml` publishes).
 
 ## Setup
