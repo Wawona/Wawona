@@ -90,6 +90,7 @@ is forced Exact (`wawona-exact-forced`).
 `wawona-data` (`machineProfiles*`). Quarantine SwiftUI/Compose Codable call
 sites stay `SCHEMA_ADAPTER_ONLY` until dual-run M8 Exact-only delete. They do
 **not** block closing #67. Map: `exact/apps/wawona/docs/issue-67-exact-path.md`.
+Issue closed 2026-11-18.
 
 Keep `wawona.machineProfiles.v1` JSON keys byte-compatible so old profiles
 still load.

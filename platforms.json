@@ -20,9 +20,11 @@
     "MOBILE_TARGETS": ["ios", "ipados", "android"],
     "DESKTOP_TARGETS": ["macos", "windows", "linux"],
     "WEARABLE_TARGETS": ["watchos", "wearos", "asteroidos"],
+    "VEHICLE_TARGETS": ["carplay", "android_auto"],
+    "DISPLAY_TARGETS": ["external_display"],
     "TV_TARGETS": ["tvos"],
     "WEB_TARGETS": ["web"],
-    "EXACT_HOSTS": ["ios", "ipados", "macos", "android", "web", "windows", "asteroidos", "tvos", "watchos", "linux", "wearos"],
+    "EXACT_HOSTS": ["ios", "ipados", "macos", "android", "web", "windows", "asteroidos", "tvos", "watchos", "visionos", "linux", "wearos", "carplay", "android_auto", "external_display"],
     "SHARED_CORE": ["exact-contract", "rust-domain"]
   },
   "targets": [
@@ -79,24 +81,24 @@
       "label": "visionOS",
       "exact_host": "apple/ios",
       "product": "available",
-      "exact_ui": "planned",
-      "notes": "Product Wawona ships. Exact host shares Apple stack; verify wide multi-window."
+      "exact_ui": "available",
+      "notes": "Exact UI parity: build + agent.mjs visionos + smoke.mjs visionos (Wawona Settings / Caltrain). Contract tree gates; AX may stay flaky. Device refuse. Delivery deferred."
     },
     {
       "id": "tvos",
       "label": "tvOS",
       "exact_host": "apple/tvos",
       "product": "available",
-      "exact_ui": "planned",
-      "notes": "Exact can build --tvos. Focus/platter conventions. No VM/container kinds."
+      "exact_ui": "available",
+      "notes": "Exact UI parity: agent.mjs tvos + smoke.mjs tvos (Caltrain + --app wawona Machines/Settings). XCTests/delivery deferred. No VM/container kinds."
     },
     {
       "id": "watchos",
       "label": "watchOS",
       "exact_host": "apple/watchos",
       "product": "available",
-      "exact_ui": "planned",
-      "notes": "Exact can build --watchos. SpriteKit present in product; Exact chrome must stay role-only."
+      "exact_ui": "available",
+      "notes": "Exact UI parity: PresenterWatch + AgentWatch; smoke.mjs watchos (Wawona watch-settings). Sim-only; device/TS-on-watch deferred. wearable-contract.md."
     },
     {
       "id": "wearos",
@@ -104,7 +106,7 @@
       "exact_host": "android",
       "product": "planned",
       "exact_ui": "available",
-      "notes": "Same wawona-android crate. cargo xtask build wearos passes --wear so the APK requires android.hardware.type.watch and sets the standalone meta-data. Phone APK does not."
+      "notes": "Exact UI parity: --wear APK + agent.mjs android --wear + crown; smoke.mjs wear. Round safe-area. Tiles deferred. cargo xtask build wearos sets watch feature + standalone meta-data."
     },
     {
       "id": "asteroidos",
@@ -112,7 +114,7 @@
       "exact_host": "asteroid",
       "product": "planned",
       "exact_ui": "available",
-      "notes": "Exact asteroid host. cargo xtask build asteroidos. Host-machine binary is headless. Cross armv7 needs ASTEROIDOS_SDK."
+      "notes": "Exact UI parity: 240x240 headless agent.mjs asteroid + smoke.mjs asteroid (Wawona). cargo xtask build asteroidos. Qt/QML image still Phase 6 (#246)."
     },
     {
       "id": "linux",
@@ -121,6 +123,30 @@
       "product": "planned",
       "exact_ui": "available",
       "notes": "Exact Linux host. cargo xtask build linux. Headless on macOS. Not nix build .#wawona-linux."
+    },
+    {
+      "id": "carplay",
+      "label": "CarPlay",
+      "exact_host": "apple/carplay",
+      "product": "planned",
+      "exact_ui": "partial",
+      "notes": "Exact PresenterCarPlay + CPListTemplate from car.contract; EXACT_CARPLAY=1 fail-closed. Wawona CarPlayScene mirrors Machines glance. Never freeform Exact paint."
+    },
+    {
+      "id": "android_auto",
+      "label": "Android Auto",
+      "exact_host": "android/auto",
+      "product": "planned",
+      "exact_ui": "partial",
+      "notes": "Exact AndroidAutoTemplateBridge + VehicleListModel; EXACT_ANDROID_AUTO=1. Templates only."
+    },
+    {
+      "id": "external_display",
+      "label": "External display",
+      "exact_host": "apple/ios",
+      "product": "planned",
+      "exact_ui": "partial",
+      "notes": "Exact ExternalDisplaySceneDelegate paint-only; Wawona ExternalSceneDelegate + pointer_remote / limited_touch seat. Primary owns input."
     }
   ],
   "rules": [
@@ -129,6 +155,7 @@
     "Report a per-target matrix: implemented | verified | planned | blocked | forbidden | n/a.",
     "Never silently omit a target; justify every non-verified cell.",
     "Exact UI work: one app.contract; bun scripts/no-tells.mjs clean; portable symbol: roles only.",
-    "Product capability gates (VM/Desktop/Mode B) stay in wawona-platform-targets; ALL_TARGETS does not override forbidden."
+    "Product capability gates (VM/Desktop/Mode B) stay in wawona-platform-targets; ALL_TARGETS does not override forbidden.",
+    "VEHICLE_TARGETS and DISPLAY_TARGETS: never silent omit; entitlement cells are unsupported without EXACT_CARPLAY / EXACT_ANDROID_AUTO."
   ]
 }

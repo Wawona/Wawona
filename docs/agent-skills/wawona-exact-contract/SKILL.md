@@ -107,8 +107,8 @@ Read `platforms.json`. Report every id. Typical tip (2026-11-14):
 | web | available | Exact host; product web planned |
 | windows | available | Exact compile-checked; product planned |
 | android | available | Exact crate checks; Canvas package planned (M6) |
-| asteroidos | available | Exact asteroid host |
-| visionos / tvos / watchos | planned | M5 |
-| wearos | blocked | No Exact Wear host (M7) |
+| asteroidos | available | Exact asteroid host; agent tree/state |
+| visionos / tvos / watchos | available | tvOS agent Machines; watch embeds ExactWatch; visionOS sim build |
+| wearos | available | `--wear` APK: watch feature, round safe-area, rotary |
 
 Do not delete product chrome until M8.

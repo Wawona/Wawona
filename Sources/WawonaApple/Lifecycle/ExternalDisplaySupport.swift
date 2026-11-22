@@ -1,6 +1,12 @@
 #if canImport(UIKit) && !os(watchOS)
 import UIKit
 
+// External monitor: paint only. Exact uses ExternalDisplaySceneDelegate with
+// isUserInteractionEnabled=false (docs/vehicle-display-contract.md). Wawona
+// mirrors compositor frames here; seat becomes pointer_remote (mode 2) while
+// connected so the phone / controller stays primary input.
+// CarPlay uses limited_touch (mode 1). See WWNRefreshHostSeatForConnectedScreens.
+
 public extension NSNotification.Name {
     static let WWNExternalDisplayDidConnectNotification =
         NSNotification.Name("WWNExternalDisplayDidConnectNotification")
@@ -29,14 +35,18 @@ public func WWNSetCarPlaySceneConnected(_ connected: Bool) {
     WWNRefreshHostSeatForConnectedScreens()
 }
 
+/// Seat modes: 0 full, 1 limited_touch (CarPlay / single-touch), 2 pointer_remote
+/// (external display: no touch on that surface; phone drives).
 @_cdecl("WWNRefreshHostSeatForConnectedScreens")
 public func WWNRefreshHostSeatForConnectedScreens() {
     let bridge = WWNCompositorBridge.sharedBridge
     if externalDisplayConnected {
+        // pointer_remote: Exact / Wawona external surface is input-deaf.
         bridge.setHostSeatMode(2)
         return
     }
     if carPlayConnected {
+        // limited_touch: template select only (Exact PresenterCarPlay / CPList).
         bridge.setHostSeatMode(1)
         return
     }
@@ -170,12 +180,16 @@ public final class ExternalSceneDelegate: NSObject, UIWindowSceneDelegate {
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: windowScene)
+        window.isUserInteractionEnabled = false
         let mirror = ExternalMirrorView(frame: window.bounds)
         mirror.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        mirror.isUserInteractionEnabled = false
         let controller = UIViewController()
         controller.view = mirror
+        controller.view.isUserInteractionEnabled = false
         window.rootViewController = controller
-        window.makeKeyAndVisible()
+        // Paint only: do not steal key from the primary phone scene.
+        window.isHidden = false
         self.window = window
         externalDisplayConnected = true
         WWNCompositorBridge.sharedBridge.externalMirrorView = mirror
