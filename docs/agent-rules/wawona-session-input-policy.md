@@ -19,8 +19,13 @@ Nested-cursor-only helper remains: `launch_nested_cursor_policy_json` /
 |---|---|---|---|---|
 | Nested compositor | Multi-Touch | hide | off | on |
 | Normal client | override or Multi-Touch | show | Show Virtual Cursor pref | off |
-| Limited touch (CarPlay / external) | Single Touch | (cursor rules) | (cursor rules) | off |
-| Pointer remote (AirPlay / phone-as-remote) | Touchpad | (cursor rules) | (cursor rules) | on |
+| Limited touch (CarPlay) | Single Touch / template select | (cursor rules) | (cursor rules) | off |
+| Pointer remote (external display / AirPlay / phone-as-remote) | Touchpad; external surface input-deaf | (cursor rules) | (cursor rules) | on |
+
+Exact hosts: `PresenterCarPlay` / `ExternalDisplaySceneDelegate`
+(`exact/docs/vehicle-display-contract.md`). Wawona
+`WWNRefreshHostSeatForConnectedScreens` maps CarPlay → mode 1
+(`limited_touch`), external → mode 2 (`pointer_remote`).
 
 Settings → Touch Input Type and Show Virtual Cursor stay as **overrides**.
 New users never pick Vulkan ICD or touch mode for common Starts.

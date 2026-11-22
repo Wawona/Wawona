@@ -1,83 +1,64 @@
-# Android. Engineering Status (2026-06)
+# Android. Engineering Status (2026-11 Exact cutover)
 
-Wawona on Android is a **native Jetpack Compose host** with a full JNI → Rust Wayland
-compositor path, Vulkan rendering, and OpenSSH/waypipe SSH. Not a WebView wrapper.
+Wawona on Android ships through the **Exact Android host** (`cargo xtask build
+android` / `archive android`). Product Compose under root `android/app` is
+deleted. JNI → Rust Wayland compositor, Vulkan, and OpenSSH/waypipe remain.
 
 ## Architecture
 
 ```
-MainActivity (ComponentActivity, edge-to-edge)
-  → WawonaTheme (MaterialExpressiveTheme + MotionScheme.expressive)
-  → MachineWelcomeScreen / compositor SurfaceView
-  → WawonaNative (JNI) → libwawona.a
+Exact Android host (Canvas / Compose package)
+  → JNI / UniFFI → libwawona
        → renderer_android.c (Vulkan)
        → waypipe_main + libssh_bin.so (SSH sessions)
 ```
 
 | Layer | Implementation |
 |-------|----------------|
-| UI | Kotlin Compose under `android/app/...` (parallel to SwiftUI on Apple) |
-| Theme | Material 3 **Expressive** (`MaterialExpressiveTheme`, dynamic color on API 31+) |
-| Compositor | Shared Rust core (Smithay), same protocol surface as macOS/iOS |
-| Graphics | Vulkan swapchain (no Cocoa/Metal) |
-| Remote | waypipe in-process + bundled OpenSSH portable (`fork`/`exec` `--ssh-bin`) |
-| Input | Touch, touchpad mode, physical keyboard, text-input-v3, modifier accessory bar |
+| UI | Exact Contract chrome (product). Legacy Compose quarantined / removed from ship path |
+| Compositor | Shared Rust core (Smithay), same protocol surface as Apple |
+| Graphics | Vulkan swapchain |
+| Remote | waypipe in-process + bundled OpenSSH portable |
+| Input | Touch, touchpad mode, physical keyboard, text-input-v3 |
 
 ## Material 3 Expressive
 
-| Feature | Status |
-|---------|--------|
-| `MaterialExpressiveTheme` | **Yes**. `WawonaTheme.kt` |
-| `MotionScheme.expressive` | **Yes**. Spring FAB / speed-dial |
-| Expressive color schemes (API 36+) | **Yes**. Fallback to static Wawona palette |
-| Material You / dynamic color (API 31+) | **Yes**. When enabled |
-| System light/dark | **Yes**. No longer forced dark |
-| Expressive speed-dial FAB (API 36+) | **Yes**. Machines home + waypipe stop in session |
-| XML shell `Theme.Material3.DayNight` | **Yes**. `res/values/themes.xml` |
-| `material3.adaptive` (tablet split) | Not yet. Phones/tablets use single-activity |
+Exact Android host follows Material 3 Expressive on API 36+. Theme ownership
+lives with Exact / host packaging, not a root Gradle `WawonaTheme.kt`.
 
-Apple uses **Liquid Glass (OS 26)**; Android uses **M3 Expressive (API 36+)** per `AGENTS.md`.
+Apple uses **Liquid Glass (OS 26+)**; Android uses **M3 Expressive (API 36+)**.
 
-## Flake / build outputs
+## Build
 
-| Output | Purpose |
-|--------|---------|
-| `.#wawona-android` | Release/debug APK via Nix + Gradle |
-| `.#wawona-android-backend` | `libwawona.a` for NDK |
-| `.#weston-android` | Weston clients (optional link) |
-| `.#weston-compositor-android` | Nested Weston compositor archive |
-| `.#iland-android` | iland userland (DRM path; optional) |
-| `cargo xtask deps get android` | Links `.deps/android` for the root Gradle project |
+| Command | Purpose |
+|---------|---------|
+| `cargo xtask deps get android` | Stages `.deps/android` |
+| `cargo xtask backend android` | Builds `libwawona` for NDK |
+| `cargo xtask build android` | Exact APK |
+| `cargo xtask archive android` | Exact AAB for Play / Fastlane |
 
-After rebuilding Nix Android deps (weston, toolchain, etc.), re-run `cargo xtask deps get android` before building in Android Studio.
-
+Exact owns Gradle under `exact/host/android`. NDK pin comes from that host
+(or `ANDROID_NDK_VERSION` / `.#wwnSdkConfigPath`).
 
 ## Parity vs Apple (high level)
 
 | Capability | Android | Apple mobile |
 |------------|---------|--------------|
 | Wayland compositor core | Full | Full |
-| weston-simple-shm | Real archive (not smoke stub) | Full |
-| Nested Weston compositor | `weston-compositor-android` wired | Full |
-| Local zsh + weston-terminal | zsh + assets + PTY spawn | In-process only |
-| waypipe SSH | OpenSSH `--ssh-bin` + `-i` | libssh2 in-process CLI + streamlocal |
-| iland DRM nested compositor | Buildable; optional toggle pending | Full |
-| Settings | Compose bottom sheet | SwiftUI navigation |
-| Modifier accessory bar | M3-themed | iOS keyboard bar |
-
-Historical audit (do not copy to the site): `docs/legacy/android-audits/2026-Wawona-Android-Audit.md`.
+| Product chrome | Exact | Exact |
+| Present | Exact / JNI surface | Exact `wayland-present` |
+| waypipe SSH | OpenSSH `--ssh-bin` | libssh2 in-process |
+| Settings | Exact in-app | Exact in-app |
 
 ## Manual smoke
 
-1. Install Nix-built APK or `./gradlew :Wawona:assembleDebug` with Nix backend env.
-2. Welcome → Machines grid (expressive FAB on API 36+).
-3. Connect native machine → compositor fills display; keyboard accessory bar when IME open.
-4. SSH machine → waypipe session; expressive **Stop Waypipe** FAB when running (API 36+).
-5. Toggle system dark/light. Theme follows (dynamic color on supported devices).
+1. `cargo xtask build android` (or archive AAB).
+2. Install APK. Machines → Start → Present.
+3. Before tapping Wayland clients: Touchpad Mode **Off**.
+4. SSH machine → waypipe session.
 
 ## Key paths
 
-- `android/app/src/main/java/com/aspauldingcode/wawona/`. Compose UI
-- `android/app/src/main/java/com/aspauldingcode/wawona/WawonaTheme.kt`. M3 Expressive theme
-- `src/platform/android/android_jni.c`. JNI bridge
-- `dependencies/wawona/android.nix`. APK pipeline
+- Exact `apps/wawona` + `exact/host/android`
+- `src/platform/android/android_jni.c`
+- `dependencies/wawona/android-deps.nix`

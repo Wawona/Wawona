@@ -81,9 +81,11 @@ profile load/put/delete fail closed through rust (`wawona_profiles_v1_*` /
 JNI). Codable / Kotlin data classes are adapters only. Android-only UI fields
 ride in `hostUiBlob`. Gate: `cargo xtask verify profile-schema-lift`.
 
-**Still open for #67 close:** import generated UniFFI `MachineProfile` as the
-in-memory type on Apple and Android (delete field ownership from Codable /
-Kotlin mirrors).
+**#67 product path (forced Exact):** Exact Machines catalog is rust
+`wawona-data` (`machineProfiles*`). Quarantine SwiftUI/Compose Codable call
+sites stay `SCHEMA_ADAPTER_ONLY` until dual-run M8 Exact-only delete. They do
+**not** block closing #67. Map: `exact/apps/wawona/docs/issue-67-exact-path.md`.
+Issue closed 2026-11-18.
 
 Keep `wawona.machineProfiles.v1` JSON keys byte-compatible so old profiles
 still load.

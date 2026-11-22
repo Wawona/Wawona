@@ -2,7 +2,8 @@
 name: wawona-android-compose
 description: >-
   Mandatory Kotlin/Jetpack Compose skill gate for Wawona Android. Use whenever
-  editing or reviewing android/app Compose UI, SettingsDialog, Machines Compose,
+  editing or reviewing Exact Android host UI or quarantined Compose leftovers
+  (root android/app product host is deleted; Exact is the ship path),
   JNI glue call sites from Kotlin, or Material 3 host chrome.
 ---
 

@@ -1,25 +1,24 @@
 # iOS / Apple-mobile app entry (process `@main`)
 
-Authority for **who owns LC_MAIN** on iOS, iPadOS, tvOS, and visionOS app
-targets. Measured 2026-10-08: without `Darwin/Sources/Main.swift`, the
-linker took `libgbm_es2_demo.a`'s C `_main` as the process entry and the
-app exited in the ES2 cube. After renaming that archive symbol, the
-linker had **no** `_main` until Main.swift was on the mobile targets.
+**Product ship (2026-11 Exact cutover):** Exact `bun host/apple/build.mjs`
+owns the product IPA entry for iOS / iPadOS / tvOS / visionOS / macOS.
+Exact floor is **17.0**. There is no committed `Wawona.xcodeproj`.
+
+Historical note (dual-run / pre-cutover): without `Darwin/Sources/Main.swift`,
+the linker could take a bundled client's C `_main` (e.g. `gbm_es2_demo`).
+That lesson still applies to any archive force-loaded into Exact: never
+export product `_main` from a client staticlib.
 
 Cross-links: `wawona-apple-swift-glue`, `wawona-ios-min-os`,
-`wawona-swiftui-backports`, `wawona-ios-link-contract`. Skill:
-`wawona-ios-sim-runtime`.
+`wawona-ios-link-contract`, `docs/compilation.md`.
 
 ## Process entry (hard)
 
 | Target | Entry | Notes |
 |---|---|---|
-| **macOS** | `Darwin/Sources/Main.swift` `@main` → SwiftUI `App` | LaunchAgent roles before UI |
-| **iOS / iPadOS / tvOS / visionOS** | Same `Main.swift` `@main` → `UIApplicationMain` → `AppMainDelegate` + `WWNSceneDelegate` | iOS **15.0** floor; the UIKit scene delegates own CarPlay and external display |
-| **watchOS** | `Sources/WawonaWatch` `@main` | Separate; do not share phone Main |
-
-`Wawona.xcodeproj/project.xcproj` keeps the `Darwin/Sources` folder
-in **every** Apple phone/TV/vision app target, not only macOS.
+| **Product Exact** | Exact Apple host assemble | Store id `com.aspauldingcode.Wawona`; iOS **17.0** |
+| **Legacy dual-run** | `Darwin/Sources/Main.swift` (quarantine) | Do not revive as the ship path |
+| **watchOS** | Exact `--watchos` follow-on; legacy `Sources/WawonaWatch` | Companion assert skipped until Exact embeds watch |
 
 Info.plist names `WWNSceneDelegate` / CarPlay / external display. Scene hosts
 `UIHostingController(rootView: WawonaRootView())`. Do **not** insert a
@@ -54,27 +53,19 @@ Default Rust fallback `/tmp/wawona-<uid>` **fails to bind** on iOS Simulator
 (`Failed to bind primary socket at /tmp/wawona-503/wayland-0`). Then
 Machines Start reports `Host compositor failed to start.`
 
-## iOS 15 SwiftUI floor (reminders)
-
-APIs newer than iOS 15 need a guard or a `WawonaBackport` path
-(`wawona-swiftui-backports`).
-
 ## Hard rejects
 
-❌ Ship an Apple-mobile app target without `Darwin/Sources/Main.swift`  
+❌ Revive `Wawona.xcodeproj` as the product LC_MAIN owner  
 ❌ Rely on a bundled client's C `_main` as the process entry  
 ❌ `-Dmain=gbm_es2_demo_main` when that symbol already exists as extern C  
 ❌ Start the host compositor without setting mobile `XDG_RUNTIME_DIR`  
-❌ Nest UIKit subviews under `UIHostingController.view`  
-❌ Replace the UIKit entry with SwiftUI `App` (scene delegates own CarPlay and external display)  
+❌ Floor the Exact product IPA below `host.ios.minimumOS` 17.0  
 
 ## Verify
 
 ```bash
-# Archive: product ABI, no C _main
+# Archive: product ABI, no C _main from clients
 nm -gU "$GBM_A" | rg 'T _' | rg -i 'main|gbm'
-# App: has _main; LC_MAIN is the app, not ES2Cube-only life
-nm -gU result-ios-sim/Wawona.app/Wawona | rg 'T _main'
-# Sim compositor: per-UDID socket under wawona_sim_*
-ls /tmp/wawona_sim_${UID}_*/wayland-0
+# Exact tip / archive IPA: MinimumOSVersion 17.0, store bundle id
+plutil -p "$WAWONA_APP_PATH/Info.plist" | rg 'MinimumOSVersion|CFBundleIdentifier'
 ```

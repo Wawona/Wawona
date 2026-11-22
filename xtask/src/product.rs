@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// macos, ios, ipados, ios-modeb, tvos, visionos, watchos or android.
+    /// macos, ios, ipados, ios-modeb, tvos, visionos, watchos, android, wearos or asteroidos.
     pub target: String,
     /// Build for a device instead of the simulator (macOS is always native).
     #[arg(long)]
@@ -31,10 +31,23 @@ pub struct ArchiveArgs {
 }
 
 pub fn build(a: Args) -> Result<()> {
-    if a.target == "android" {
-        let apk = exact_host::build_android(false)?;
-        println!("{}", apk.display());
-        return Ok(());
+    match a.target.as_str() {
+        "android" => {
+            let apk = exact_host::build_android(false, false)?;
+            println!("{}", apk.display());
+            return Ok(());
+        }
+        "wearos" => {
+            let apk = exact_host::build_android(false, true)?;
+            println!("{}", apk.display());
+            return Ok(());
+        }
+        "asteroidos" => {
+            let bin = exact_host::build_asteroid()?;
+            println!("{}", bin.display());
+            return Ok(());
+        }
+        _ => {}
     }
     let key = if a.device && a.target == "ios" {
         "ios-device"
@@ -73,7 +86,12 @@ pub fn test(a: Args) -> Result<()> {
 
 pub fn archive(a: ArchiveArgs) -> Result<()> {
     if a.target == "android" {
-        let aab = exact_host::build_android(true)?;
+        let aab = exact_host::build_android(true, false)?;
+        println!("{}", aab.display());
+        return Ok(());
+    }
+    if a.target == "wearos" {
+        let aab = exact_host::build_android(true, true)?;
         println!("{}", aab.display());
         return Ok(());
     }

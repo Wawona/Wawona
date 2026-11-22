@@ -180,8 +180,8 @@ pub fn archive_ios(out: &Path) -> Result<PathBuf> {
     Ok(out.to_path_buf())
 }
 
-/// Exact Android APK or AAB.
-pub fn build_android(aab: bool) -> Result<PathBuf> {
+/// Exact Android APK or AAB. `wear` sets watch feature + standalone meta-data.
+pub fn build_android(aab: bool, wear: bool) -> Result<PathBuf> {
     deps::get(deps::GetArgs {
         sdks: vec!["android".into()],
         nix: false,
@@ -194,10 +194,14 @@ pub fn build_android(aab: bool) -> Result<PathBuf> {
     })?;
     let exact = exact_root()?;
     let flag = if aab { "--aab" } else { "--apk" };
-    run(cmd(bun())
-        .current_dir(app_dir(&exact))
+    let mut c = cmd(bun());
+    c.current_dir(app_dir(&exact))
         .args(["exact.mjs", "android", flag])
-        .env("EXACT_APP_DIR", app_dir(&exact)))?;
+        .env("EXACT_APP_DIR", app_dir(&exact));
+    if wear {
+        c.arg("--wear");
+    }
+    run(&mut c)?;
     let base = exact.join("host/android/app/build/wawona/outputs");
     let (dir, ext) = if aab {
         (base.join("bundle/release"), "aab")
@@ -213,6 +217,20 @@ pub fn build_android(aab: bool) -> Result<PathBuf> {
         1 => Ok(found.remove(0)),
         n => bail!("{} holds {n} .{ext} files", dir.display()),
     }
+}
+
+/// Exact AsteroidOS headless host binary (`wawona-asteroid`).
+pub fn build_asteroid() -> Result<PathBuf> {
+    let exact = exact_root()?;
+    run(cmd(bun())
+        .current_dir(&exact)
+        .args(["scripts/build-asteroid.mjs", "wawona"])
+        .env("EXACT_APP_DIR", app_dir(&exact)))?;
+    let bin = exact.join("target/host-dev/wawona-asteroid");
+    if !bin.is_file() {
+        bail!("Asteroid build produced no {}", bin.display());
+    }
+    Ok(bin)
 }
 
 pub fn _env_or_exact_sim() -> String {

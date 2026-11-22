@@ -1,63 +1,22 @@
-# Android SDK/NDK Upgrade Guardrails
+# Android upgrade guardrails
 
-This checklist is mandatory for any change that touches Android version pins or
-toolchain selection logic.
+Product Android builds go through Exact (`cargo xtask build|archive android`).
+Root `android/app/build.gradle.kts` is deleted.
 
-## Gradle JVM (JBR)
+## Pins
 
-Android Studio and local `./gradlew` must use **JetBrains Runtime 21**
-(Studio embedded JBR, JDK table name `21`). Linux Nix assemble uses
-`jetbrains.jdk-no-jcef-21`. Darwin Nix sandbox cannot: nixpkgs JBR is
-Linux-only, so that path stays OpenJDK. Do not export Nix `JAVA_HOME`
-into Studio. See `docs/agent-rules/wawona-android-jbr.md`.
+Keep Exact `host/android` NDK / compileSdk / targetSdk aligned with
+`wwn-toolchain` sdk-config (`.#wwnSdkConfigPath`). CI
+`setup-xtask` installs the Exact NDK pin (or `ANDROID_NDK_VERSION`).
 
-## Scope Triggers
+Checklist when bumping Android SDK / NDK:
 
-Treat a PR as an Android upgrade PR when any of the following change:
+- [ ] Exact `host/android/app/build.gradle.kts` (or equivalent) matches sdk-config
+- [ ] `cargo xtask deps get android` + `cargo xtask build android` locally
+- [ ] Fastlane / Play AAB path still finds the Exact output under
+  `exact/host/android/app/build/…`
 
-- `wwn-toolchain` → `dependencies/android/sdk-config.nix` (canonical; edit in [wwn-toolchain](https://github.com/Wawona/wwn-toolchain); Wawona reads via `nix eval .#wwnSdkConfigPath --raw`)
-- `android/app/build.gradle.kts`
-- `wwn-toolchain` → `dependencies/toolchains/android.nix`
-- `wwn-toolchain` → `dependencies/toolchains/android-cmake.nix`
-- `cargo xtask verify android-config`
+## Hard rejects
 
-## Pre-upgrade Checklist
-
-- [ ] Confirm target change set (SDK, NDK, build-tools, CMake/toolchain behavior).
-- [ ] Update `wwn-toolchain` → `dependencies/android/sdk-config.nix` (canonical; Wawona reads it via flake).
-- [ ] Keep `android/app/build.gradle.kts` values aligned to sdk-config.
-- [ ] Run `cargo xtask verify android-config`.
-- [ ] Run `cargo xtask ci baseline --limit 11`.
-
-## Platform Smoke Validation
-
-All four host platforms must complete smoke gates before merge:
-
-- [ ] `linux-x86_64`
-- [ ] `linux-arm64`
-- [ ] `darwin-arm64`
-- [ ] `darwin-x86_64`
-
-Required smoke outputs:
-
-- Android backend (`wawona-android-backend`)
-- Darwin Android path (`wawona-android` and the root Gradle project)
-
-## Blocker Signatures
-
-The following signatures are release blockers for upgrade PRs:
-
-- `toolchain_path_missing`
-- `neon_builtin_mismatch`
-- `gradle_daemon`
-- `gradle_oom`
-
-## Acceptance Criteria
-
-Upgrade is accepted only when all are true:
-
-1. `cargo xtask verify android-config` passes on CI prepare jobs.
-2. Baseline artifact (`ci-failure-baseline.md` + `.json`) is produced.
-3. Blocker threshold job reports zero blocker signatures on the current run.
-4. No new High-severity Android signature appears in the 10-run comparison
-   window after merge.
+- Reviving root Gradle as the product host
+- Claiming Android Studio on a deleted `android/app` tree is the ship path
